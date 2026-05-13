@@ -1,0 +1,11 @@
+octopus:
+  account_number:
+  api_key:
+hypervolt:
+  username:
+  password:
+schedule:
+  poll_every_secs: 10
+  update_every_mins: 30
+  total_charge_duration: 3
+  price_limit_incl_vat: 30

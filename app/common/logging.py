@@ -1,4 +1,4 @@
-from common.constants import APP_LOGGER_NAME, LOG_LEVEL
+from common.constants import APP_NAME, LOG_LEVEL
 
 config = {
     "version": 1,
@@ -18,7 +18,7 @@ config = {
         },
     },
     "loggers": {
-        APP_LOGGER_NAME: {
+        APP_NAME: {
             "handlers": ["console"],
             "level": LOG_LEVEL,
             "propagate": False,

@@ -1,0 +1,4 @@
+{
+  "retryOn429": true,
+  "timeout": "10s"
+}
