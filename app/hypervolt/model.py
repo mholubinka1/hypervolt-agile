@@ -23,6 +23,11 @@ class ActivationMode(Enum):
     octopus = (2,)
 
 
+class ReleaseState(Enum):
+    DEFAULT = "DEFAULT"
+    RELEASED = "RELEASED"
+
+
 class DayOfWeek(Enum):
     monday = (1,)
     tuesday = (2,)

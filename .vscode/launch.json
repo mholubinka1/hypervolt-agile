@@ -12,10 +12,15 @@
             "program": "${workspaceFolder}/app/main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
+            "cwd": "${workspaceFolder}",
+            "pythonArgs": ["-Xfrozen_modules=off"],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/app"
+            },
             "args": [
                 "--config-file",
                 "./config/config.yml"
-            ],
+            ]
         }
     ]
 }

@@ -182,28 +182,43 @@ class HypervoltWebSocketClient:
             logger.error(f"No handler implemented for method {_method}")
             return
 
+        _id: Optional[str] = _json_message.get("id")
         _result = _json_message.get("result") or _json_message.get("params")
-        await _handler(_result)
+        if _id:
+            self._messages.pop(_id, None)
+        await _handler(_result, _id)
 
     # endregion
 
     # region Message Handlers
 
-    async def _on_login_response(self, result: Dict) -> None:
+    async def _on_login_response(self, result: Dict, id: Optional[str] = None) -> None:
+        if id:
+            _log_dict = {"id": id, **result}
+            logger.info(f"Login response received: {_log_dict}")
+        else:
+            logger.warning(f"Login response received without id: {result}")
         if result.get("authenticated"):
             logger.info("WebSocket login successful.")
             await self._sync()
         else:
             logger.error("WebSocket login failed.")
 
-    async def _on_sync_response(self, result: list) -> None:
-        for item in result:
-            if "lock_state" in item:
-                self._charger_state.lock_status = LockStatus[item["lock_state"]]
-            if "solar_mode" in item:
-                self._charger_state.charging_mode = ChargingMode[item["solar_mode"]]
-            if "brightness" in item:
-                self._charger_state.led_brightness = item["brightness"]
+    async def _on_sync_response(self, result: list, id: Optional[str] = None) -> None:
+        _response_dict = {key: value for d in result for key, value in d.items()}
+        if id:
+            _log_dict = {"id": id, **_response_dict}
+            logger.debug(f"Sync response received: {_log_dict}")
+        else:
+            logger.debug(f"Sync response received without id: {_response_dict}")
+        if "lock_state" in _response_dict:
+            self._charger_state.lock_status = LockStatus[_response_dict["lock_state"]]
+        if "solar_mode" in _response_dict:
+            self._charger_state.charging_mode = ChargingMode[
+                _response_dict["solar_mode"]
+            ]
+        if "brightness" in _response_dict:
+            self._charger_state.led_brightness = _response_dict["brightness"]
         self._is_connected.set()
 
     # endregion

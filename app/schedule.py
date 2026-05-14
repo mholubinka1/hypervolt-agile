@@ -61,9 +61,13 @@ class Scheduler:
         config: AppConfig,
     ) -> None:
         self._config = config
+
         self._agile_client = AgileClient(
             api_key=config.octopus.api_key, account_number=config.octopus.account_number
         )
+        self._coordinator = None
+        self._charger_state = None
+
         self._total_charge_duration = config.schedule.duration
         self._price_limit_exc_vat = config.schedule.limit / ELECTRICITY_VAT_RATE
         self._update_freq = config.schedule.frequency
