@@ -1,24 +1,31 @@
 from __future__ import annotations
 
 import asyncio
+import logging.config
 from asyncio import create_task
 from datetime import datetime
-from typing import List, Optional
+from logging import Logger, getLogger
+from typing import List
 from zoneinfo import ZoneInfo
 
+from common.constants import APP_NAME
+from common.logging import config
 from hypervolt.client.rest import HypervoltRestClient
 from hypervolt.client.websocket import HypervoltWebSocketClient
 from hypervolt.model import HypervoltCharger, HypervoltSession
-from hypervolt.state import HypervoltChargerState
+from hypervolt.state import HypervoltChargerState, HypervoltChargerStateDelta
 
 from config import AppConfig
+
+logging.config.dictConfig(config)
+logger: Logger = getLogger(APP_NAME)
 
 
 class HypervoltCoordinator:
     _polling_interval: int
 
     _charger: HypervoltCharger
-    _charger_state: Optional[HypervoltChargerState]
+    _charger_state: HypervoltChargerState
 
     _rest_client: HypervoltRestClient
     _ws_client: HypervoltWebSocketClient
@@ -32,7 +39,7 @@ class HypervoltCoordinator:
             )
         self._ws_client._connect_task = create_task(self._ws_client.connect())
         await asyncio.wait_for(self._ws_client._is_connected.wait(), timeout=30)
-        self._charger_state = self._ws_client._charger_state
+        await self.clear_schedule()
         return self
 
     def __init__(
@@ -47,19 +54,31 @@ class HypervoltCoordinator:
         )
         self._charger = self._rest_client.charger
 
+        self._charger_state = HypervoltChargerState(self._charger)
         self._ws_client = HypervoltWebSocketClient(
             charger=self._charger,
             access_token_callback=self._rest_client.get_access_token,
+            on_state_update=self._on_state_update,
         )
-        self._charger_state = None
 
-    async def get_charger_state(self) -> HypervoltChargerState:
-        await self.update()
-        if self._charger_state is None:
-            raise Exception("Charger state is not initialized")
+    async def _on_state_update(
+        self,
+        delta: HypervoltChargerStateDelta,
+        should_clear_schedule: bool = False,
+    ) -> None:
+        if self._charger_state.update(delta):
+            logger.debug(f"charger_state: {self._charger_state}.")
+        if should_clear_schedule:
+            logger.warning(
+                "schedules.get returned empty or unparseable sessions, clearing schedule."
+            )
+            await self.clear_schedule()
+
+    @property
+    def charger_state(self) -> HypervoltChargerState:
         return self._charger_state
 
-    async def update(self) -> None:
+    async def _refresh_auth(self) -> None:
         _seconds_to_expiry = (
             self._rest_client.access_token_expiry_time - datetime.now(ZoneInfo("UTC"))
         ).total_seconds()
@@ -67,7 +86,18 @@ class HypervoltCoordinator:
             self._rest_client.authenticate()
             await self._ws_client.reconnect()
 
+    async def refresh(self) -> None:
+        if not self._ws_client._is_connected.is_set():
+            raise RuntimeError("Websocket is not connected, skipping refresh.")
+        await self._refresh_auth()
+        await self._ws_client.sync_charger_state()
+
     async def apply_schedule(self, schedule: List[HypervoltSession]) -> None:
+        if schedule:
+            for session in schedule:
+                logger.info(f"Sending session: {session}.")
+        else:
+            logger.info("Sending empty schedule to charger.")
         sessions = [
             {
                 "session_type": "recurring",
@@ -80,10 +110,6 @@ class HypervoltCoordinator:
         ]
         await self._ws_client.set_charging_schedule(sessions)
 
-    async def clear_completed_session(
-        self, completed_session: HypervoltSession
-    ) -> None:
-        pass
-
-    async def clear_schedule(self, schedule: List[HypervoltSession]) -> None:
-        pass
+    async def clear_schedule(self) -> None:
+        logger.info("Clearing charger schedule.")
+        await self._ws_client.set_charging_schedule([])

@@ -15,7 +15,9 @@
             "cwd": "${workspaceFolder}",
             "pythonArgs": ["-Xfrozen_modules=off"],
             "env": {
-                "PYTHONPATH": "${workspaceFolder}/app"
+                "PYTHONPATH": "${workspaceFolder}/app",
+                "PYTHONFLAGS": "-Xfrozen_modules=off",
+                "PYTHONIOENCODING": "utf-8"
             },
             "args": [
                 "--config-file",

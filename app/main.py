@@ -16,8 +16,6 @@ logger: Logger = getLogger(APP_NAME)
 
 logger.info(f"Starting {APP_NAME}.")
 
-POLLING_FREQUENCY = 10
-
 
 def parse_args() -> Namespace:
     _parser = ArgumentParser()

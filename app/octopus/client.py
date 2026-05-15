@@ -31,7 +31,7 @@ class AgileClient:
     _account_number: str
     _base_url: str = "https://api.octopus.energy/v1/"
 
-    _postcode: str
+    postcode: str
     _active_product: str
     _active_tariff: str
 
@@ -44,15 +44,10 @@ class AgileClient:
         _uk_tz = ZoneInfo("Europe/London")
         _utc_tz = ZoneInfo("UTC")
 
-        _now_uk = datetime.now(_uk_tz)
+        _day_after_tomorrow = (datetime.now(_uk_tz) + timedelta(days=2)).date()
+        _period_to = datetime.combine(_day_after_tomorrow, time(23, 0), tzinfo=_uk_tz)
 
-        _today = _now_uk.date()
-        _period_from = datetime.combine(_today, time(16, 0), tzinfo=_uk_tz)
-
-        _tomorrow = _today + timedelta(days=1)
-        _period_to = datetime.combine(_tomorrow, time(23, 0), tzinfo=_uk_tz)
-
-        return _period_from.astimezone(_utc_tz), _period_to.astimezone(_utc_tz)
+        return datetime.now(_utc_tz), _period_to.astimezone(_utc_tz)
 
     def _find_active_tariff(
         self, electricity_meter_points: List[Dict]
@@ -116,9 +111,9 @@ class AgileClient:
 
             _properties = next(iter(_response_json.get("properties", None)), None)
             if _properties is None:
-                raise APIError("Failed to retreive Account properties")
+                raise APIError("Failed to retrieve Account properties.")
 
-            self._postcode = re.sub(r"\s", "", _properties.get("postcode", None))
+            self.postcode = re.sub(r"\s", "", _properties.get("postcode", None))
 
             _electricity_meter_information = _properties.get(
                 "electricity_meter_points", None
@@ -159,6 +154,9 @@ class AgileClient:
             "period_from": _period_from.isoformat().replace("+00:00", "Z"),
             "period_to": _period_to.isoformat().replace("+00:00", "Z"),
         }
+        logger.debug(
+            f"Fetching Agile prices from {_period_from.isoformat()} to {_period_to.isoformat()}."
+        )
         try:
             _response = requests.get(
                 url=_api_endpoint,
@@ -184,6 +182,7 @@ class AgileClient:
                 )
                 _page_remaining = True if _next else False
 
+            logger.debug(f"Retrieved {len(_prices)} Agile price periods.")
             return _prices
 
         except Exception as e:

@@ -30,7 +30,8 @@ R = TypeVar("R")
 def requires_auth(method: Callable[..., R]) -> Callable[..., R]:
     @wraps(method)
     def wrapper(self: HypervoltRestClient, *args: Any, **kwargs: Any) -> R:
-        self.authenticate()
+        if datetime.now(ZoneInfo("UTC")) >= self.access_token_expiry_time:
+            self.authenticate()
         return method(self, *args, **kwargs)
 
     return wrapper
@@ -127,7 +128,7 @@ class HypervoltRestClient:
         )
 
         if self._session is None:
-            raise RuntimeError("HTTP session not initialized")
+            raise RuntimeError("HTTP session not initialised.")
         self._session.headers["authorization"] = f"Bearer {self.access_token}"
         return
 
@@ -145,6 +146,7 @@ class HypervoltRestClient:
         raise NotImplementedError(f"Unrecognised charger ID format: {charger_id}")
 
     @retry()
+    @requires_auth
     def _get_chargers(self) -> HypervoltCharger:
         _api_endpoint = f"{self._base_url}/by-owner"
 
@@ -174,7 +176,7 @@ class HypervoltRestClient:
 
         _charger = _chargers[0]
         logger.info(
-            f"Hypervolt Charger found. ID: {_charger.id}, v{_charger.maj_version}. "
+            f"Hypervolt Charger found. ID: {_charger.id}, v{_charger.maj_version}."
         )
         return _charger
 

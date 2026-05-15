@@ -13,8 +13,9 @@ from zoneinfo import ZoneInfo
 import websockets
 from common.constants import APP_NAME
 from common.logging import config
-from hypervolt.model import ActivationMode, ChargingMode, HypervoltCharger, LockStatus
-from hypervolt.state import HypervoltChargerState
+from hypervolt.client.protocol import HypervoltProtocol, _generate_id
+from hypervolt.model import ActivationMode, HypervoltCharger
+from hypervolt.state import HypervoltChargerStateDelta
 from websockets import Data
 
 logging.config.dictConfig(config)
@@ -24,8 +25,6 @@ _RECONNECT_DELAY_SECS = 5
 
 
 class HypervoltWebSocketClient:
-    is_connected: asyncio.Event
-
     _origin: websockets.Origin = websockets.Origin("https://hypervolt.co.uk")
     _host: str = "api.hypervolt.co.uk"
     _base_wss_url: str = "wss://api.hypervolt.co.uk/ws/charger"
@@ -43,15 +42,14 @@ class HypervoltWebSocketClient:
     _is_connected: asyncio.Event
 
     _messages: Dict[str, str]
-    _handlers: Dict[str, Callable[..., Awaitable[None]]]
 
     def __init__(
         self,
         charger: HypervoltCharger,
         access_token_callback: Callable[[], str],
+        on_state_update: Callable[[HypervoltChargerStateDelta], Awaitable[None]],
     ) -> None:
         self._charger = charger
-        self._charger_state = HypervoltChargerState(charger)
         self._access_token_callback = access_token_callback
 
         self._websocket = None
@@ -62,23 +60,44 @@ class HypervoltWebSocketClient:
         self._is_connected = asyncio.Event()
 
         self._messages: Dict[str, str] = {}
-        self._handlers = {
-            "login": self._on_login_response,
-            "sync.snapshot": self._on_sync_response,
-            "sync.apply": self._on_sync_response,
-        }
+
+        self._protocol = HypervoltProtocol(
+            send_message=self._send_message,
+            on_state_update=on_state_update,
+            is_connected=self._is_connected,
+        )
+
+    # region Helpers
 
     def _get_access_token(self) -> str:
         return self._access_token_callback()
 
-    # region Helpers
-
     def _get_user_agent(self) -> str:
         return "home-assistant-hypervolt-charger/0.0.0"
 
-    def _generate_id_from_timestamp(self) -> str:
-        _timestamp = datetime.now(ZoneInfo("UTC")).timestamp()
-        return str(int(_timestamp * 1000000))
+    # endregion
+
+    # region Public Methods
+
+    async def sync_charger_state(self) -> None:
+        await self._protocol.sync()
+
+    async def set_charging_schedule(
+        self,
+        schedule: List[Dict],
+        activation_mode: ActivationMode = ActivationMode.schedule,
+    ) -> None:
+        message = {
+            "id": _generate_id(),
+            "method": "schedule.set",
+            "params": {
+                "enabled": activation_mode == ActivationMode.schedule,
+                "is_default": False,
+                "type": "hypervolt",
+                "sessions": schedule,
+            },
+        }
+        await self._send_message(message)
 
     # endregion
 
@@ -95,18 +114,19 @@ class HypervoltWebSocketClient:
                     user_agent_header=self._get_user_agent(),
                 ) as websocket:
                     self._websocket = websocket
-                    await self._login()
+                    await self._protocol.login(self._get_access_token())
                     await self._receive_messages_worker()
             except CancelledError:
-                logger.debug("WebSocket connect task cancelled")
+                logger.debug("Websocket connect task cancelled.")
                 raise
             except Exception:
                 logger.warning(
-                    "WebSocket connection lost, reconnecting in %ss",
-                    _RECONNECT_DELAY_SECS,
+                    f"Websocket connection lost, reconnecting in {_RECONNECT_DELAY_SECS}s.",
                     exc_info=True,
                 )
                 self._websocket = None
+                self._is_connected.clear()
+                self._messages.clear()
                 await asyncio.sleep(_RECONNECT_DELAY_SECS)
 
     async def _receive_messages_worker(self) -> None:
@@ -129,7 +149,7 @@ class HypervoltWebSocketClient:
             try:
                 await self._connect_task
             except CancelledError:
-                logger.debug("Connect task cancelled")
+                logger.debug("WebSocket connect task cancelled.")
 
     # endregion
 
@@ -150,7 +170,7 @@ class HypervoltWebSocketClient:
             await self._websocket.send(_json_message)
             self._messages[message["id"]] = message["method"]
         else:
-            logger.error("WebSocket is not connected, cannot send message")
+            logger.error("WebSocket is not connected, cannot send message.")
 
     async def _receive_message(self, message: Data) -> None:
         self._last_activity = datetime.now(ZoneInfo("UTC"))
@@ -161,10 +181,14 @@ class HypervoltWebSocketClient:
             return
 
         if "error" in _json_message:
+            _error_message_id = _json_message.get("id")
+            _error_message_method = (
+                self._messages.pop(_error_message_id, "unknown")
+                if _error_message_id
+                else "unknown"
+            )
             logger.warning(
-                "WebSocket error response for method %s: %s",
-                self._messages.get(_json_message.get("id", ""), "unknown"),
-                _json_message["error"],
+                f"Websocket error response for method {_error_message_method}: {_json_message['error']}"
             )
             return
 
@@ -177,102 +201,10 @@ class HypervoltWebSocketClient:
             )
             return
 
-        _handler = self._handlers.get(_method)
-        if not _handler:
-            logger.error(f"No handler implemented for method {_method}")
-            return
-
         _id: Optional[str] = _json_message.get("id")
         _result = _json_message.get("result") or _json_message.get("params")
         if _id:
             self._messages.pop(_id, None)
-        await _handler(_result, _id)
-
-    # endregion
-
-    # region Message Handlers
-
-    async def _on_login_response(self, result: Dict, id: Optional[str] = None) -> None:
-        if id:
-            _log_dict = {"id": id, **result}
-            logger.info(f"Login response received: {_log_dict}")
-        else:
-            logger.warning(f"Login response received without id: {result}")
-        if result.get("authenticated"):
-            logger.info("WebSocket login successful.")
-            await self._sync()
-        else:
-            logger.error("WebSocket login failed.")
-
-    async def _on_sync_response(self, result: list, id: Optional[str] = None) -> None:
-        _response_dict = {key: value for d in result for key, value in d.items()}
-        if id:
-            _log_dict = {"id": id, **_response_dict}
-            logger.debug(f"Sync response received: {_log_dict}")
-        else:
-            logger.debug(f"Sync response received without id: {_response_dict}")
-        if "lock_state" in _response_dict:
-            self._charger_state.lock_status = LockStatus[_response_dict["lock_state"]]
-        if "solar_mode" in _response_dict:
-            self._charger_state.charging_mode = ChargingMode[
-                _response_dict["solar_mode"]
-            ]
-        if "brightness" in _response_dict:
-            self._charger_state.led_brightness = _response_dict["brightness"]
-        self._is_connected.set()
-
-    # endregion
-
-    # region Requests
-
-    async def _login(self) -> bool:
-        if self._websocket:
-            message = {
-                "id": self._generate_id_from_timestamp(),
-                "method": "login",
-                "params": {"token": self._get_access_token(), "version": 3},
-            }
-            await self._send_message(message)
-            return True
-        return False
-
-    async def _sync(self) -> None:
-        await self._send_message(
-            {
-                "id": self._generate_id_from_timestamp(),
-                "method": "sync.snapshot",
-            }
-        )
-
-    # endregion
-
-    # region Public Methods
-
-    async def get_charger_state(self) -> HypervoltChargerState:
-        return self._charger_state
-
-    async def set_charging_schedule(
-        self,
-        schedule: List[Dict],
-        activation_mode: ActivationMode = ActivationMode.schedule,
-    ) -> None:
-        message = {
-            "id": self._generate_id_from_timestamp(),
-            "method": "schedule.set",
-            "params": {
-                "enabled": activation_mode == ActivationMode.schedule,
-                "is_default": False,
-                "type": "hypervolt",
-                "sessions": schedule,
-            },
-        }
-        await self._send_message(message)
-
-    async def get_charging_schedule(self) -> None:
-        message = {
-            "id": self._generate_id_from_timestamp(),
-            "method": "schedules.get",
-        }
-        await self._send_message(message)
+        await self._protocol.handle(_method, _result, _id)
 
     # endregion

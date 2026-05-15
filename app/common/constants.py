@@ -1,3 +1,5 @@
 APP_NAME = "hypervolt-agile-scheduler"
 LOG_LEVEL = "DEBUG"
 ELECTRICITY_VAT_RATE = 1.05
+SESSION_CLOCK_OFFSET_MINS = 1
+TIMEZONE = "Europe/London"
