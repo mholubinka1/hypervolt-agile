@@ -30,7 +30,7 @@ R = TypeVar("R")
 def requires_auth(method: Callable[..., R]) -> Callable[..., R]:
     @wraps(method)
     def wrapper(self: HypervoltRestClient, *args: Any, **kwargs: Any) -> R:
-        if datetime.now(ZoneInfo("UTC")) >= self.access_token_expiry_time:
+        if datetime.now(ZoneInfo("UTC")) >= self._access_token_expiry_time:
             self.authenticate()
         return method(self, *args, **kwargs)
 
@@ -49,7 +49,7 @@ class HypervoltRestClient:
     charger: HypervoltCharger
 
     access_token: str
-    access_token_expiry_time: datetime
+    _access_token_expiry_time: datetime
     _refresh_token: Optional[str] = None
 
     _session: Session
@@ -63,9 +63,14 @@ class HypervoltRestClient:
         self.charger = self._get_chargers()
 
     def get_access_token(self) -> str:
-        if datetime.now(ZoneInfo("UTC")) >= self.access_token_expiry_time:
+        if datetime.now(ZoneInfo("UTC")) >= self._access_token_expiry_time:
             self.authenticate()
         return self.access_token
+
+    def is_token_expiring(self, threshold_seconds: float) -> bool:
+        return (
+            self._access_token_expiry_time - datetime.now(ZoneInfo("UTC"))
+        ).total_seconds() < threshold_seconds
 
     # region Authentication
 
@@ -102,7 +107,7 @@ class HypervoltRestClient:
     @retry()
     def _refresh_authenticate(self) -> None:
         _now = datetime.now(ZoneInfo("UTC"))
-        if self.access_token_expiry_time < _now:
+        if self._access_token_expiry_time < _now:
             self.authenticate()
             return
 
@@ -123,7 +128,7 @@ class HypervoltRestClient:
         self._refresh_token = response_json["refresh_token"]
 
         _expires_in = response_json["expires_in"]
-        self.access_token_expiry_time = datetime.now(ZoneInfo("UTC")) + timedelta(
+        self._access_token_expiry_time = datetime.now(ZoneInfo("UTC")) + timedelta(
             seconds=int(_expires_in * 0.9)
         )
 

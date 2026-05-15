@@ -33,4 +33,4 @@ USER 999
 
 COPY app ./app
 
-CMD [".venv/bin/python", "./app/main.py"]
+CMD [".venv/bin/python", "./app/main.py", "--config-file", "/config/config.yml"]

@@ -6,8 +6,9 @@ from logging import Logger, getLogger
 from pathlib import Path
 
 from common.constants import APP_NAME
-from common.logging import config
-from schedule import Scheduler, every
+from common.logging import config, configure_file_logging
+from common.polling import every
+from schedule import Scheduler
 
 from config import ConfigLoader
 
@@ -29,15 +30,18 @@ async def main() -> None:
         args = parse_args()
         config_path = Path(args.config_file)
         config_loader = ConfigLoader(config_path)
-        config = config_loader.get_config()
+        app_config = config_loader.get_config()
     except Exception as e:
         logger.critical(f"Unable to load startup configuration: {e}")
         sys.exit(1)
 
+    if app_config.log_file:
+        configure_file_logging(app_config.log_file, app_config.log_level)
+
     scheduler = Scheduler(
-        config=config,
+        config=app_config,
     )
-    await every(config.schedule.poll, scheduler.run)
+    await every(app_config.schedule.poll, scheduler.run)
 
 
 if __name__ == "__main__":

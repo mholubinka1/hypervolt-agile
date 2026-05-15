@@ -1,0 +1,8 @@
+reviewers:
+  defaults:
+    - mholubinka1
+
+files:
+
+options:
+  ignore_draft: true

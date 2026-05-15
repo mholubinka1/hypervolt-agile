@@ -13,13 +13,18 @@ from zoneinfo import ZoneInfo
 import websockets
 from common.constants import APP_NAME
 from common.logging import config
-from hypervolt.client.protocol import HypervoltProtocol, _generate_id
+from hypervolt.client.protocol import (
+    HypervoltChargerStateUpdateCallback,
+    HypervoltProtocol,
+    _generate_id,
+)
 from hypervolt.model import ActivationMode, HypervoltCharger
-from hypervolt.state import HypervoltChargerStateDelta
 from websockets import Data
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
+
+ReconnectCallback = Callable[[], None]
 
 _RECONNECT_DELAY_SECS = 5
 
@@ -47,10 +52,13 @@ class HypervoltWebSocketClient:
         self,
         charger: HypervoltCharger,
         access_token_callback: Callable[[], str],
-        on_state_update: Callable[[HypervoltChargerStateDelta], Awaitable[None]],
+        on_state_update: HypervoltChargerStateUpdateCallback,
+        on_clear_schedule: Callable[[], Awaitable[None]],
+        on_reconnect: ReconnectCallback,
     ) -> None:
         self._charger = charger
         self._access_token_callback = access_token_callback
+        self._on_reconnect = on_reconnect
 
         self._websocket = None
         self._last_activity = None
@@ -64,6 +72,7 @@ class HypervoltWebSocketClient:
         self._protocol = HypervoltProtocol(
             send_message=self._send_message,
             on_state_update=on_state_update,
+            on_clear_schedule=on_clear_schedule,
             is_connected=self._is_connected,
         )
 
@@ -81,6 +90,15 @@ class HypervoltWebSocketClient:
 
     async def sync_charger_state(self) -> None:
         await self._protocol.sync()
+
+    async def set_lock_state(self, locked: bool) -> None:
+        await self._send_message(
+            {
+                "id": _generate_id(),
+                "method": "sync.apply",
+                "params": {"is_locked": locked},
+            }
+        )
 
     async def set_charging_schedule(
         self,
@@ -126,6 +144,7 @@ class HypervoltWebSocketClient:
                 )
                 self._websocket = None
                 self._is_connected.clear()
+                self._on_reconnect()
                 self._messages.clear()
                 await asyncio.sleep(_RECONNECT_DELAY_SECS)
 
@@ -149,7 +168,7 @@ class HypervoltWebSocketClient:
             try:
                 await self._connect_task
             except CancelledError:
-                logger.debug("WebSocket connect task cancelled.")
+                logger.debug("Websocket connect task cancelled.")
 
     # endregion
 
@@ -170,7 +189,7 @@ class HypervoltWebSocketClient:
             await self._websocket.send(_json_message)
             self._messages[message["id"]] = message["method"]
         else:
-            logger.error("WebSocket is not connected, cannot send message.")
+            logger.error("Websocket is not connected, unable to send message.")
 
     async def _receive_message(self, message: Data) -> None:
         self._last_activity = datetime.now(ZoneInfo("UTC"))

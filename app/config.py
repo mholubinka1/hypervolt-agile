@@ -4,6 +4,7 @@ import logging.config
 import sys
 from logging import Logger, getLogger
 from pathlib import Path
+from typing import Optional
 
 import yaml
 from common.constants import APP_NAME
@@ -54,6 +55,8 @@ class AppConfig(BaseModel):
     octopus: Octopus
     hypervolt: Hypervolt
     schedule: Schedule
+    log_file: Optional[str] = None
+    log_level: str = "INFO"
 
     model_config = {"populate_by_name": True}
 

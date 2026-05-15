@@ -3,10 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging.config
 from asyncio import create_task
-from datetime import datetime
 from logging import Logger, getLogger
 from typing import List
-from zoneinfo import ZoneInfo
 
 from common.constants import APP_NAME
 from common.logging import config
@@ -59,30 +57,33 @@ class HypervoltCoordinator:
             charger=self._charger,
             access_token_callback=self._rest_client.get_access_token,
             on_state_update=self._on_state_update,
+            on_clear_schedule=self._on_clear_schedule,
+            on_reconnect=self._on_reconnect,
         )
 
     async def _on_state_update(
         self,
         delta: HypervoltChargerStateDelta,
-        should_clear_schedule: bool = False,
     ) -> None:
         if self._charger_state.update(delta):
             logger.debug(f"charger_state: {self._charger_state}.")
-        if should_clear_schedule:
-            logger.warning(
-                "schedules.get returned empty or unparseable sessions, clearing schedule."
-            )
-            await self.clear_schedule()
+
+    async def _on_clear_schedule(self) -> None:
+        logger.warning(
+            "schedules.get returned empty or unparseable sessions, clearing schedule."
+        )
+        await self.clear_schedule()
+
+    def _on_reconnect(self) -> None:
+        logger.warning("Websocket reconnected, charger schedule cleared.")
+        self._charger_state.current_schedule = None
 
     @property
     def charger_state(self) -> HypervoltChargerState:
         return self._charger_state
 
     async def _refresh_auth(self) -> None:
-        _seconds_to_expiry = (
-            self._rest_client.access_token_expiry_time - datetime.now(ZoneInfo("UTC"))
-        ).total_seconds()
-        if _seconds_to_expiry < self._polling_interval * 2:
+        if self._rest_client.is_token_expiring(self._polling_interval * 2):
             self._rest_client.authenticate()
             await self._ws_client.reconnect()
 
@@ -92,7 +93,18 @@ class HypervoltCoordinator:
         await self._refresh_auth()
         await self._ws_client.sync_charger_state()
 
-    async def apply_schedule(self, schedule: List[HypervoltSession]) -> None:
+    async def apply_schedule(self, schedule: List[HypervoltSession]) -> bool:
+        _current_schedule = self._charger_state.current_schedule
+        if _current_schedule is not None:
+            _proposed_sorted_schedule = sorted(
+                schedule, key=lambda s: (s.start, s.day_of_week.value[0])
+            )
+            _current_sorted_schedule = sorted(
+                _current_schedule, key=lambda s: (s.start, s.day_of_week.value[0])
+            )
+            if _proposed_sorted_schedule == _current_sorted_schedule:
+                logger.debug("Schedule unchanged, skipping apply.")
+                return False
         if schedule:
             for session in schedule:
                 logger.info(f"Sending session: {session}.")
@@ -109,6 +121,15 @@ class HypervoltCoordinator:
             for s in schedule
         ]
         await self._ws_client.set_charging_schedule(sessions)
+        return True
+
+    async def lock(self) -> None:
+        logger.info("Locking charger.")
+        await self._ws_client.set_lock_state(locked=True)
+
+    async def unlock(self) -> None:
+        logger.info("Unlocking charger.")
+        await self._ws_client.set_lock_state(locked=False)
 
     async def clear_schedule(self) -> None:
         logger.info("Clearing charger schedule.")

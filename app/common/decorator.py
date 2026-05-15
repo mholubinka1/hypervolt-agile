@@ -39,35 +39,3 @@ def retry(
         return wrapper
 
     return decorator
-
-
-def async_retry_with_exponential_backoff(
-    stop_after: int = 5,
-    initial_delay: int = 1,
-    max_delay: int = 60,
-    factor: float = 2.0,
-) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    def decorator(func: Callable[P, R]) -> Callable[P, R]:
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            attempt = 1
-            delay = initial_delay
-            while attempt < stop_after:
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    warning = f"Attempt {attempt} failed for {func.__name__}: {e}. \nRetrying in {delay} seconds."
-                    logger.warning(warning)
-
-                    time.sleep(delay)
-                    delay = int(min(delay * factor, max_delay))
-                    attempt += 1
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                error = f"Attempt {attempt} failed for {func.__name__}: {e}. \nRetries exhausted."
-                logger.error(error)
-                raise e
-
-        return wrapper
-
-    return decorator

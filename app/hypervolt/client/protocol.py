@@ -21,6 +21,10 @@ from hypervolt.state import HypervoltChargerStateDelta
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
+HypervoltChargerStateUpdateCallback = Callable[
+    [HypervoltChargerStateDelta], Awaitable[None]
+]
+
 
 def _generate_id() -> str:
     return str(int(datetime.now(ZoneInfo("UTC")).timestamp() * 1000000))
@@ -30,11 +34,13 @@ class HypervoltProtocol:
     def __init__(
         self,
         send_message: Callable[[Dict], Awaitable[None]],
-        on_state_update: Callable[..., Awaitable[None]],
+        on_state_update: HypervoltChargerStateUpdateCallback,
+        on_clear_schedule: Callable[[], Awaitable[None]],
         is_connected: asyncio.Event,
     ) -> None:
         self._send_message = send_message
         self._on_state_update = on_state_update
+        self._on_clear_schedule = on_clear_schedule
         self._is_connected = is_connected
 
         self._handlers: Dict[str, Callable[..., Awaitable[None]]] = {
@@ -95,11 +101,11 @@ class HypervoltProtocol:
 
     async def _on_login_response(self, result: Dict, id: Optional[str] = None) -> None:
         if result.get("authenticated"):
-            logger.info("WebSocket login successful.")
+            logger.info("Websocket login successful.")
             await self.sync()
             await self.get_charging_schedule()
         else:
-            logger.error("WebSocket login failed.")
+            logger.error("Websocket login failed.")
 
     async def _on_sync_response(
         self, result: List[Dict[str, str]], id: Optional[str] = None
@@ -182,9 +188,8 @@ class HypervoltProtocol:
         _applied = result.get("applied") if result else None
         if not _applied:
             logger.debug("schedules.get response received with no applied schedule.")
-            await self._on_state_update(
-                HypervoltChargerStateDelta(), should_clear_schedule=True
-            )
+            await self._on_state_update(HypervoltChargerStateDelta())
+            await self._on_clear_schedule()
             return
 
         _enabled = _applied.get("enabled")
@@ -208,9 +213,9 @@ class HypervoltProtocol:
             await self._on_state_update(
                 HypervoltChargerStateDelta(
                     activation_mode=_activation_mode,
-                ),
-                should_clear_schedule=True,
+                )
             )
+            await self._on_clear_schedule()
 
     async def _on_ignored_message(self, result: Dict, id: Optional[str] = None) -> None:
         pass
