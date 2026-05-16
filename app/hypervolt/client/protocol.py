@@ -172,8 +172,8 @@ class HypervoltProtocol:
                     f"Failed to parse sessions from schedule.set response: {e}"
                 )
                 _delta = HypervoltChargerStateDelta(current_schedule=[])
-            await self._on_state_update(_delta)
             if id:
+                await self._on_state_update(_delta)
                 if _sessions:
                     for session in _sessions:
                         logger.info(f"Schedule confirmed: {session}.")
@@ -192,8 +192,6 @@ class HypervoltProtocol:
         _applied = result.get("applied") if result else None
         if not _applied:
             logger.debug("schedules.get response received with no applied schedule.")
-            await self._on_state_update(HypervoltChargerStateDelta())
-            await self._on_clear_schedule()
             return
 
         _enabled = _applied.get("enabled")
@@ -205,11 +203,10 @@ class HypervoltProtocol:
             _activation_mode = ActivationMode.plug_and_charge
 
         try:
-            _sessions = self._parse_sessions(_applied)
+            self._parse_sessions(_applied)
             await self._on_state_update(
                 HypervoltChargerStateDelta(
                     activation_mode=_activation_mode,
-                    current_schedule=_sessions,
                 )
             )
         except ValueError as e:
@@ -219,7 +216,6 @@ class HypervoltProtocol:
                     activation_mode=_activation_mode,
                 )
             )
-            await self._on_clear_schedule()
 
     async def _on_ignored_message(self, result: Dict, id: Optional[str] = None) -> None:
         pass
