@@ -24,7 +24,6 @@ from websockets import Data
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
-ReconnectCallback = Callable[[], None]
 
 _RECONNECT_DELAY_SECS = 5
 
@@ -54,11 +53,9 @@ class HypervoltWebSocketClient:
         access_token_callback: Callable[[], str],
         on_state_update: HypervoltChargerStateUpdateCallback,
         on_clear_schedule: Callable[[], Awaitable[None]],
-        on_reconnect: ReconnectCallback,
     ) -> None:
         self._charger = charger
         self._access_token_callback = access_token_callback
-        self._on_reconnect = on_reconnect
 
         self._websocket = None
         self._last_activity = None
@@ -144,7 +141,6 @@ class HypervoltWebSocketClient:
                 )
                 self._websocket = None
                 self._is_connected.clear()
-                self._on_reconnect()
                 self._messages.clear()
                 await asyncio.sleep(_RECONNECT_DELAY_SECS)
 

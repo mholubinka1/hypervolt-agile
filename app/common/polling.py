@@ -29,5 +29,5 @@ async def every(delay: float, task: TaskType) -> None:
                 task()
         except Exception as e:
             logger.exception(f"Unhandled exception in scheduled task: {e}")
-        _LIVENESS_FILE.touch()
+        _LIVENESS_FILE.write_text(str(time.time() + delay * 4))
         _next += (time.time() - _next) // delay * delay + delay

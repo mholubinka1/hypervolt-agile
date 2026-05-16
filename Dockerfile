@@ -34,6 +34,6 @@ USER 999
 COPY app ./app
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import os,time; exit(0 if os.path.exists('/tmp/healthy') and os.path.getmtime('/tmp/healthy') > time.time() - 60 else 1)"
+    CMD python -c "import os,time; f='/tmp/healthy'; exit(0 if os.path.exists(f) and float(open(f).read()) > time.time() else 1)"
 
 CMD [".venv/bin/python", "./app/main.py", "--config-file", "/config/config.yml"]
