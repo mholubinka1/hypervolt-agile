@@ -85,7 +85,8 @@ class HypervoltCoordinator:
 
     async def refresh(self) -> None:
         if not self._ws_client._is_connected.is_set():
-            raise RuntimeError("Websocket is not connected, skipping refresh.")
+            logger.info("Websocket not connected, skipping refresh.")
+            return
         await self._refresh_auth()
         await self._ws_client.sync_charger_state()
 
