@@ -89,6 +89,9 @@ class HypervoltWebSocketClient:
     def is_connected(self) -> bool:
         return self._is_connected.is_set()
 
+    async def wait_until_connected(self, timeout: float) -> None:
+        await asyncio.wait_for(self._is_connected.wait(), timeout=timeout)
+
     async def sync_charger_state(self) -> None:
         await self._protocol.sync()
 
