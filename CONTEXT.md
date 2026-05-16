@@ -89,5 +89,5 @@ _Avoid_: LED mode, light effect
 
 ## Flagged ambiguities
 
-- "schedule" is used in two senses in the codebase: the internal **Schedule** (list of UTC **Charge Sessions** in `Scheduler._schedule`) and the charger's own schedule (list of **Hypervolt Sessions** confirmed via WebSocket). These are distinct — the internal **Schedule** is the source of truth; the charger's schedule is a reflection of what was last pushed.
+- "schedule" is used in two senses in the codebase: the internal **Schedule** (list of UTC **Charge Sessions** in `Scheduler._schedule`) and the charger's own schedule (list of **Hypervolt Sessions** confirmed via WebSocket). These are distinct — the internal **Schedule** is the source of truth; the charger's schedule is a reflection of what was last pushed and is retained by the charger through WebSocket reconnections — `current_schedule` remains valid after any reconnect and does not need to be re-pushed.
 - "charging mode" was used loosely to mean both **Activation Mode** and **Charging Mode** — these are distinct enums with distinct meanings and must not be conflated.

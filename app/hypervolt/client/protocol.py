@@ -180,9 +180,7 @@ class HypervoltProtocol:
                 else:
                     logger.info("Schedule confirmed: cleared.")
             else:
-                logger.debug(
-                    f"Unsolicited schedule push received: {len(_sessions)} sessions."
-                )
+                pass
         else:
             logger.error(f"Schedule not applied: id={id}, result={result}")
 

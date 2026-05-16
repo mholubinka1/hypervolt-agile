@@ -59,7 +59,6 @@ class HypervoltCoordinator:
             access_token_callback=self._rest_client.get_access_token,
             on_state_update=self._on_state_update,
             on_clear_schedule=self._on_clear_schedule,
-            on_reconnect=self._on_reconnect,
         )
 
     async def _on_state_update(
@@ -74,10 +73,6 @@ class HypervoltCoordinator:
             "schedules.get returned empty or unparseable sessions, clearing schedule."
         )
         await self.clear_schedule()
-
-    def _on_reconnect(self) -> None:
-        logger.warning("Websocket reconnected, charger schedule cleared.")
-        self._charger_state.current_schedule = None
 
     @property
     def charger_state(self) -> HypervoltChargerState:
