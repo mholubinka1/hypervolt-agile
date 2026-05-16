@@ -213,7 +213,7 @@ class Scheduler:
                         )
                     )
         _pushed = await self._coordinator.apply_schedule(_hypervolt_sessions)
-        if _pushed:
+        if _pushed and self._coordinator.is_connected:
             if _hypervolt_sessions:
                 logger.info(
                     f"Scheduled {len(_hypervolt_sessions)} sessions, avg £{self._average_price_per_kwh:.4f}/kWh inc. VAT."

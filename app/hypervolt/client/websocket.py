@@ -44,6 +44,7 @@ class HypervoltWebSocketClient:
 
     _connect_task: Optional[asyncio.Task] = None
     _is_connected: asyncio.Event
+    _reconnect_immediately: bool = False
 
     _messages: Dict[str, str]
 
@@ -63,6 +64,7 @@ class HypervoltWebSocketClient:
 
         self._connect_task = None
         self._is_connected = asyncio.Event()
+        self._reconnect_immediately = False
 
         self._messages: Dict[str, str] = {}
 
@@ -141,7 +143,9 @@ class HypervoltWebSocketClient:
                 if not self._stop_requested:
                     logger.info("Websocket connection closed, reconnecting.")
                     self._clear_connection_state()
-                    await asyncio.sleep(_RECONNECT_DELAY_SECS)
+                    if not self._reconnect_immediately:
+                        await asyncio.sleep(_RECONNECT_DELAY_SECS)
+                    self._reconnect_immediately = False
             except CancelledError:
                 logger.debug("Websocket connect task cancelled.")
                 raise
@@ -166,6 +170,7 @@ class HypervoltWebSocketClient:
 
     async def reconnect(self) -> None:
         if self._websocket:
+            self._reconnect_immediately = True
             await self._websocket.close()
 
     async def disconnect(self) -> None:

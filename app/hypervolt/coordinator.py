@@ -36,8 +36,14 @@ class HypervoltCoordinator:
                 f"Hypervolt v{self._charger.maj_version} chargers are not currently supported."
             )
         self._ws_client._connect_task = create_task(self._ws_client.connect())
-        await self._ws_client.wait_until_connected(timeout=30)
-        await self.clear_schedule()
+        _initialised = False
+        try:
+            await self._ws_client.wait_until_connected(timeout=30)
+            await self.clear_schedule()
+            _initialised = True
+        finally:
+            if not _initialised:
+                await self._ws_client.disconnect()
         return self
 
     def __init__(
@@ -118,7 +124,7 @@ class HypervoltCoordinator:
             for s in schedule
         ]
         await self._ws_client.set_charging_schedule(sessions)
-        return self._ws_client.is_connected
+        return True
 
     async def lock(self) -> None:
         logger.info("Locking charger.")
