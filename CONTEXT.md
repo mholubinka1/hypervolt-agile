@@ -55,12 +55,20 @@ Whether the user has manually cancelled a charge via the Hypervolt app. `DEFAULT
 _Avoid_: override, user state, interrupt
 
 **Charger State**:
-The full set of known charger properties at a point in time: lock status, charging mode, activation mode, release state, car plugged, is charging, current schedule. Updated in real time via WebSocket deltas.
+The full set of known charger properties at a point in time: lock status, charging mode, activation mode, release state, car plugged, is charging, LED brightness, current schedule. Updated in real time via WebSocket deltas.
 _Avoid_: device state, charger snapshot
 
 **State Delta**:
 An incremental update to **Charger State** carrying only the fields that changed. Applied by the state manager; fields not present in a delta are left unchanged.
 _Avoid_: patch, diff, update object
+
+**LED Theme**:
+A pairing of a named **LED Effect** with a year-agnostic calendar window (start date/time → end date/time). The **Scheduler** resolves the active **LED Theme** each cycle and applies it while `is_charging` is `True`. Built-in presets (Halloween, Christmas, Party) have hardcoded windows; custom themes are defined in `config.yml` and reference a YAML file.
+_Avoid_: LED mode, LED preset, LED schedule
+
+**LED Effect**:
+The visual LED state sent to the charger. Either a named built-in effect (`halloween_mode`, `christmas_mode`, `party_mode`) sent via `effect_name`, or a custom static array (`steady_array`) built from a YAML file defining a `default_colour` and colour `segments` across 51 LEDs (outer ring 0–38, lightning bolt 39–50).
+_Avoid_: LED mode, light effect
 
 ## Relationships
 

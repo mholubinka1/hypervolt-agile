@@ -1,37 +1,129 @@
-## Setup
+# hypervolt-agile
 
-- Install [Python version 3.11.x or higher](https://www.python.org/downloads/)
-- Install [poetry](https://python-poetry.org/) version 1.3.x or higher
-- Install dependencies:
-    - Create a virtual environment: `poetry env use python`
-    - Check that the environment has been activated: `poetry env list` (the enviroment will have `(activated)` next to it)
-    - If the environment has not been activated, activate it and use it: `poetry shell`
-    - Install all dependencies into the virtual environment including the development dependencies: `poetry install --with dev`
+Automatically charges your EV during the cheapest Octopus Agile windows by pushing a live schedule to your Hypervolt charger.
 
-### pre-commit setup
+---
 
-There are pre-commit configurations (found in `.pre-commit-config.yaml`) which will execute code checking and linting tools automatically on every commit.
+## How It Works
 
-- Install [pre-commit](https://github.com/pre-commit/pre-commit): `pip install pre-commit`
-- Install the pre-commit hooks from the configuration file: `pre-commit install`
-- Test the pre-commit hooks for the first time: `pre-commit run --all-file`
+On each poll cycle the scheduler:
 
-## Tools
+1. Fetches the latest half-hourly Octopus Agile prices via the Octopus API
+2. Selects the cheapest contiguous windows that sum to your configured charge duration, filtered by your price limit
+3. Pushes the schedule to your Hypervolt charger over WebSocket
+4. Locks the charger outside scheduled windows and unlocks it when a window is active
+5. Respects user cancellation — if you stop a charge via the Hypervolt app, the scheduler holds back until you re-plug
 
-This template has a suite of tools to enforce good practice with regards to typing, linting, quality and style.
+Prices and schedules are maintained in UTC internally and converted to the charger's local timezone (derived from your Octopus account postcode) at push time. The charger executes the schedule autonomously — the app does not need to be running during a session.
 
-- [isort](https://pycqa.github.io/isort/) and [black](https://github.com/psf/black) for code style and formatting
-- [mypy](https://mypy-lang.org/) for type checking and enforcement
-- [ruff](https://beta.ruff.rs/docs/) for linting
+---
 
-These tools are all run automatically on each commit. In order to run them otherwise:
+## Requirements
 
-1. isort - `poetry run isort . --profile black`
-2. black - `poetry run black .`
-3. mypy - `poetry run mypy .`
-4. ruff - `poetry run ruff check . --fix`
+- A [Hypervolt](https://hypervolt.co.uk/) v3 home EV charger
+- An [Octopus Energy](https://octopus.energy/) account on the **Agile** tariff
+- Docker (for deployment) or Python 3.13+ with [Poetry](https://python-poetry.org/) (for local development)
+
+---
+
+## Configuration
+
+Copy `config/config.yml.template` to `config/config.yml` and fill in your credentials:
+
+```yaml
+octopus:
+  account_number: A-XXXXXXXX
+  api_key: sk_live_xxxxxxxxxxxxxxxxxxxx
+hypervolt:
+  username: your@email.com
+  password: yourpassword
+schedule:
+  poll_every_secs: 10        # How often the scheduler runs (2–3600)
+  update_every_mins: 30      # How often to fetch new Agile prices (1–1440)
+  total_charge_duration: 3   # Target charge duration in hours (0–24)
+  price_limit_incl_vat: 30   # Max price in p/kWh inc. VAT to charge at (0–100)
+# log_file: /logs/hypervolt-agile-scheduler.log
+# log_level: INFO
+```
+
+Your Octopus account postcode is used to determine the charger's timezone automatically — no timezone configuration is needed.
+
+---
+
+## Deployment
+
+### Docker (Raspberry Pi)
+
+Create the required host directories on your Pi:
+
+```bash
+mkdir -p /home/pi/.config/hypervolt-agile
+mkdir -p /home/pi/.log/hypervolt-agile
+```
+
+Place your `config.yml` in `/home/pi/.config/hypervolt-agile/`, then run:
+
+```bash
+docker-compose up -d
+```
+
+The container pulls `mholubinka1/hypervolt-agile:latest` from Docker Hub, restarts automatically on failure, and writes rotating log files to `/home/pi/.log/hypervolt-agile/`.
+
+### Local Development
+
+Install dependencies:
+
+```bash
+poetry install --with dev
+```
+
+Run the app:
+
+```bash
+poetry run python app/main.py --config-file config/config.yml
+```
+
+---
+
+## Development
+
+### Pre-commit Hooks
+
+Pre-commit hooks run automatically on every commit. To install:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+To run manually:
+
+```bash
+pre-commit run --all-files
+```
+
+The following tools are configured:
+
+| Tool | Purpose |
+|------|---------|
+| [black](https://github.com/psf/black) | Code formatting |
+| [isort](https://pycqa.github.io/isort/) | Import ordering |
+| [mypy](https://mypy-lang.org/) | Type checking |
+| [ruff](https://docs.astral.sh/ruff/) | Linting |
+| [bandit](https://bandit.readthedocs.io/) | Security scanning |
+
+### CI/CD
+
+Every push and pull request triggers a Docker build on a self-hosted ARM64 runner, publishing to Docker Hub:
+
+- `feature/*` branches → `:dev` tag
+- `main` → `:latest` tag
+
+[Watchtower](https://containrrr.dev/watchtower/) picks up the `:latest` tag automatically and redeploys the running container on the Pi.
+
+---
 
 ## References
 
-https://github.com/gndean/home-assistant-hypervolt-charger
-https://www.guylipman.com/octopus/api_guide.html
+- [home-assistant-hypervolt-charger](https://github.com/gndean/home-assistant-hypervolt-charger) — Hypervolt WebSocket protocol reference
+- [Octopus Energy API Guide](https://www.guylipman.com/octopus/api_guide.html)
