@@ -78,6 +78,9 @@ class Scheduler:
             except Exception as e:
                 logger.error(f"Failed to initialise coordinator: {e}")
                 return
+        if not self._coordinator.is_connected:
+            logger.info("Websocket not connected, skipping cycle.")
+            return
         try:
             await self._coordinator.refresh()
             await self._update_charging_schedule()

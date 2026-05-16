@@ -75,6 +75,10 @@ class HypervoltCoordinator:
         await self.clear_schedule()
 
     @property
+    def is_connected(self) -> bool:
+        return self._ws_client._is_connected.is_set()
+
+    @property
     def charger_state(self) -> HypervoltChargerState:
         return self._charger_state
 
@@ -84,9 +88,6 @@ class HypervoltCoordinator:
             await self._ws_client.reconnect()
 
     async def refresh(self) -> None:
-        if not self._ws_client._is_connected.is_set():
-            logger.info("Websocket not connected, skipping refresh.")
-            return
         await self._refresh_auth()
         await self._ws_client.sync_charger_state()
 

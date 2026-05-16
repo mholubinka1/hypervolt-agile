@@ -132,7 +132,7 @@ class HypervoltWebSocketClient:
                     await self._protocol.login(self._get_access_token())
                     await self._receive_messages_worker()
                 if not self._stop_requested:
-                    logger.info("Websocket connection closed by server, reconnecting.")
+                    logger.info("Websocket connection closed, reconnecting.")
                     self._clear_connection_state()
                     await asyncio.sleep(_RECONNECT_DELAY_SECS)
             except CancelledError:
