@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging.config
 from asyncio import create_task
+from datetime import time
 from logging import Logger, getLogger
 from typing import List
 
@@ -114,7 +115,7 @@ class HypervoltCoordinator:
             {
                 "session_type": "recurring",
                 "start_time": s.start.strftime("%H:%M"),
-                "end_time": s.end.strftime("%H:%M"),
+                "end_time": "24:00" if s.end == time(0, 0) else s.end.strftime("%H:%M"),
                 "mode": s.charge_mode.name.lower(),
                 "days": [s.day_of_week.name],
             }

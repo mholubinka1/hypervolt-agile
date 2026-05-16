@@ -124,7 +124,11 @@ class HypervoltProtocol:
                 if "solar_mode" in _response_dict
                 else None
             ),
-            led_brightness=float(_response_dict.get("brightness", 0)),
+            led_brightness=(
+                float(_response_dict["brightness"])
+                if "brightness" in _response_dict
+                else None
+            ),
             release_state=(
                 ReleaseState[_response_dict["release_state"].upper()]
                 if "release_state" in _response_dict

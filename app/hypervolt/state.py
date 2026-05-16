@@ -64,7 +64,7 @@ class HypervoltChargerState:
             f"charging_mode={self.charging_mode.name if self.charging_mode else None}, "
             f"car_plugged={self.car_plugged}, "
             f"is_charging={self.is_charging}, "
-            f"user_override={self.release_state == ReleaseState.RELEASED if self.release_state is not None else None}, "
+            f"scheduler_paused={self.release_state == ReleaseState.RELEASED if self.release_state is not None else None}, "
             f"activation_mode={self.activation_mode.name if self.activation_mode else None}, "
             f"schedule={_schedule}"
         )

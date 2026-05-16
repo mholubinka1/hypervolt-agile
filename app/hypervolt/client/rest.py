@@ -94,7 +94,7 @@ class HypervoltRestClient:
         }
 
         try:
-            _response = self._session.post(self._auth_url, data=data)
+            _response = self._session.post(self._auth_url, data=data, timeout=10)
             if _response.status_code != 200:
                 _error = _response.json()
                 raise APIError(_error)
@@ -106,17 +106,12 @@ class HypervoltRestClient:
 
     @retry()
     def _refresh_authenticate(self) -> None:
-        _now = datetime.now(ZoneInfo("UTC"))
-        if self._access_token_expiry_time < _now:
-            self.authenticate()
-            return
-
         data = {
             "client_id": "home-assistant",
             "grant_type": "refresh_token",
             "refresh_token": self._refresh_token,
         }
-        _response = self._session.post(self._auth_url, data=data)
+        _response = self._session.post(self._auth_url, data=data, timeout=10)
         if _response.status_code != 200:
             _error = _response.json()
             raise APIError(_error)
@@ -155,7 +150,7 @@ class HypervoltRestClient:
     def _get_chargers(self) -> HypervoltCharger:
         _api_endpoint = f"{self._base_url}/by-owner"
 
-        _response = self._session.get(_api_endpoint)
+        _response = self._session.get(_api_endpoint, timeout=10)
         if _response.status_code != 200:
             _error = _response.json()
             raise APIError(_error)

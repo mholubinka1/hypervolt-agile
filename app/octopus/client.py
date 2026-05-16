@@ -77,10 +77,15 @@ class AgileClient:
             for a in _agreements_json
         ]
 
-        _products = [p for p in _products if p.valid_from != p.valid_to]
+        _now = datetime.now(ZoneInfo("UTC"))
+        _products = [
+            p
+            for p in _products
+            if p.valid_from <= _now and (p.valid_to is None or p.valid_to > _now)
+        ]
         if len(_products) == 0:
             raise ValueError(
-                f"Agreements list must contain at least one agreement: {_agreements_json}"
+                f"Agreements list contains no currently active agreement: {_agreements_json}"
             )
 
         _active_product = max(_products, key=lambda p: p.valid_from)

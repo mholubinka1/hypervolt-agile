@@ -45,10 +45,10 @@ class Hypervolt(BaseModel):
 
 
 class Schedule(BaseModel):
-    duration: float = Field(..., alias="total_charge_duration")
-    limit: float = Field(..., alias="price_limit_incl_vat")
-    frequency: int = Field(..., alias="update_every_mins")
-    poll: int = Field(..., alias="poll_every_secs")
+    duration: float = Field(..., alias="total_charge_duration", gt=0, le=24)
+    limit: float = Field(..., alias="price_limit_incl_vat", gt=0, le=100)
+    frequency: int = Field(..., alias="update_every_mins", gt=0, le=1440)
+    poll: int = Field(..., alias="poll_every_secs", ge=2, le=3600)
 
 
 class AppConfig(BaseModel):

@@ -1,5 +1,4 @@
 {
     "python-envs.defaultEnvManager": "ms-python.python:poetry",
-    "python-envs.defaultPackageManager": "ms-python.python:poetry",
-    "python.defaultInterpreterPath": "C:\\Users\\mehol\\AppData\\Local\\pypoetry\\Cache\\virtualenvs\\hypervolt-agile-KQeGRTjS-py3.13\\Scripts\\python.exe"
+    "python-envs.defaultPackageManager": "ms-python.python:poetry"
 }
