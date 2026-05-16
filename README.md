@@ -22,7 +22,7 @@ This template has a suite of tools to enforce good practice with regards to typi
 
 - [isort](https://pycqa.github.io/isort/) and [black](https://github.com/psf/black) for code style and formatting
 - [mypy](https://mypy-lang.org/) for type checking and enforcement
-- [ruff](https//beta.ruff.rs/docs/) for linting
+- [ruff](https://beta.ruff.rs/docs/) for linting
 
 These tools are all run automatically on each commit. In order to run them otherwise:
 
@@ -30,3 +30,8 @@ These tools are all run automatically on each commit. In order to run them other
 2. black - `poetry run black .`
 3. mypy - `poetry run mypy .`
 4. ruff - `poetry run ruff check . --fix`
+
+## References
+
+https://github.com/gndean/home-assistant-hypervolt-charger
+https://www.guylipman.com/octopus/api_guide.html

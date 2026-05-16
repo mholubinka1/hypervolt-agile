@@ -1,0 +1,11 @@
+services:
+  hypervolt-agile-scheduler:
+    container_name: hypervolt-agile-scheduler
+    image: mholubinka1/hypervolt-agile:latest
+    pull_policy: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /home/pi/.config/hypervolt-agile:/config
+      - /home/pi/.log/hypervolt-agile:/logs
+    restart: unless-stopped

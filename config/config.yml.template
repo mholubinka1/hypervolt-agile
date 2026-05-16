@@ -1,0 +1,13 @@
+octopus:
+  account_number:
+  api_key:
+hypervolt:
+  username:
+  password:
+schedule:
+  poll_every_secs: 10
+  update_every_mins: 30
+  total_charge_duration: 3
+  price_limit_incl_vat: 30
+# log_file: /logs/hypervolt-agile-scheduler.log   # Omit to log to console only. In Docker, /logs is bind-mounted from /home/pi/.log/hypervolt-agile.
+# log_level: INFO                # Console log level (default: INFO). File log level is always DEBUG.
