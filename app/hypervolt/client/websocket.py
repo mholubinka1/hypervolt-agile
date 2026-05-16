@@ -85,6 +85,10 @@ class HypervoltWebSocketClient:
 
     # region Public Methods
 
+    @property
+    def is_connected(self) -> bool:
+        return self._is_connected.is_set()
+
     async def sync_charger_state(self) -> None:
         await self._protocol.sync()
 
@@ -165,7 +169,7 @@ class HypervoltWebSocketClient:
         self._stop_requested = True
         if self._websocket:
             await self._websocket.close()
-            self._websocket = None
+        self._clear_connection_state()
         if self._connect_task:
             self._connect_task.cancel()
             try:
@@ -191,8 +195,8 @@ class HypervoltWebSocketClient:
             _json_message = json.dumps(message)
             try:
                 await self._websocket.send(_json_message)
-            except websockets.ConnectionClosedOK:
-                logger.warning("Websocket closed cleanly during send.")
+            except websockets.ConnectionClosed:
+                logger.warning("Websocket closed during send.")
                 self._clear_connection_state()
                 return
             self._messages[message["id"]] = message["method"]

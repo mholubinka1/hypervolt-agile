@@ -76,7 +76,7 @@ class HypervoltCoordinator:
 
     @property
     def is_connected(self) -> bool:
-        return self._ws_client._is_connected.is_set()
+        return self._ws_client.is_connected
 
     @property
     def charger_state(self) -> HypervoltChargerState:
