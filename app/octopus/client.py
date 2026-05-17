@@ -131,7 +131,7 @@ class AgileClient:
                 if _response.status_code != 200:
                     _response_json = _response.json()
                     raise APIError(_response_json)
-            raise Exception(f"Failed to fetch account/meter information: {e}.")
+            raise Exception(f"Failed to fetch account/meter information: {e}.") from e
 
     def _to_upcoming_prices_list(self, results: List[Dict]) -> List[Price]:
         _prices = [
@@ -195,7 +195,7 @@ class AgileClient:
                 if _response.status_code != 200:
                     _response_json = _response.json()
                     raise APIError(_response_json)
-            raise Exception(f"Failed to fetch upcoming Agile prices: {e}.")
+            raise Exception(f"Failed to fetch upcoming Agile prices: {e}.") from e
 
     @retry()
     def _get_next_price_page(self, url: str) -> Tuple[Optional[str], requests.Response]:
@@ -214,4 +214,6 @@ class AgileClient:
                 if _response.status_code != 200:
                     _response_json = _response.json()
                     raise APIError(_response_json)
-            raise Exception(f"Failed to fetch next page of upcoming Agile prices: {e}.")
+            raise Exception(
+                f"Failed to fetch next page of upcoming Agile prices: {e}."
+            ) from e

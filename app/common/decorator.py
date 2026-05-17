@@ -34,7 +34,7 @@ def retry(
             except Exception as e:
                 error = f"Error attempting to execute {func}: {e}. \nRetries exhausted."
                 logger.error(error)
-                raise e
+                raise
 
         return wrapper
 
