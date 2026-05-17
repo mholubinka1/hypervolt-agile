@@ -79,9 +79,12 @@ class Scheduler:
                 logger.error(f"Failed to initialise coordinator: {e}")
                 return
         try:
-            await self._coordinator.refresh()
             await self._update_charging_schedule()
             self._prune_schedule()
+            if not self._coordinator.is_connected:
+                logger.warning("Websocket not connected, skipping charger operations.")
+                return
+            await self._coordinator.refresh()
             if self._can_push():
                 await self._apply_charging_schedule()
             if self._can_push():
@@ -210,7 +213,7 @@ class Scheduler:
                         )
                     )
         _pushed = await self._coordinator.apply_schedule(_hypervolt_sessions)
-        if _pushed:
+        if _pushed and self._coordinator.is_connected:
             if _hypervolt_sessions:
                 logger.info(
                     f"Scheduled {len(_hypervolt_sessions)} sessions, avg £{self._average_price_per_kwh:.4f}/kWh inc. VAT."

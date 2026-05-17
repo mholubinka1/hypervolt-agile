@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging.config
 from asyncio import create_task
 from datetime import time
@@ -37,8 +36,16 @@ class HypervoltCoordinator:
                 f"Hypervolt v{self._charger.maj_version} chargers are not currently supported."
             )
         self._ws_client._connect_task = create_task(self._ws_client.connect())
-        await asyncio.wait_for(self._ws_client._is_connected.wait(), timeout=30)
-        await self.clear_schedule()
+        _initialised = False
+        try:
+            await self._ws_client.wait_until_connected(timeout=30)
+            await self.clear_schedule()
+            if not self.is_connected:
+                raise RuntimeError("Websocket disconnected during initialisation.")
+            _initialised = True
+        finally:
+            if not _initialised:
+                await self._ws_client.disconnect()
         return self
 
     def __init__(
@@ -75,6 +82,10 @@ class HypervoltCoordinator:
         await self.clear_schedule()
 
     @property
+    def is_connected(self) -> bool:
+        return self._ws_client.is_connected
+
+    @property
     def charger_state(self) -> HypervoltChargerState:
         return self._charger_state
 
@@ -84,8 +95,6 @@ class HypervoltCoordinator:
             await self._ws_client.reconnect()
 
     async def refresh(self) -> None:
-        if not self._ws_client._is_connected.is_set():
-            raise RuntimeError("Websocket is not connected, skipping refresh.")
         await self._refresh_auth()
         await self._ws_client.sync_charger_state()
 
