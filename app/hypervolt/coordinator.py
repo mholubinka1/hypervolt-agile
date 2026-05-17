@@ -40,6 +40,8 @@ class HypervoltCoordinator:
         try:
             await self._ws_client.wait_until_connected(timeout=30)
             await self.clear_schedule()
+            if not self.is_connected:
+                raise RuntimeError("Websocket disconnected during initialisation.")
             _initialised = True
         finally:
             if not _initialised:
