@@ -76,7 +76,7 @@ class Scheduler:
                     config=self._config,
                 )
             except Exception as e:
-                logger.error(f"Failed to initialise coordinator: {e}")
+                logger.exception(f"Failed to initialise coordinator: {e}")
                 return
         try:
             await self._coordinator.refresh()
@@ -87,7 +87,7 @@ class Scheduler:
             if self._can_push():
                 await self._lock_control()
         except Exception as e:
-            logger.error(f"Error in scheduler run loop: {e}")
+            logger.exception(f"Error in scheduler run loop: {e}")
             return
 
     # region Helpers
@@ -159,7 +159,7 @@ class Scheduler:
                 )
                 logger.info(f"New schedule created: {len(self._schedule)} sessions.")
             except Exception as e:
-                logger.error(f"Failed to create charging schedule: {e}")
+                logger.exception(f"Failed to create charging schedule: {e}")
 
     # endregion
 
