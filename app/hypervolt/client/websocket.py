@@ -7,7 +7,7 @@ from asyncio import CancelledError
 from copy import deepcopy
 from datetime import datetime
 from logging import Logger, getLogger
-from typing import Callable, Dict, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 import websockets
@@ -35,7 +35,7 @@ class HypervoltWebSocketClient:
 
     _charger: HypervoltCharger
 
-    _access_token_callback: Callable[[], str]
+    _access_token_callback: Callable[[], Awaitable[str]]
 
     _websocket: Optional[websockets.ClientConnection] = None
     _authenticated: bool = False
@@ -51,7 +51,7 @@ class HypervoltWebSocketClient:
     def __init__(
         self,
         charger: HypervoltCharger,
-        access_token_callback: Callable[[], str],
+        access_token_callback: Callable[[], Awaitable[str]],
         on_state_update: HypervoltChargerStateUpdateCallback,
     ) -> None:
         self._charger = charger
@@ -75,8 +75,8 @@ class HypervoltWebSocketClient:
 
     # region Helpers
 
-    def _get_access_token(self) -> str:
-        return self._access_token_callback()
+    async def _get_access_token(self) -> str:
+        return await self._access_token_callback()
 
     def _get_user_agent(self) -> str:
         return "home-assistant-hypervolt-charger/0.0.0"
@@ -139,7 +139,7 @@ class HypervoltWebSocketClient:
                     user_agent_header=self._get_user_agent(),
                 ) as websocket:
                     self._websocket = websocket
-                    await self._protocol.login(self._get_access_token())
+                    await self._protocol.login(await self._get_access_token())
                     await self._receive_messages_worker()
                 if not self._stop_requested:
                     logger.info("Websocket connection closed, reconnecting.")

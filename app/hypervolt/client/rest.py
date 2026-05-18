@@ -9,7 +9,6 @@ from typing import (
     Callable,
     Dict,
     Optional,
-    TypeVar,
 )
 from zoneinfo import ZoneInfo
 
@@ -22,9 +21,6 @@ from hypervolt.model import HypervoltCharger
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
-
-# TODO: focus code to v3 only
-R = TypeVar("R")
 
 
 def requires_auth(method: Callable[..., Any]) -> Callable[..., Any]:
@@ -70,7 +66,9 @@ class HypervoltRestClient:
     async def close(self) -> None:
         await self._client.aclose()
 
-    def get_access_token(self) -> str:
+    async def get_access_token(self) -> str:
+        if datetime.now(ZoneInfo("UTC")) >= self._access_token_expiry_time:
+            await self.authenticate()
         return self.access_token
 
     def is_token_expiring(self, threshold_seconds: float) -> bool:

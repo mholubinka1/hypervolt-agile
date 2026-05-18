@@ -66,8 +66,7 @@ async def main() -> None:
         )
     finally:
         await agile_client.close()
-        if coordinator._charger_client:
-            await coordinator._charger_client.close()
+        await coordinator.close()
 
 
 if __name__ == "__main__":

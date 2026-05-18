@@ -22,6 +22,10 @@ class ScheduleCoordinator:
         self._config = config
         self._charger_client: Optional[HypervoltChargerClient] = None
 
+    async def close(self) -> None:
+        if self._charger_client:
+            await self._charger_client.close()
+
     async def run(self) -> None:
         if not self._charger_client:
             try:
