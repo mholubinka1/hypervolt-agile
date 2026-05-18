@@ -19,7 +19,7 @@ logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
 
-class HypervoltCoordinator:
+class HypervoltChargerClient:
     _polling_interval: int
 
     _charger: HypervoltCharger
@@ -29,8 +29,12 @@ class HypervoltCoordinator:
     _ws_client: HypervoltWebSocketClient
 
     @classmethod
-    async def create(cls, config: AppConfig) -> HypervoltCoordinator:
-        self = cls(config)
+    async def create(cls, config: AppConfig) -> HypervoltChargerClient:
+        rest_client = await HypervoltRestClient.create(
+            username=config.hypervolt.username,
+            password=config.hypervolt.password,
+        )
+        self = cls(rest_client=rest_client, polling_interval=config.schedule.poll)
         if self._charger.maj_version < 3:
             raise NotImplementedError(
                 f"Hypervolt v{self._charger.maj_version} chargers are not currently supported."
@@ -50,22 +54,18 @@ class HypervoltCoordinator:
 
     def __init__(
         self,
-        config: AppConfig,
+        rest_client: HypervoltRestClient,
+        polling_interval: int,
     ) -> None:
-        self._polling_interval = config.schedule.poll
-
-        self._rest_client = HypervoltRestClient(
-            username=config.hypervolt.username,
-            password=config.hypervolt.password,
-        )
-        self._charger = self._rest_client.charger
+        self._polling_interval = polling_interval
+        self._rest_client = rest_client
+        self._charger = rest_client.charger
 
         self._charger_state = HypervoltChargerState(self._charger)
         self._ws_client = HypervoltWebSocketClient(
             charger=self._charger,
             access_token_callback=self._rest_client.get_access_token,
             on_state_update=self._on_state_update,
-            on_clear_schedule=self._on_clear_schedule,
         )
 
     async def _on_state_update(
@@ -74,12 +74,6 @@ class HypervoltCoordinator:
     ) -> None:
         if self._charger_state.update(delta):
             logger.debug(f"charger_state: {self._charger_state}.")
-
-    async def _on_clear_schedule(self) -> None:
-        logger.warning(
-            "schedules.get returned empty or unparseable sessions, clearing schedule."
-        )
-        await self.clear_schedule()
 
     @property
     def is_connected(self) -> bool:
@@ -91,12 +85,15 @@ class HypervoltCoordinator:
 
     async def _refresh_auth(self) -> None:
         if self._rest_client.is_token_expiring(self._polling_interval * 2):
-            self._rest_client.authenticate()
+            await self._rest_client.authenticate()
             await self._ws_client.reconnect()
 
     async def refresh(self) -> None:
         await self._refresh_auth()
         await self._ws_client.sync_charger_state()
+
+    async def verify_schedule(self) -> None:
+        await self._ws_client.check_charging_schedule()
 
     async def apply_schedule(self, schedule: List[HypervoltSession]) -> bool:
         _current_schedule = self._charger_state.current_schedule
@@ -139,3 +136,7 @@ class HypervoltCoordinator:
     async def clear_schedule(self) -> None:
         logger.info("Clearing charger schedule.")
         await self._ws_client.set_charging_schedule([])
+
+    async def close(self) -> None:
+        await self._ws_client.disconnect()
+        await self._rest_client.close()

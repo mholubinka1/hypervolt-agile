@@ -7,7 +7,7 @@ from asyncio import CancelledError
 from copy import deepcopy
 from datetime import datetime
 from logging import Logger, getLogger
-from typing import Awaitable, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 import websockets
@@ -53,7 +53,6 @@ class HypervoltWebSocketClient:
         charger: HypervoltCharger,
         access_token_callback: Callable[[], str],
         on_state_update: HypervoltChargerStateUpdateCallback,
-        on_clear_schedule: Callable[[], Awaitable[None]],
     ) -> None:
         self._charger = charger
         self._access_token_callback = access_token_callback
@@ -71,7 +70,6 @@ class HypervoltWebSocketClient:
         self._protocol = HypervoltProtocol(
             send_message=self._send_message,
             on_state_update=on_state_update,
-            on_clear_schedule=on_clear_schedule,
             is_connected=self._is_connected,
         )
 
@@ -96,6 +94,9 @@ class HypervoltWebSocketClient:
 
     async def sync_charger_state(self) -> None:
         await self._protocol.sync()
+
+    async def check_charging_schedule(self) -> None:
+        await self._protocol.get_charging_schedule()
 
     async def set_lock_state(self, locked: bool) -> None:
         await self._send_message(

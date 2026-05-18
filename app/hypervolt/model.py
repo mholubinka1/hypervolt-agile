@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from datetime import time
+from datetime import datetime, time, timedelta
 from enum import Enum
-from typing import Dict
+from typing import Dict, List
 from zoneinfo import ZoneInfo
 
 from common.model import ChargeSession
@@ -79,16 +79,38 @@ class HypervoltSession:
         charge_session: ChargeSession,
         timezone: str,
         charge_mode: ChargingMode = ChargingMode.boost,
-    ) -> "HypervoltSession":
+    ) -> List["HypervoltSession"]:
         _tz = ZoneInfo(timezone)
         _local_start = charge_session.start.astimezone(_tz)
         _local_end = charge_session.end.astimezone(_tz)
-        return HypervoltSession(
-            start=_local_start.time(),
-            end=_local_end.time(),
-            charge_mode=charge_mode,
-            day_of_week=weekday_to_dayofweek(_local_start.weekday()),
+        if _local_start.date() == _local_end.date():
+            return [
+                HypervoltSession(
+                    start=_local_start.time(),
+                    end=_local_end.time(),
+                    charge_mode=charge_mode,
+                    day_of_week=weekday_to_dayofweek(_local_start.weekday()),
+                )
+            ]
+        _local_midnight = datetime.combine(
+            _local_start.date() + timedelta(days=1),
+            datetime.min.time(),
+            tzinfo=_tz,
         )
+        return [
+            HypervoltSession(
+                start=_local_start.time(),
+                end=time(0, 0),
+                charge_mode=charge_mode,
+                day_of_week=weekday_to_dayofweek(_local_start.weekday()),
+            ),
+            HypervoltSession(
+                start=time(0, 0),
+                end=_local_end.time(),
+                charge_mode=charge_mode,
+                day_of_week=weekday_to_dayofweek(_local_midnight.weekday()),
+            ),
+        ]
 
     @classmethod
     def parse_from_response(cls, session: Dict) -> "HypervoltSession":

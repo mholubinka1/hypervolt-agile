@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 from hypervolt.model import (
@@ -42,15 +42,25 @@ class HypervoltChargerState:
 
     def update(self, delta: HypervoltChargerStateDelta) -> bool:
         _changed = False
-        for f in fields(delta):
-            _value = getattr(delta, f.name)
-            if f.name == "current_schedule":
-                if _value is not None and _value != self.current_schedule:
-                    self.current_schedule = list(_value)
-                    _changed = True
-            elif _value is not None and _value != getattr(self, f.name):
-                setattr(self, f.name, _value)
+        for attr in (
+            "lock_status",
+            "charging_mode",
+            "activation_mode",
+            "release_state",
+            "is_charging",
+            "car_plugged",
+            "led_brightness",
+        ):
+            _value = getattr(delta, attr)
+            if _value is not None and _value != getattr(self, attr):
+                setattr(self, attr, _value)
                 _changed = True
+        if (
+            delta.current_schedule is not None
+            and delta.current_schedule != self.current_schedule
+        ):
+            self.current_schedule = list(delta.current_schedule)
+            _changed = True
         return _changed
 
     def __str__(self) -> str:

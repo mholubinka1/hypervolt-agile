@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging.config
 import re
 from dataclasses import dataclass
@@ -6,7 +8,7 @@ from logging import Logger, getLogger
 from typing import Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
-import requests
+import httpx
 from common.constants import APP_NAME
 from common.decorator import retry
 from common.exceptions import APIError, NullValueError
@@ -38,7 +40,19 @@ class AgileClient:
     def __init__(self, api_key: str, account_number: str) -> None:
         self._api_key = api_key
         self._account_number = account_number
-        self._get_active_tariff()
+        self._client = httpx.AsyncClient(auth=(api_key, ""))
+        self.postcode = ""
+        self._active_product = ""
+        self._active_tariff = ""
+
+    @classmethod
+    async def create(cls, api_key: str, account_number: str) -> AgileClient:
+        instance = cls(api_key, account_number)
+        await instance._get_active_tariff()
+        return instance
+
+    async def close(self) -> None:
+        await self._client.aclose()
 
     def _get_price_period(self) -> Tuple[datetime, datetime]:
         _uk_tz = ZoneInfo("Europe/London")
@@ -102,15 +116,11 @@ class AgileClient:
         return _active_product_code, _active_tariff_code
 
     @retry()
-    def _get_active_tariff(self) -> None:
+    async def _get_active_tariff(self) -> None:
         _api_endpoint = self._base_url + f"accounts/{self._account_number}"
         _response = None
         try:
-            _response = requests.get(
-                url=_api_endpoint,
-                auth=(self._api_key, ""),
-                timeout=10,
-            )
+            _response = await self._client.get(url=_api_endpoint, timeout=10)
             _response.raise_for_status()
             _response_json = _response.json()
 
@@ -147,8 +157,8 @@ class AgileClient:
         return _prices
 
     @retry()
-    def get_upcoming_prices(self) -> List[Price]:
-        self._get_active_tariff()
+    async def get_upcoming_prices(self) -> List[Price]:
+        await self._get_active_tariff()
         _api_endpoint = (
             self._base_url
             + f"products/{self._active_product}/electricity-tariffs/{self._active_tariff}/standard-unit-rates/"
@@ -163,10 +173,9 @@ class AgileClient:
             f"Fetching Agile prices from {_period_from.isoformat()} to {_period_to.isoformat()}."
         )
         try:
-            _response = requests.get(
+            _response = await self._client.get(
                 url=_api_endpoint,
                 params=_params,
-                auth=(self._api_key, ""),
                 timeout=10,
             )
             _response.raise_for_status()
@@ -181,7 +190,7 @@ class AgileClient:
             while _page_remaining:
                 if not _next:
                     break
-                _next, _response = self._get_next_price_page(_next)
+                _next, _response = await self._get_next_price_page(_next)
                 _prices.extend(
                     self._to_upcoming_prices_list(_response.json()["results"])
                 )
@@ -198,14 +207,12 @@ class AgileClient:
             raise Exception(f"Failed to fetch upcoming Agile prices: {e}.") from e
 
     @retry()
-    def _get_next_price_page(self, url: str) -> Tuple[Optional[str], requests.Response]:
+    async def _get_next_price_page(
+        self, url: str
+    ) -> Tuple[Optional[str], httpx.Response]:
         _response = None
         try:
-            _response = requests.get(
-                url=url,
-                auth=(self._api_key, ""),
-                timeout=10,
-            )
+            _response = await self._client.get(url=url, timeout=10)
             _response.raise_for_status()
             _response_json = _response.json()
             return _response_json["next"], _response

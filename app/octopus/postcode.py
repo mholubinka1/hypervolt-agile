@@ -1,7 +1,7 @@
 import logging.config
 from logging import Logger, getLogger
 
-import requests
+import httpx
 from common.constants import APP_NAME
 from common.decorator import retry
 from common.logging import config
@@ -11,11 +11,12 @@ logger: Logger = getLogger(APP_NAME)
 
 
 @retry()
-def is_valid_postcode(postcode: str) -> bool:
-    _response = requests.get(
-        url=f"https://api.postcodes.io/postcodes/{postcode}",
-        timeout=10,
-    )
+async def is_valid_postcode(postcode: str) -> bool:
+    async with httpx.AsyncClient() as client:
+        _response = await client.get(
+            url=f"https://api.postcodes.io/postcodes/{postcode}",
+            timeout=10,
+        )
     if _response.status_code == 404:
         return False
     _response.raise_for_status()
