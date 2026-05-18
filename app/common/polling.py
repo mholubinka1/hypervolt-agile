@@ -3,8 +3,7 @@ import logging.config
 import time
 from inspect import iscoroutinefunction
 from logging import Logger, getLogger
-from pathlib import Path
-from typing import Awaitable, Callable, Union
+from typing import Any, Awaitable, Callable, Optional, Union
 
 from common.constants import APP_NAME
 from common.logging import config
@@ -13,11 +12,10 @@ logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
 TaskType = Union[Callable[[], None], Callable[[], Awaitable[None]]]
+OnTickType = Optional[Callable[[], Any]]
 
-_LIVENESS_FILE = Path("/tmp/healthy")  # nosec B108
 
-
-async def every(delay: float, task: TaskType) -> None:
+async def every(delay: float, task: TaskType, on_tick: OnTickType = None) -> None:
     _next = time.time() + delay
 
     while True:
@@ -29,5 +27,9 @@ async def every(delay: float, task: TaskType) -> None:
                 task()
         except Exception as e:
             logger.exception(f"Unhandled exception in scheduled task: {e}")
-        _LIVENESS_FILE.write_text(str(time.time() + delay * 4))
+        if on_tick:
+            try:
+                on_tick()
+            except Exception as e:
+                logger.exception(f"Unhandled exception in tick callback: {e}")
         _next += (time.time() - _next) // delay * delay + delay

@@ -1,6 +1,7 @@
 import asyncio
 import logging.config
 import sys
+import time
 from argparse import ArgumentParser, Namespace
 from logging import Logger, getLogger
 from pathlib import Path
@@ -8,9 +9,14 @@ from pathlib import Path
 from common.constants import APP_NAME
 from common.logging import config, configure_file_logging
 from common.polling import every
+from octopus.client import AgileClient
+from octopus.postcode import is_valid_postcode
 from schedule import Scheduler
+from schedule.coordinator import ScheduleCoordinator
 
 from config import ConfigLoader
+
+_LIVENESS_FILE = Path("/tmp/healthy")  # nosec B108
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
@@ -38,10 +44,29 @@ async def main() -> None:
     if app_config.log_file:
         configure_file_logging(app_config.log_file, app_config.log_level)
 
-    scheduler = Scheduler(
-        config=app_config,
+    agile_client = await AgileClient.create(
+        api_key=app_config.octopus.api_key,
+        account_number=app_config.octopus.account_number,
     )
-    await every(app_config.schedule.poll, scheduler.run)
+    if not await is_valid_postcode(agile_client.postcode):
+        logger.critical(
+            f"Invalid GB postcode {agile_client.postcode}, cannot safely determine timezone."
+        )
+        await agile_client.close()
+        sys.exit(1)
+
+    scheduler = Scheduler(agile_client, app_config)
+    coordinator = ScheduleCoordinator(scheduler, app_config)
+    _poll = app_config.schedule.poll
+    try:
+        await every(
+            _poll,
+            coordinator.run,
+            on_tick=lambda: _LIVENESS_FILE.write_text(str(time.time() + _poll * 4)),
+        )
+    finally:
+        await agile_client.close()
+        await coordinator.close()
 
 
 if __name__ == "__main__":

@@ -28,6 +28,18 @@ _Avoid_: plan, timetable, agenda
 The stateless module that transforms a list of **Agile Prices** into a **Schedule** and an average price. Responsible for filtering by **Price Limit**, merging contiguous periods, and applying the clock offset.
 _Avoid_: price engine, pricing module, session factory
 
+**Scheduler**:
+The stateful component that maintains the **Schedule** over time. Owns **Agile Price** fetching, delegates to the **Schedule Builder**, prunes expired **Charge Sessions** each cycle, and tracks when a price update or charger verification is due. Exposes the current **Schedule** and average price to the **Schedule Coordinator**.
+_Avoid_: schedule manager, schedule state
+
+**Schedule Coordinator**:
+Orchestrates charger operations each cycle using the **Scheduler**'s current **Schedule**. Drives the **Hypervolt Charger Client** to refresh state, verify the charger's schedule, apply sessions, and lock/unlock the connector.
+_Avoid_: scheduler, charger controller
+
+**Hypervolt Charger Client**:
+The interface to the Hypervolt charger. Coordinates a REST client (authentication, charger discovery) and a WebSocket client (real-time state, schedule commands) into a single point of control. Formerly known as `HypervoltCoordinator`.
+_Avoid_: coordinator, charger coordinator
+
 **Clock Offset**:
 A small time margin (in minutes) trimmed from both ends of each merged **Charge Session** to avoid boundary conflicts on the charger. Applied at build time by the **Schedule Builder**.
 _Avoid_: buffer, margin, fudge factor

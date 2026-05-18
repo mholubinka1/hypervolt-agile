@@ -35,12 +35,10 @@ class HypervoltProtocol:
         self,
         send_message: Callable[[Dict], Awaitable[None]],
         on_state_update: HypervoltChargerStateUpdateCallback,
-        on_clear_schedule: Callable[[], Awaitable[None]],
         is_connected: asyncio.Event,
     ) -> None:
         self._send_message = send_message
         self._on_state_update = on_state_update
-        self._on_clear_schedule = on_clear_schedule
         self._is_connected = is_connected
 
         self._handlers: Dict[str, Callable[..., Awaitable[None]]] = {
@@ -102,6 +100,7 @@ class HypervoltProtocol:
     async def _on_login_response(self, result: Dict, id: Optional[str] = None) -> None:
         if result.get("authenticated"):
             logger.info("Websocket login successful.")
+            self._is_connected.set()
             await self.sync()
             await self.get_charging_schedule()
         else:
@@ -111,8 +110,6 @@ class HypervoltProtocol:
         self, result: List[Dict[str, str]], id: Optional[str] = None
     ) -> None:
         _response_dict = {key: value for d in result for key, value in d.items()}
-        if id:
-            self._is_connected.set()
         _delta = HypervoltChargerStateDelta(
             lock_status=(
                 LockStatus[_response_dict["lock_state"]]
@@ -189,7 +186,8 @@ class HypervoltProtocol:
     ) -> None:
         _applied = result.get("applied") if result else None
         if not _applied:
-            logger.debug("schedules.get response received with no applied schedule.")
+            logger.debug("schedules.get: no schedule on charger.")
+            await self._on_state_update(HypervoltChargerStateDelta(current_schedule=[]))
             return
 
         _enabled = _applied.get("enabled")
@@ -201,10 +199,12 @@ class HypervoltProtocol:
             _activation_mode = ActivationMode.plug_and_charge
 
         try:
-            self._parse_sessions(_applied)
+            _sessions = self._parse_sessions(_applied)
+            logger.debug(f"schedules.get: {len(_sessions)} session(s) on charger.")
             await self._on_state_update(
                 HypervoltChargerStateDelta(
                     activation_mode=_activation_mode,
+                    current_schedule=_sessions,
                 )
             )
         except ValueError as e:
@@ -212,6 +212,7 @@ class HypervoltProtocol:
             await self._on_state_update(
                 HypervoltChargerStateDelta(
                     activation_mode=_activation_mode,
+                    current_schedule=[],
                 )
             )
 

@@ -9,30 +9,26 @@ from typing import (
     Callable,
     Dict,
     Optional,
-    TypeVar,
 )
 from zoneinfo import ZoneInfo
 
+import httpx
 from common.constants import APP_NAME
 from common.decorator import retry
 from common.exceptions import APIError, AuthenticationError
 from common.logging import config
 from hypervolt.model import HypervoltCharger
-from requests import Session
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
-# TODO: focus code to v3 only
-R = TypeVar("R")
 
-
-def requires_auth(method: Callable[..., R]) -> Callable[..., R]:
+def requires_auth(method: Callable[..., Any]) -> Callable[..., Any]:
     @wraps(method)
-    def wrapper(self: HypervoltRestClient, *args: Any, **kwargs: Any) -> R:
+    async def wrapper(self: HypervoltRestClient, *args: Any, **kwargs: Any) -> Any:
         if datetime.now(ZoneInfo("UTC")) >= self._access_token_expiry_time:
-            self.authenticate()
-        return method(self, *args, **kwargs)
+            await self.authenticate()
+        return await method(self, *args, **kwargs)
 
     return wrapper
 
@@ -52,19 +48,27 @@ class HypervoltRestClient:
     _access_token_expiry_time: datetime
     _refresh_token: Optional[str] = None
 
-    _session: Session
+    _client: httpx.AsyncClient
 
     def __init__(self, username: str, password: str) -> None:
         self._username = username
         self._password = password
+        self._client = httpx.AsyncClient()
+        self._access_token_expiry_time = datetime(1970, 1, 1, tzinfo=ZoneInfo("UTC"))
 
-        self._session = Session()
-        self.authenticate()
-        self.charger = self._get_chargers()
+    @classmethod
+    async def create(cls, username: str, password: str) -> HypervoltRestClient:
+        instance = cls(username, password)
+        await instance.authenticate()
+        instance.charger = await instance._get_chargers()
+        return instance
 
-    def get_access_token(self) -> str:
+    async def close(self) -> None:
+        await self._client.aclose()
+
+    async def get_access_token(self) -> str:
         if datetime.now(ZoneInfo("UTC")) >= self._access_token_expiry_time:
-            self.authenticate()
+            await self.authenticate()
         return self.access_token
 
     def is_token_expiring(self, threshold_seconds: float) -> bool:
@@ -75,10 +79,10 @@ class HypervoltRestClient:
     # region Authentication
 
     @retry()
-    def authenticate(self) -> None:
+    async def authenticate(self) -> None:
         if self._refresh_token:
             try:
-                self._refresh_authenticate()
+                await self._refresh_authenticate()
                 return
             except Exception as e:
                 logger.warning(
@@ -94,7 +98,7 @@ class HypervoltRestClient:
         }
 
         try:
-            _response = self._session.post(self._auth_url, data=data, timeout=10)
+            _response = await self._client.post(self._auth_url, data=data, timeout=10)
             if _response.status_code != 200:
                 _error = _response.json()
                 raise APIError(_error)
@@ -105,13 +109,13 @@ class HypervoltRestClient:
             raise AuthenticationError(str(e)) from e
 
     @retry()
-    def _refresh_authenticate(self) -> None:
+    async def _refresh_authenticate(self) -> None:
         data = {
             "client_id": "home-assistant",
             "grant_type": "refresh_token",
             "refresh_token": self._refresh_token,
         }
-        _response = self._session.post(self._auth_url, data=data, timeout=10)
+        _response = await self._client.post(self._auth_url, data=data, timeout=10)
         if _response.status_code != 200:
             _error = _response.json()
             raise APIError(_error)
@@ -127,9 +131,7 @@ class HypervoltRestClient:
             seconds=int(_expires_in * 0.9)
         )
 
-        if self._session is None:
-            raise RuntimeError("HTTP session not initialised.")
-        self._session.headers["authorization"] = f"Bearer {self.access_token}"
+        self._client.headers["authorization"] = f"Bearer {self.access_token}"
         return
 
     # endregion
@@ -147,10 +149,10 @@ class HypervoltRestClient:
 
     @retry()
     @requires_auth
-    def _get_chargers(self) -> HypervoltCharger:
+    async def _get_chargers(self) -> HypervoltCharger:
         _api_endpoint = f"{self._base_url}/by-owner"
 
-        _response = self._session.get(_api_endpoint, timeout=10)
+        _response = await self._client.get(_api_endpoint, timeout=10)
         if _response.status_code != 200:
             _error = _response.json()
             raise APIError(_error)
