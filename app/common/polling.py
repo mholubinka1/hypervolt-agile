@@ -28,5 +28,8 @@ async def every(delay: float, task: TaskType, on_tick: OnTickType = None) -> Non
         except Exception as e:
             logger.exception(f"Unhandled exception in scheduled task: {e}")
         if on_tick:
-            on_tick()
+            try:
+                on_tick()
+            except Exception as e:
+                logger.exception(f"Unhandled exception in tick callback: {e}")
         _next += (time.time() - _next) // delay * delay + delay

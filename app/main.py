@@ -52,6 +52,7 @@ async def main() -> None:
         logger.critical(
             f"Invalid GB postcode {agile_client.postcode}, cannot safely determine timezone."
         )
+        await agile_client.close()
         sys.exit(1)
 
     scheduler = Scheduler(agile_client, app_config)
