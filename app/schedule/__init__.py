@@ -84,7 +84,9 @@ class Scheduler:
                 f"Pruned {len(_expired)} expired session(s), {len(self._schedule)} remaining."
             )
         elif self._schedule:
-            logger.info(f"Schedule intact: {len(self._schedule)} session(s) remaining.")
+            logger.debug(
+                f"Schedule intact: {len(self._schedule)} session(s) remaining."
+            )
 
     async def _update_charging_schedule(self) -> None:
         if self._should_update():

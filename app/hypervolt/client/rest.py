@@ -53,7 +53,7 @@ class HypervoltRestClient:
     def __init__(self, username: str, password: str) -> None:
         self._username = username
         self._password = password
-        self._client = httpx.AsyncClient()
+        self._client = httpx.AsyncClient(follow_redirects=True)
         self._access_token_expiry_time = datetime(1970, 1, 1, tzinfo=ZoneInfo("UTC"))
 
     @classmethod
