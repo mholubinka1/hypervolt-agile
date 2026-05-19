@@ -1,6 +1,7 @@
 import asyncio
 import logging.config
 import sys
+import tempfile
 import time
 from argparse import ArgumentParser, Namespace
 from logging import Logger, getLogger
@@ -16,7 +17,7 @@ from schedule.coordinator import ScheduleCoordinator
 
 from config import ConfigLoader
 
-_LIVENESS_FILE = Path("/tmp/healthy")  # nosec B108
+_LIVENESS_FILE = Path(tempfile.gettempdir()) / "healthy"  # nosec B108
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
