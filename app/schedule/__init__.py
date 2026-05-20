@@ -113,10 +113,9 @@ class Scheduler:
                 _prices_from_now,
             )
             logger.info(f"Replug rebuild: {len(self._schedule)} sessions from now.")
+            self._invalidated = False
         except Exception as e:
             logger.exception(f"Failed to rebuild schedule on replug: {e}")
-        finally:
-            self._invalidated = False
 
     async def _rebuild_on_new_prices(self) -> None:
         try:

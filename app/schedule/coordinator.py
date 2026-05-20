@@ -38,7 +38,7 @@ class ScheduleCoordinator:
                 return
         try:
             _car_plugged = self._charger_client.charger_state.car_plugged
-            if _car_plugged and not self._car_was_plugged:
+            if self._car_was_plugged is False and _car_plugged:
                 self._scheduler.invalidate()
             self._car_was_plugged = _car_plugged
             await self._scheduler.update()
