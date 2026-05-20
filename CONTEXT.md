@@ -33,7 +33,7 @@ The stateful component that maintains the **Schedule** over time. Owns **Agile P
 _Avoid_: schedule manager, schedule state
 
 **Replug Rebuild**:
-A schedule rebuild triggered when the car is re-plugged. Unlike a regular build — which uses all available **Agile Prices** to plan the full charging window — a **Replug Rebuild** filters **Agile Prices** to those with `valid_from` at or after the current time, so the resulting **Schedule** covers only the cheapest periods available from now. Reflects the user's immediate intent: find the cheapest charging windows starting from this moment.
+A schedule rebuild triggered when the car is re-plugged. Unlike a regular build — which uses all available **Agile Prices** to plan the full charging window — a **Replug Rebuild** filters **Agile Prices** to those whose `valid_to` is after the current time, so the resulting **Schedule** covers only the cheapest periods with remaining charging time. Reflects the user's immediate intent: find the cheapest charging windows available from this moment.
 _Avoid_: forced rebuild, immediate rebuild, refresh
 
 **Schedule Coordinator**:

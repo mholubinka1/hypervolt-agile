@@ -74,7 +74,10 @@ class HypervoltChargerClient:
     ) -> None:
         _car_was_plugged = self._charger_state.car_plugged
         if self._charger_state.update(delta):
-            if self._charger_state.car_plugged != _car_was_plugged:
+            if (
+                _car_was_plugged is not None
+                and self._charger_state.car_plugged != _car_was_plugged
+            ):
                 if self._charger_state.car_plugged:
                     logger.info("Car plugged in.")
                 else:
