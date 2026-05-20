@@ -108,7 +108,7 @@ class Scheduler:
             self._agile_prices = _new_prices
             self._time_until = max(price.valid_to for price in _new_prices)
             self._last_schedule_update = _now
-            _prices_from_now = [p for p in self._agile_prices if p.valid_from >= _now]
+            _prices_from_now = [p for p in self._agile_prices if p.valid_to > _now]
             self._schedule, self._average_price_per_kwh = self._builder.build(
                 _prices_from_now,
             )
