@@ -33,6 +33,7 @@ class Scheduler:
         self._last_schedule_verify: Optional[datetime] = None
         self._schedule: List[ChargeSession] = []
         self._average_price_per_kwh: Optional[float] = None
+        self._invalidated: bool = False
 
     @property
     def schedule(self) -> List[ChargeSession]:
@@ -45,6 +46,9 @@ class Scheduler:
     @property
     def timezone(self) -> str:
         return self._timezone
+
+    def invalidate(self) -> None:
+        self._invalidated = True
 
     async def update(self) -> None:
         await self._update_charging_schedule()
@@ -89,26 +93,48 @@ class Scheduler:
             )
 
     async def _update_charging_schedule(self) -> None:
-        if self._should_update():
-            try:
-                _new_prices = await self._agile_client.get_upcoming_prices()
-                if not _new_prices:
-                    logger.warning(
-                        "No Agile prices returned. Skipping schedule update."
-                    )
-                    return
-                _new_time_until = max(price.valid_to for price in _new_prices)
-                if not _new_time_until > self._time_until:
-                    logger.info("Agile prices unchanged.")
-                    return
-                self._agile_prices = _new_prices
-                self._time_until = _new_time_until
-                logger.debug(
-                    f"Agile prices updated: {len(self._agile_prices)} periods, valid until {self._time_until}."
-                )
-                self._schedule, self._average_price_per_kwh = self._builder.build(
-                    self._agile_prices,
-                )
-                logger.info(f"New schedule created: {len(self._schedule)} sessions.")
-            except Exception as e:
-                logger.exception(f"Failed to create charging schedule: {e}")
+        if self._invalidated:
+            await self._rebuild_on_replug()
+        elif self._should_update():
+            await self._rebuild_on_new_prices()
+
+    async def _rebuild_on_replug(self) -> None:
+        _now = datetime.now(ZoneInfo("UTC"))
+        try:
+            _new_prices = await self._agile_client.get_upcoming_prices()
+            if not _new_prices:
+                logger.warning("No Agile prices returned. Skipping replug rebuild.")
+                return
+            self._agile_prices = _new_prices
+            self._time_until = max(price.valid_to for price in _new_prices)
+            self._last_schedule_update = _now
+            _prices_from_now = [p for p in self._agile_prices if p.valid_to > _now]
+            self._schedule, self._average_price_per_kwh = self._builder.build(
+                _prices_from_now,
+            )
+            logger.info(f"Replug rebuild: {len(self._schedule)} sessions from now.")
+            self._invalidated = False
+        except Exception as e:
+            logger.exception(f"Failed to rebuild schedule on replug: {e}")
+
+    async def _rebuild_on_new_prices(self) -> None:
+        try:
+            _new_prices = await self._agile_client.get_upcoming_prices()
+            if not _new_prices:
+                logger.warning("No Agile prices returned. Skipping schedule update.")
+                return
+            _new_time_until = max(price.valid_to for price in _new_prices)
+            if not _new_time_until > self._time_until:
+                logger.info("Agile prices unchanged.")
+                return
+            self._agile_prices = _new_prices
+            self._time_until = _new_time_until
+            logger.debug(
+                f"Agile prices updated: {len(self._agile_prices)} periods, valid until {self._time_until}."
+            )
+            self._schedule, self._average_price_per_kwh = self._builder.build(
+                self._agile_prices,
+            )
+            logger.info(f"New schedule created: {len(self._schedule)} sessions.")
+        except Exception as e:
+            logger.exception(f"Failed to create charging schedule: {e}")

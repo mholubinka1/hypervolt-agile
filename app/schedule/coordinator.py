@@ -21,6 +21,7 @@ class ScheduleCoordinator:
         self._scheduler = scheduler
         self._config = config
         self._charger_client: Optional[HypervoltChargerClient] = None
+        self._car_was_plugged: Optional[bool] = None
 
     async def close(self) -> None:
         if self._charger_client:
@@ -36,6 +37,10 @@ class ScheduleCoordinator:
                 logger.exception(f"Failed to initialise charger client: {e}")
                 return
         try:
+            _car_plugged = self._charger_client.charger_state.car_plugged
+            if self._car_was_plugged is False and _car_plugged:
+                self._scheduler.invalidate()
+            self._car_was_plugged = _car_plugged
             await self._scheduler.update()
             if not self._charger_client.is_connected:
                 logger.warning("Websocket not connected, skipping charger operations.")
