@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo
 from common.constants import APP_NAME, ELECTRICITY_VAT_RATE, TIMEZONE
 from common.logging import config
 from common.model import ChargeSession, Price
-from hypervolt.model import HypervoltSession
 from octopus.client import AgileClient
 from schedule.builder import ScheduleBuilder
 
@@ -79,10 +78,7 @@ class Scheduler:
         _expired = [s for s in self._schedule if s.end < _now]
         self._schedule = [s for s in self._schedule if s.end >= _now]
         for session in _expired:
-            for hypervolt_session in HypervoltSession.create_from_charge_session(
-                session, self._timezone
-            ):
-                logger.info(f"Session expired: {hypervolt_session}.")
+            logger.info(f"Session expired: {session.format(self._timezone)}.")
         if _expired:
             logger.info(
                 f"Pruned {len(_expired)} expired session(s), {len(self._schedule)} remaining."
@@ -103,7 +99,7 @@ class Scheduler:
         try:
             _new_prices = await self._agile_client.get_upcoming_prices()
             if not _new_prices:
-                logger.warning("No Agile prices returned. Skipping replug rebuild.")
+                logger.warning("No Agile prices returned. Skipping schedule rebuild.")
                 return
             self._agile_prices = _new_prices
             self._time_until = max(price.valid_to for price in _new_prices)
@@ -112,10 +108,14 @@ class Scheduler:
             self._schedule, self._average_price_per_kwh = self._builder.build(
                 _prices_from_now,
             )
-            logger.info(f"Replug rebuild: {len(self._schedule)} sessions from now.")
+            logger.info(
+                f"New Schedule created on car plugged in: {len(self._schedule)} sessions."
+            )
+            for session in self._schedule:
+                logger.info(f"Session: {session.format(self._timezone)}.")
             self._invalidated = False
         except Exception as e:
-            logger.exception(f"Failed to rebuild schedule on replug: {e}")
+            logger.exception(f"Failed to rebuild schedule on car plugged in: {e}")
 
     async def _rebuild_on_new_prices(self) -> None:
         try:
@@ -136,5 +136,7 @@ class Scheduler:
                 self._agile_prices,
             )
             logger.info(f"New schedule created: {len(self._schedule)} sessions.")
+            for session in self._schedule:
+                logger.info(f"Session: {session.format(self._timezone)}.")
         except Exception as e:
             logger.exception(f"Failed to create charging schedule: {e}")
