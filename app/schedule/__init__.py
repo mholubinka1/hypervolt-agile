@@ -125,12 +125,12 @@ class Scheduler:
                 return
             _new_time_until = max(price.valid_to for price in _new_prices)
             if not _new_time_until > self._time_until:
-                logger.info("Agile prices unchanged.")
+                logger.debug("Agile prices unchanged.")
                 return
             self._agile_prices = _new_prices
             self._time_until = _new_time_until
-            logger.debug(
-                f"Agile prices updated: {len(self._agile_prices)} periods, valid until {self._time_until}."
+            logger.info(
+                f"New Agile prices received: {len(self._agile_prices)} periods, valid until {self._time_until}."
             )
             self._schedule, self._average_price_per_kwh = self._builder.build(
                 self._agile_prices,

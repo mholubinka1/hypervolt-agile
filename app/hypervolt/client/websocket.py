@@ -142,7 +142,7 @@ class HypervoltWebSocketClient:
                     await self._protocol.login(await self._get_access_token())
                     await self._receive_messages_worker()
                 if not self._stop_requested:
-                    logger.info("Websocket connection closed, reconnecting.")
+                    logger.debug("Websocket connection closed, reconnecting.")
                     self._clear_connection_state()
                     if not self._reconnect_immediately:
                         await asyncio.sleep(_RECONNECT_DELAY_SECS)
@@ -210,7 +210,7 @@ class HypervoltWebSocketClient:
                 return
             self._messages[message["id"]] = message["method"]
         else:
-            logger.warning("Websocket is not connected, unable to send message.")
+            logger.debug("Websocket is not connected, unable to send message.")
 
     async def _receive_message(self, message: Data) -> None:
         self._last_activity = datetime.now(ZoneInfo("UTC"))

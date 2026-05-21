@@ -43,11 +43,11 @@ class ScheduleCoordinator:
             self._car_was_plugged = _car_plugged
             await self._scheduler.update()
             if not self._charger_client.is_connected:
-                logger.warning("Websocket not connected, skipping charger operations.")
+                logger.debug("Websocket not connected, skipping charger operations.")
                 return
             await self._charger_client.refresh()
             if not self._charger_client.is_connected:
-                logger.warning(
+                logger.debug(
                     "Websocket disconnected during refresh, skipping charger operations."
                 )
                 return
