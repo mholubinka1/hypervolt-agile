@@ -22,6 +22,8 @@ class ScheduleCoordinator:
         self._config = config
         self._charger_client: Optional[HypervoltChargerClient] = None
         self._car_was_plugged: Optional[bool] = None
+        self._was_connected: Optional[bool] = None
+        self._disconnected_at: Optional[datetime] = None
 
     async def close(self) -> None:
         if self._charger_client:
@@ -42,15 +44,21 @@ class ScheduleCoordinator:
                 self._scheduler.invalidate()
             self._car_was_plugged = _car_plugged
             await self._scheduler.update()
-            if not self._charger_client.is_connected:
-                logger.warning("Websocket not connected, skipping charger operations.")
+            _is_connected = self._charger_client.is_connected
+            if self._was_connected is True and not _is_connected:
+                self._disconnected_at = datetime.now(ZoneInfo("UTC"))
+            elif (
+                self._was_connected is False and _is_connected and self._disconnected_at
+            ):
+                _duration = (
+                    datetime.now(ZoneInfo("UTC")) - self._disconnected_at
+                ).total_seconds()
+                logger.info(f"Websocket reconnected after {_duration:.0f}s.")
+                self._disconnected_at = None
+            self._was_connected = _is_connected
+            if not _is_connected:
                 return
             await self._charger_client.refresh()
-            if not self._charger_client.is_connected:
-                logger.warning(
-                    "Websocket disconnected during refresh, skipping charger operations."
-                )
-                return
             if self._scheduler.should_verify():
                 await self._charger_client.verify_schedule()
             if self._can_push():

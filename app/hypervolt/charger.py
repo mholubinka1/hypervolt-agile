@@ -98,13 +98,21 @@ class HypervoltChargerClient:
             await self._ws_client.reconnect()
 
     async def refresh(self) -> None:
+        if not self.is_connected:
+            return
         await self._refresh_auth()
+        if not self.is_connected:
+            return
         await self._ws_client.sync_charger_state()
 
     async def verify_schedule(self) -> None:
+        if not self.is_connected:
+            return
         await self._ws_client.check_charging_schedule()
 
     async def apply_schedule(self, schedule: List[HypervoltSession]) -> bool:
+        if not self.is_connected:
+            return False
         _current_schedule = self._charger_state.current_schedule
         if _current_schedule is not None:
             _proposed_sorted_schedule = sorted(
@@ -135,10 +143,14 @@ class HypervoltChargerClient:
         return True
 
     async def lock(self) -> None:
+        if not self.is_connected:
+            return
         logger.info("Locking charger.")
         await self._ws_client.set_lock_state(locked=True)
 
     async def unlock(self) -> None:
+        if not self.is_connected:
+            return
         logger.info("Unlocking charger.")
         await self._ws_client.set_lock_state(locked=False)
 
