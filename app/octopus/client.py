@@ -40,7 +40,7 @@ class AgileClient:
     def __init__(self, api_key: str, account_number: str) -> None:
         self._api_key = api_key
         self._account_number = account_number
-        self._client = httpx.AsyncClient(auth=(api_key, ""))
+        self._client = httpx.AsyncClient(auth=(api_key, ""), follow_redirects=True)
         self.postcode = ""
         self._active_product = ""
         self._active_tariff = ""

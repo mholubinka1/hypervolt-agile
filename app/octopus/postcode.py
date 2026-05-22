@@ -12,7 +12,7 @@ logger: Logger = getLogger(APP_NAME)
 
 @retry()
 async def is_valid_postcode(postcode: str) -> bool:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         _response = await client.get(
             url=f"https://api.postcodes.io/postcodes/{postcode}",
             timeout=10,
