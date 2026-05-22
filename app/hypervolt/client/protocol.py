@@ -7,7 +7,7 @@ from logging import Logger, getLogger
 from typing import Awaitable, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from common.constants import APP_NAME
+from common.constants import APP_NAME, PILOT_UNPLUG_CONFIRMATION_SECS
 from common.logging import config
 from hypervolt.model import (
     ActivationMode,
@@ -40,6 +40,8 @@ class HypervoltProtocol:
         self._send_message = send_message
         self._on_state_update = on_state_update
         self._is_connected = is_connected
+        self._consecutive_lock_failures: int = 0
+        self._pilot_unplugged_at: Optional[datetime] = None
 
         self._handlers: Dict[str, Callable[..., Awaitable[None]]] = {
             "login": self._on_login_response,
@@ -97,9 +99,29 @@ class HypervoltProtocol:
 
     # region Handlers
 
+    async def on_error(self, method: str, error: Dict) -> None:
+        if method == "schedule.set":
+            logger.warning(f"schedule.set error: {error}.")
+            await self._on_state_update(
+                HypervoltChargerStateDelta(clear_current_schedule=True)
+            )
+        elif method == "sync.apply":
+            self._consecutive_lock_failures += 1
+            if self._consecutive_lock_failures >= 3:
+                logger.error(
+                    f"Lock command failed ({self._consecutive_lock_failures} consecutive failures): {error}."
+                )
+            else:
+                logger.warning(
+                    f"Lock command failed ({self._consecutive_lock_failures} consecutive failures): {error}."
+                )
+        else:
+            logger.warning(f"Websocket error for method {method}: {error}.")
+
     async def _on_login_response(self, result: Dict, id: Optional[str] = None) -> None:
         if result.get("authenticated"):
             logger.info("Websocket login successful.")
+            self._consecutive_lock_failures = 0
             self._is_connected.set()
             await self.sync()
             await self.get_charging_schedule()
@@ -132,6 +154,8 @@ class HypervoltProtocol:
                 else None
             ),
         )
+        if "lock_state" in _response_dict:
+            self._consecutive_lock_failures = 0
         logger.debug(
             f"sync: lock_status={_delta.lock_status.name if _delta.lock_status else None}, "
             f"charging_mode={_delta.charging_mode.name if _delta.charging_mode else None}, "
@@ -153,8 +177,20 @@ class HypervoltProtocol:
         )
         if not _pilot or _pilot in ("E", "F"):
             return
-        _delta = HypervoltChargerStateDelta(car_plugged=_pilot in ("B", "C", "D"))
-        await self._on_state_update(_delta)
+        if _pilot in ("B", "C", "D"):
+            self._pilot_unplugged_at = None
+            await self._on_state_update(HypervoltChargerStateDelta(car_plugged=True))
+        else:
+            _now = datetime.now(ZoneInfo("UTC"))
+            if self._pilot_unplugged_at is None:
+                self._pilot_unplugged_at = _now
+            elif (
+                _now - self._pilot_unplugged_at
+            ).total_seconds() >= PILOT_UNPLUG_CONFIRMATION_SECS:
+                self._pilot_unplugged_at = None
+                await self._on_state_update(
+                    HypervoltChargerStateDelta(car_plugged=False)
+                )
 
     async def _on_schedule_set_response(
         self, result: Dict, id: Optional[str] = None

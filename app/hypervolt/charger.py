@@ -4,7 +4,7 @@ import logging.config
 from asyncio import create_task
 from datetime import time
 from logging import Logger, getLogger
-from typing import List
+from typing import List, Optional
 
 from common.constants import APP_NAME
 from common.logging import config
@@ -60,6 +60,7 @@ class HypervoltChargerClient:
         self._polling_interval = polling_interval
         self._rest_client = rest_client
         self._charger = rest_client.charger
+        self._last_pushed_sessions: Optional[List[HypervoltSession]] = None
 
         self._charger_state = HypervoltChargerState(self._charger)
         self._ws_client = HypervoltWebSocketClient(
@@ -72,7 +73,18 @@ class HypervoltChargerClient:
         self,
         delta: HypervoltChargerStateDelta,
     ) -> None:
+        _car_was_plugged = self._charger_state.car_plugged
         if self._charger_state.update(delta):
+            if delta.current_schedule is not None:
+                self._last_pushed_sessions = None
+            if (
+                _car_was_plugged is not None
+                and self._charger_state.car_plugged != _car_was_plugged
+            ):
+                if self._charger_state.car_plugged:
+                    logger.info("Car plugged in.")
+                else:
+                    logger.info("Car unplugged.")
             logger.debug(f"charger_state: {self._charger_state}.")
 
     @property
@@ -97,21 +109,38 @@ class HypervoltChargerClient:
 
     async def apply_schedule(self, schedule: List[HypervoltSession]) -> bool:
         _current_schedule = self._charger_state.current_schedule
+        _proposed_sorted = sorted(
+            schedule, key=lambda s: (s.start, s.day_of_week.value[0])
+        )
         if _current_schedule is not None:
-            _proposed_sorted_schedule = sorted(
-                schedule, key=lambda s: (s.start, s.day_of_week.value[0])
-            )
-            _current_sorted_schedule = sorted(
+            _current_sorted = sorted(
                 _current_schedule, key=lambda s: (s.start, s.day_of_week.value[0])
             )
-            if _proposed_sorted_schedule == _current_sorted_schedule:
+            if _proposed_sorted == _current_sorted:
                 logger.debug("Schedule unchanged, skipping apply.")
                 return False
-        if schedule:
-            for session in schedule:
-                logger.info(f"Sending session: {session}.")
+        _last_sorted = (
+            sorted(
+                self._last_pushed_sessions,
+                key=lambda s: (s.start, s.day_of_week.value[0]),
+            )
+            if self._last_pushed_sessions is not None
+            else None
+        )
+        _is_retry = (
+            _current_schedule is None
+            and _last_sorted is not None
+            and _proposed_sorted == _last_sorted
+        )
+        if _is_retry:
+            logger.debug(f"Retrying schedule push ({len(schedule)} session(s)).")
         else:
-            logger.info("Sending empty schedule to charger.")
+            if schedule:
+                for session in schedule:
+                    logger.info(f"Sending session: {session}.")
+            else:
+                logger.info("Sending empty schedule to charger.")
+            self._last_pushed_sessions = list(schedule)
         sessions = [
             {
                 "session_type": "recurring",

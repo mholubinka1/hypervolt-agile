@@ -167,3 +167,5 @@ config.yml
 
 .claude
 FEATURES.md
+FEATURES_ARCHIVE.md
+volvo-api-integration.md
