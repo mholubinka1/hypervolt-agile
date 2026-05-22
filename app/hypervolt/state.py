@@ -21,6 +21,7 @@ class HypervoltChargerStateDelta:
     car_plugged: Optional[bool] = field(default=None)
     led_brightness: Optional[float] = field(default=None)
     current_schedule: Optional[List[HypervoltSession]] = field(default=None)
+    clear_current_schedule: bool = field(default=False)
 
 
 class HypervoltChargerState:
@@ -55,7 +56,10 @@ class HypervoltChargerState:
             if _value is not None and _value != getattr(self, attr):
                 setattr(self, attr, _value)
                 _changed = True
-        if (
+        if delta.clear_current_schedule and self.current_schedule is not None:
+            self.current_schedule = None
+            _changed = True
+        elif (
             delta.current_schedule is not None
             and delta.current_schedule != self.current_schedule
         ):

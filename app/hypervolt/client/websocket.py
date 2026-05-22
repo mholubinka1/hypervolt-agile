@@ -227,9 +227,7 @@ class HypervoltWebSocketClient:
                 if _error_message_id
                 else "unknown"
             )
-            logger.warning(
-                f"Websocket error response for method {_error_message_method}: {_json_message['error']}"
-            )
+            await self._protocol.on_error(_error_message_method, _json_message["error"])
             return
 
         _method = _json_message.get("method") or self._messages.get(
