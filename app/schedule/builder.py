@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging.config
 import math
-from datetime import timedelta
+from datetime import datetime, timedelta
 from logging import Logger, getLogger
 from typing import List, Optional, Tuple
 
@@ -49,21 +49,31 @@ class ScheduleBuilder:
         if not price_periods:
             return []
         _sorted = sorted(price_periods, key=lambda p: p.valid_from)
-        _sessions = []
+        _groups: List[Tuple[datetime, datetime, List[Price]]] = []
         _current_start = _sorted[0].valid_from
         _current_end = _sorted[0].valid_to
+        _current_prices = [_sorted[0]]
 
         for period in _sorted[1:]:
             if _current_end == period.valid_from:
                 _current_end = period.valid_to
+                _current_prices.append(period)
             else:
-                _sessions.append(ChargeSession(start=_current_start, end=_current_end))
+                _groups.append((_current_start, _current_end, _current_prices))
                 _current_start = period.valid_from
                 _current_end = period.valid_to
-        _sessions.append(ChargeSession(start=_current_start, end=_current_end))
+                _current_prices = [period]
+        _groups.append((_current_start, _current_end, _current_prices))
 
         _offset = timedelta(minutes=SESSION_CLOCK_OFFSET_MINS)
         return [
-            ChargeSession(start=s.start + _offset, end=s.end - _offset)
-            for s in _sessions
+            ChargeSession(
+                start=start + _offset,
+                end=end - _offset,
+                average_price_per_kwh=sum(p.value_exc_vat for p in prices)
+                / len(prices)
+                * ELECTRICITY_VAT_RATE
+                / 100,
+            )
+            for start, end, prices in _groups
         ]

@@ -210,7 +210,7 @@ class HypervoltWebSocketClient:
                 return
             self._messages[message["id"]] = message["method"]
         else:
-            logger.debug("Websocket is not connected, unable to send message.")
+            raise ConnectionError("Websocket is not connected, unable to send message.")
 
     async def _receive_message(self, message: Data) -> None:
         self._last_activity = datetime.now(ZoneInfo("UTC"))
