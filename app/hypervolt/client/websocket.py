@@ -6,6 +6,7 @@ import logging.config
 from asyncio import CancelledError
 from copy import deepcopy
 from datetime import datetime
+from json import JSONDecodeError
 from logging import Logger, getLogger
 from typing import Awaitable, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
@@ -154,14 +155,14 @@ class HypervoltWebSocketClient:
             except CancelledError:
                 logger.debug("Websocket connect task cancelled.")
                 raise
-            except Exception:
+            except Exception as e:
+                _was_connected = self._is_connected.is_set()
                 logger.warning(
-                    f"Websocket connection lost, reconnecting in {_RECONNECT_DELAY_SECS}s.",
-                    exc_info=True,
+                    f"Websocket connection lost, reconnecting in {_RECONNECT_DELAY_SECS}s. {e}",
                 )
                 self._clear_connection_state()
                 await asyncio.sleep(_RECONNECT_DELAY_SECS)
-                _reconnecting = True
+                _reconnecting = _was_connected
 
     async def _receive_messages_worker(self) -> None:
         if not self._websocket:
@@ -221,7 +222,7 @@ class HypervoltWebSocketClient:
         self._last_activity = datetime.now(ZoneInfo("UTC"))
         try:
             _json_message = json.loads(message)
-        except Exception as e:
+        except JSONDecodeError as e:
             logger.error(f"Failed to parse websocket message: {e}")
             return
 
