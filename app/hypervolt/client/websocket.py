@@ -131,6 +131,7 @@ class HypervoltWebSocketClient:
     async def connect(self) -> None:
         _url = f"{self._base_wss_url}/{self._charger.id}/sync"
         self._stop_requested = False
+        _reconnecting = False
         while not self._stop_requested:
             try:
                 async with websockets.connect(
@@ -139,7 +140,9 @@ class HypervoltWebSocketClient:
                     user_agent_header=self._get_user_agent(),
                 ) as websocket:
                     self._websocket = websocket
-                    await self._protocol.login(await self._get_access_token())
+                    await self._protocol.login(
+                        await self._get_access_token(), reconnecting=_reconnecting
+                    )
                     await self._receive_messages_worker()
                 if not self._stop_requested:
                     logger.info("Websocket connection closed, reconnecting.")
@@ -147,6 +150,7 @@ class HypervoltWebSocketClient:
                     if not self._reconnect_immediately:
                         await asyncio.sleep(_RECONNECT_DELAY_SECS)
                     self._reconnect_immediately = False
+                    _reconnecting = True
             except CancelledError:
                 logger.debug("Websocket connect task cancelled.")
                 raise
@@ -157,6 +161,7 @@ class HypervoltWebSocketClient:
                 )
                 self._clear_connection_state()
                 await asyncio.sleep(_RECONNECT_DELAY_SECS)
+                _reconnecting = True
 
     async def _receive_messages_worker(self) -> None:
         if not self._websocket:
