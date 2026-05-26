@@ -73,6 +73,7 @@ class HypervoltChargerClient:
         self,
         delta: HypervoltChargerStateDelta,
     ) -> None:
+        _was_charging = self._charger_state.is_charging
         _car_was_plugged = self._charger_state.car_plugged
         if self._charger_state.update(delta):
             if delta.current_schedule is not None:
@@ -85,6 +86,17 @@ class HypervoltChargerClient:
                     logger.info("Car plugged in.")
                 else:
                     logger.info("Car unplugged.")
+            if (
+                _was_charging is not None
+                and self._charger_state.is_charging != _was_charging
+            ):
+                if self._charger_state.is_charging:
+                    logger.info("Charging started.")
+                elif not (
+                    _car_was_plugged is True
+                    and self._charger_state.car_plugged is False
+                ):
+                    logger.info("Charging stopped.")
             logger.debug(f"charger_state: {self._charger_state}.")
 
     @property
