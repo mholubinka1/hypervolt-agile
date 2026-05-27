@@ -158,7 +158,7 @@ class HypervoltWebSocketClient:
             except Exception as e:
                 _was_connected = self._is_connected.is_set()
                 logger.warning(
-                    f"Websocket connection lost, reconnecting in {_RECONNECT_DELAY_SECS}s. {e}",
+                    f"Websocket connection lost, reconnecting in {_RECONNECT_DELAY_SECS}s. {type(e).__name__}: {e}",
                 )
                 self._clear_connection_state()
                 await asyncio.sleep(_RECONNECT_DELAY_SECS)

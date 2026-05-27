@@ -38,7 +38,9 @@ async def main() -> None:
         config_loader = ConfigLoader(config_path)
         app_config = config_loader.get_config()
     except Exception as e:
-        logger.critical(f"Unable to load startup configuration: {e}")
+        logger.critical(
+            f"Unable to load startup configuration: {type(e).__name__}: {e}"
+        )
         sys.exit(1)
 
     if app_config.log_file:
