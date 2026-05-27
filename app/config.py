@@ -79,6 +79,6 @@ class ConfigLoader:
             logger.info(f"Successfully loaded settings from {self._path}")
         except Exception as e:
             logger.critical(
-                f"Failed to load application settings from {self._path}: {e}"
+                f"Failed to load application settings from {self._path}: {type(e).__name__}: {e}"
             )
             sys.exit(1)

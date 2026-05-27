@@ -86,7 +86,7 @@ class HypervoltRestClient:
                 return
             except Exception as e:
                 logger.warning(
-                    f"Unable to refresh Hypervolt API authentication tokens, re-authenticating: {str(e)}"
+                    f"Unable to refresh Hypervolt API authentication tokens, re-authenticating: {type(e).__name__}: {e}"
                 )
 
         data = {
@@ -105,7 +105,9 @@ class HypervoltRestClient:
             _response_json = _response.json()
             self._update_tokens(_response_json)
         except Exception as e:
-            logger.error(f"Unable to authenticate with Hypervolt API: {e}")
+            logger.error(
+                f"Unable to authenticate with Hypervolt API: {type(e).__name__}: {e}"
+            )
             raise AuthenticationError(str(e)) from e
 
     @retry()

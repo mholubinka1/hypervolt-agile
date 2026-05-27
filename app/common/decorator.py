@@ -25,7 +25,7 @@ def retry(
                     return await func(*args, **kwargs)
                 except Exception as e:
                     logger.warning(
-                        f"Attempt {attempt} failed for {func.__name__}: {e}. \nRetrying in {retry_delay} seconds."
+                        f"Attempt {attempt} failed for {func.__name__}: {type(e).__name__}: {e}. Retrying in {retry_delay} seconds."
                     )
                     await asyncio.sleep(retry_delay)
                     attempt += 1
@@ -33,7 +33,7 @@ def retry(
                 return await func(*args, **kwargs)
             except Exception as e:
                 logger.error(
-                    f"Error attempting to execute {func}: {e}. \nRetries exhausted."
+                    f"Error attempting to execute {func}: {type(e).__name__}: {e}. Retries exhausted."
                 )
                 raise
 

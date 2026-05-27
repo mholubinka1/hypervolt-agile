@@ -40,6 +40,7 @@ class HypervoltProtocol:
         self._send_message = send_message
         self._on_state_update = on_state_update
         self._is_connected = is_connected
+        self._reconnecting: bool = False
         self._consecutive_lock_failures: int = 0
         self._pilot_unplugged_at: Optional[datetime] = None
 
@@ -70,7 +71,8 @@ class HypervoltProtocol:
 
     # region Requests
 
-    async def login(self, token: str) -> None:
+    async def login(self, token: str, reconnecting: bool = False) -> None:
+        self._reconnecting = reconnecting
         await self._send_message(
             {
                 "id": _generate_id(),
@@ -120,7 +122,11 @@ class HypervoltProtocol:
 
     async def _on_login_response(self, result: Dict, id: Optional[str] = None) -> None:
         if result.get("authenticated"):
-            logger.info("Websocket login successful.")
+            logger.info(
+                "Websocket reconnected."
+                if self._reconnecting
+                else "Websocket login successful."
+            )
             self._consecutive_lock_failures = 0
             self._is_connected.set()
             await self.sync()
