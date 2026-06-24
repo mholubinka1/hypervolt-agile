@@ -16,7 +16,7 @@ OnTickType = Optional[Callable[[], Any]]
 
 
 async def every(delay: float, task: TaskType, on_tick: OnTickType = None) -> None:
-    _next = time.time() + delay
+    _next = time.time()
 
     while True:
         await asyncio.sleep(max(0, _next - time.time()))
