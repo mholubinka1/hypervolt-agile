@@ -65,9 +65,7 @@ async def main() -> None:
 
     async def run() -> None:
         if config_path.stat().st_mtime != _config_mtime:
-            logger.info(
-                f"Config change detected: {config_path}. Restarting application."
-            )
+            logger.info(f"Config change detected: {config_path}. Exiting for restart.")
             try:
                 _LIVENESS_FILE.unlink()
             except FileNotFoundError:
