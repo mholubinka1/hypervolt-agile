@@ -68,9 +68,9 @@ async def main() -> None:
             logger.info(
                 f"Config change detected: {config_path}. Restarting application."
             )
-            if _LIVENESS_FILE.exists():
+            try:
                 _LIVENESS_FILE.unlink()
-            else:
+            except FileNotFoundError:
                 logger.warning(f"Liveness file not found: {_LIVENESS_FILE}.")
             sys.exit(0)
         await coordinator.run()
