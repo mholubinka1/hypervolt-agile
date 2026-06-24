@@ -61,10 +61,22 @@ async def main() -> None:
     scheduler = Scheduler(agile_client, app_config)
     coordinator = ScheduleCoordinator(scheduler, app_config)
     _poll = app_config.schedule.poll
+    _config_mtime = config_path.stat().st_mtime
+
+    async def run() -> None:
+        if config_path.stat().st_mtime != _config_mtime:
+            logger.info(f"Config change detected: {config_path}. Exiting for restart.")
+            try:
+                _LIVENESS_FILE.unlink()
+            except FileNotFoundError:
+                logger.warning(f"Liveness file not found: {_LIVENESS_FILE}.")
+            sys.exit(0)
+        await coordinator.run()
+
     try:
         await every(
             _poll,
-            coordinator.run,
+            run,
             on_tick=lambda: _LIVENESS_FILE.write_text(str(time.time() + _poll * 4)),
         )
     finally:
