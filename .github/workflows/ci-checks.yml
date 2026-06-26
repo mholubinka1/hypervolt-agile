@@ -45,7 +45,9 @@ jobs:
         run: poetry check --lock
 
       - name: Verify requirements.txt matches poetry.lock
-        run: poetry export -f requirements.txt | diff - requirements.txt
+        run: |
+          poetry export -f requirements.txt -o /tmp/requirements-check.txt
+          diff requirements.txt /tmp/requirements-check.txt
 
       - name: Type check with mypy
         run: poetry run mypy app
@@ -60,7 +62,7 @@ jobs:
         run: poetry run ruff check --no-fix app
 
       - name: Check markdown links
-        run: find . -name "*.md" -not -path "./.git/*" | xargs markdown-link-check --config .markdown-link-check.json
+        run: find . -name "*.md" -not -path "./.git/*" -print0 | xargs -0 -r markdown-link-check --config .markdown-link-check.json
 
       - name: Scan for secrets with gitleaks
         uses: gitleaks/gitleaks-action@v2
