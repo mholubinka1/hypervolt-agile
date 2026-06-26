@@ -23,6 +23,7 @@ mypy = ">=1.8,<3.0"
 ruff = "^0.15.8"
 pre-commit = "^4.3.0"
 types-pyyaml = "^6.0.12.20250915"
+bandit = {version = "^1.9.4", extras = ["toml"]}
 
 [build-system]
 requires = ["poetry-core"]
@@ -45,4 +46,4 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 
 [tool.bandit]
-exclude_dirs = [".deprecated"]
+exclude_dirs = [".deprecated", ".reference"]
