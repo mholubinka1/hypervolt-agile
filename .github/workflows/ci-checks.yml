@@ -67,4 +67,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Security analysis with bandit
-        run: poetry run bandit -r -c pyproject.toml
+        run: poetry run bandit -r -c pyproject.toml app

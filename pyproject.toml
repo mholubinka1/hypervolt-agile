@@ -46,5 +46,4 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 
 [tool.bandit]
-targets = ["app"]
 exclude_dirs = [".deprecated", ".reference"]
