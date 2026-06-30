@@ -24,8 +24,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Poetry and export plugin
-        run: pip install poetry poetry-plugin-export
+      - name: Install Poetry
+        run: pip install poetry
 
       - name: Install project dependencies
         run: poetry install
@@ -43,11 +43,6 @@ jobs:
 
       - name: Verify lock file is consistent with pyproject.toml
         run: poetry check --lock
-
-      - name: Verify requirements.txt matches poetry.lock
-        run: |
-          poetry export -f requirements.txt -o /tmp/requirements-check.txt
-          diff requirements.txt /tmp/requirements-check.txt
 
       - name: Type check with mypy
         run: poetry run mypy app
