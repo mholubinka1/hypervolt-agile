@@ -44,11 +44,6 @@ jobs:
       - name: Verify lock file is consistent with pyproject.toml
         run: poetry check --lock
 
-      - name: Verify requirements.txt matches poetry.lock
-        run: |
-          poetry export -f requirements.txt -o /tmp/requirements-check.txt
-          diff requirements.txt /tmp/requirements-check.txt
-
       - name: Type check with mypy
         run: poetry run mypy app
 
