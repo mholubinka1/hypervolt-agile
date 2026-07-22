@@ -122,11 +122,10 @@ class HypervoltProtocol:
 
     async def _on_login_response(self, result: Dict, id: Optional[str] = None) -> None:
         if result.get("authenticated"):
-            logger.info(
-                "Websocket reconnected."
-                if self._reconnecting
-                else "Websocket login successful."
-            )
+            if self._reconnecting:
+                logger.debug("Websocket reconnected.")
+            else:
+                logger.info("Websocket login successful.")
             self._consecutive_lock_failures = 0
             self._is_connected.set()
             await self.sync()
