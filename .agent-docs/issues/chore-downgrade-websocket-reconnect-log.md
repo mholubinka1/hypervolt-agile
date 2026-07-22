@@ -1,5 +1,7 @@
 # Issues: chore/downgrade-websocket-reconnect-log
 
+> Work complete — PR ready to merge.
+
 ## Downgrade "Websocket reconnected" to DEBUG
 
 **Issue**: #45
