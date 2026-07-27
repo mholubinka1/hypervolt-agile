@@ -70,7 +70,7 @@ class HypervoltProtocol:
         # sync.snapshot/sync.apply return a list of single-key dicts with
         # mixed-type values, e.g. [{"brightness": 0.25}, {"lock_state":
         # "unlocked"}, {"max_current": 32000}, {"features": ["super_eco"]},
-        # {"random_start": true}] — see _on_sync_response.
+        # {"random_start": True}] — see _on_sync_response.
         _handler = self._handlers.get(method)
         if not _handler:
             logger.debug(f"No handler implemented for method {method}.")
