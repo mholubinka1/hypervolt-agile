@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 from hypervolt.model import (
     ActivationMode,
@@ -13,14 +12,14 @@ from hypervolt.model import (
 
 @dataclass
 class HypervoltChargerStateDelta:
-    lock_status: Optional[LockStatus] = field(default=None)
-    charging_mode: Optional[ChargingMode] = field(default=None)
-    activation_mode: Optional[ActivationMode] = field(default=None)
-    release_state: Optional[ReleaseState] = field(default=None)
-    is_charging: Optional[bool] = field(default=None)
-    car_plugged: Optional[bool] = field(default=None)
-    led_brightness: Optional[float] = field(default=None)
-    current_schedule: Optional[List[HypervoltSession]] = field(default=None)
+    lock_status: LockStatus | None = field(default=None)
+    charging_mode: ChargingMode | None = field(default=None)
+    activation_mode: ActivationMode | None = field(default=None)
+    release_state: ReleaseState | None = field(default=None)
+    is_charging: bool | None = field(default=None)
+    car_plugged: bool | None = field(default=None)
+    led_brightness: float | None = field(default=None)
+    current_schedule: list[HypervoltSession] | None = field(default=None)
     clear_current_schedule: bool = field(default=False)
 
 
@@ -29,17 +28,17 @@ class HypervoltChargerState:
         self.id = charger.id
         self.maj_version = charger.maj_version
 
-        self.lock_status: Optional[LockStatus] = None
-        self.charging_mode: Optional[ChargingMode] = None
+        self.lock_status: LockStatus | None = None
+        self.charging_mode: ChargingMode | None = None
 
-        self.activation_mode: Optional[ActivationMode] = None
-        self.release_state: Optional[ReleaseState] = None
+        self.activation_mode: ActivationMode | None = None
+        self.release_state: ReleaseState | None = None
 
-        self.is_charging: Optional[bool] = None
-        self.car_plugged: Optional[bool] = None
+        self.is_charging: bool | None = None
+        self.car_plugged: bool | None = None
 
-        self.led_brightness: Optional[float] = None
-        self.current_schedule: Optional[List[HypervoltSession]] = None
+        self.led_brightness: float | None = None
+        self.current_schedule: list[HypervoltSession] | None = None
 
     def update(self, delta: HypervoltChargerStateDelta) -> bool:
         _changed = False

@@ -4,7 +4,6 @@ import logging.config
 from asyncio import create_task
 from datetime import time
 from logging import Logger, getLogger
-from typing import List, Optional
 
 from common.constants import APP_NAME
 from common.logging import config
@@ -60,7 +59,7 @@ class HypervoltChargerClient:
         self._polling_interval = polling_interval
         self._rest_client = rest_client
         self._charger = rest_client.charger
-        self._last_pushed_sessions: Optional[List[HypervoltSession]] = None
+        self._last_pushed_sessions: list[HypervoltSession] | None = None
 
         self._charger_state = HypervoltChargerState(self._charger)
         self._ws_client = HypervoltWebSocketClient(
@@ -125,7 +124,7 @@ class HypervoltChargerClient:
             return
         await self._ws_client.check_charging_schedule()
 
-    async def apply_schedule(self, schedule: List[HypervoltSession]) -> bool:
+    async def apply_schedule(self, schedule: list[HypervoltSession]) -> bool:
         if not self.is_connected:
             return False
         _current_schedule = self._charger_state.current_schedule

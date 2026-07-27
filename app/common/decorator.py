@@ -1,7 +1,8 @@
 import asyncio
 import logging.config
+from collections.abc import Awaitable, Callable
 from logging import Logger, getLogger
-from typing import Awaitable, Callable, ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar
 
 from common.constants import APP_NAME
 from common.logging import config

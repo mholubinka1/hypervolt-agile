@@ -4,11 +4,11 @@ import asyncio
 import json
 import logging.config
 from asyncio import CancelledError
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from datetime import datetime
 from json import JSONDecodeError
 from logging import Logger, getLogger
-from typing import Awaitable, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 import websockets
@@ -38,16 +38,16 @@ class HypervoltWebSocketClient:
 
     _access_token_callback: Callable[[], Awaitable[str]]
 
-    _websocket: Optional[websockets.ClientConnection] = None
+    _websocket: websockets.ClientConnection | None = None
     _authenticated: bool = False
-    _last_activity: Optional[datetime]
+    _last_activity: datetime | None
     _stop_requested: bool = True
 
-    _connect_task: Optional[asyncio.Task] = None
+    _connect_task: asyncio.Task | None = None
     _is_connected: asyncio.Event
     _reconnect_immediately: bool = False
 
-    _messages: Dict[str, str]
+    _messages: dict[str, str]
 
     def __init__(
         self,
@@ -66,7 +66,7 @@ class HypervoltWebSocketClient:
         self._is_connected = asyncio.Event()
         self._reconnect_immediately = False
 
-        self._messages: Dict[str, str] = {}
+        self._messages: dict[str, str] = {}
 
         self._protocol = HypervoltProtocol(
             send_message=self._send_message,
@@ -110,7 +110,7 @@ class HypervoltWebSocketClient:
 
     async def set_charging_schedule(
         self,
-        schedule: List[Dict],
+        schedule: list[dict],
         activation_mode: ActivationMode = ActivationMode.schedule,
     ) -> None:
         message = {
@@ -196,7 +196,7 @@ class HypervoltWebSocketClient:
 
     # region Message
 
-    async def _send_message(self, message: Dict) -> None:
+    async def _send_message(self, message: dict) -> None:
         if self._websocket:
             if "jsonrpc" not in message:
                 message["jsonrpc"] = "2.0"
@@ -245,7 +245,7 @@ class HypervoltWebSocketClient:
             )
             return
 
-        _id: Optional[str] = _json_message.get("id")
+        _id: str | None = _json_message.get("id")
         _result = _json_message.get("result") or _json_message.get("params")
         if _id:
             self._messages.pop(_id, None)

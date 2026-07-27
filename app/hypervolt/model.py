@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from enum import Enum
-from typing import Dict, List
 from zoneinfo import ZoneInfo
 
 from common.model import ChargeSession
@@ -79,7 +78,7 @@ class HypervoltSession:
         charge_session: ChargeSession,
         timezone: str,
         charge_mode: ChargingMode = ChargingMode.boost,
-    ) -> List["HypervoltSession"]:
+    ) -> list["HypervoltSession"]:
         _tz = ZoneInfo(timezone)
         _local_start = charge_session.start.astimezone(_tz)
         _local_end = charge_session.end.astimezone(_tz)
@@ -113,7 +112,7 @@ class HypervoltSession:
         ]
 
     @classmethod
-    def parse_from_response(cls, session: Dict) -> "HypervoltSession":
+    def parse_from_response(cls, session: dict) -> "HypervoltSession":
         _days = session.get("days", [])
         if len(_days) != 1:
             raise ValueError(f"Expected exactly one day per session, got: {_days}")

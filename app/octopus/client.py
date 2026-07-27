@@ -5,7 +5,6 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from logging import Logger, getLogger
-from typing import Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -25,7 +24,7 @@ PRODUCT_CODE_REGEX = "^[A-Z]-[0-9A-Z]+-(?P<product_code>[A-Z0-9-]+)-[A-Z]$"
 class Product:
     tariff_code: str
     valid_from: datetime
-    valid_to: Optional[datetime]
+    valid_to: datetime | None
 
 
 class AgileClient:
@@ -54,7 +53,7 @@ class AgileClient:
     async def close(self) -> None:
         await self._client.aclose()
 
-    def _get_price_period(self) -> Tuple[datetime, datetime]:
+    def _get_price_period(self) -> tuple[datetime, datetime]:
         _uk_tz = ZoneInfo("Europe/London")
         _utc_tz = ZoneInfo("UTC")
 
@@ -64,8 +63,8 @@ class AgileClient:
         return datetime.now(_utc_tz), _period_to.astimezone(_utc_tz)
 
     def _find_active_tariff(
-        self, electricity_meter_points: List[Dict]
-    ) -> Tuple[str, str]:
+        self, electricity_meter_points: list[dict]
+    ) -> tuple[str, str]:
         if len(electricity_meter_points) > 1:
             raise NotImplementedError("Unable to handle multiple MPANs.")
 
@@ -137,13 +136,12 @@ class AgileClient:
                 _electricity_meter_information
             )
         except Exception as e:
-            if _response:
-                if _response.status_code != 200:
-                    _response_json = _response.json()
-                    raise APIError(_response_json)
-            raise Exception(f"Failed to fetch account/meter information: {e}.") from e
+            if _response and _response.status_code != 200:
+                _response_json = _response.json()
+                raise APIError(_response_json)
+            raise APIError(f"Failed to fetch account/meter information: {e}.") from e
 
-    def _to_upcoming_prices_list(self, results: List[Dict]) -> List[Price]:
+    def _to_upcoming_prices_list(self, results: list[dict]) -> list[Price]:
         _prices = [
             Price(
                 value_exc_vat=r["value_exc_vat"],
@@ -157,7 +155,7 @@ class AgileClient:
         return _prices
 
     @retry()
-    async def get_upcoming_prices(self) -> List[Price]:
+    async def get_upcoming_prices(self) -> list[Price]:
         await self._get_active_tariff()
         _api_endpoint = (
             self._base_url
@@ -194,22 +192,19 @@ class AgileClient:
                 _prices.extend(
                     self._to_upcoming_prices_list(_response.json()["results"])
                 )
-                _page_remaining = True if _next else False
+                _page_remaining = bool(_next)
 
             logger.debug(f"Retrieved {len(_prices)} Agile price periods.")
             return _prices
 
         except Exception as e:
-            if _response:
-                if _response.status_code != 200:
-                    _response_json = _response.json()
-                    raise APIError(_response_json)
-            raise Exception(f"Failed to fetch upcoming Agile prices: {e}.") from e
+            if _response and _response.status_code != 200:
+                _response_json = _response.json()
+                raise APIError(_response_json)
+            raise APIError(f"Failed to fetch upcoming Agile prices: {e}.") from e
 
     @retry()
-    async def _get_next_price_page(
-        self, url: str
-    ) -> Tuple[Optional[str], httpx.Response]:
+    async def _get_next_price_page(self, url: str) -> tuple[str | None, httpx.Response]:
         _response = None
         try:
             _response = await self._client.get(url=url, timeout=10)
@@ -217,10 +212,9 @@ class AgileClient:
             _response_json = _response.json()
             return _response_json["next"], _response
         except Exception as e:
-            if _response:
-                if _response.status_code != 200:
-                    _response_json = _response.json()
-                    raise APIError(_response_json)
-            raise Exception(
+            if _response and _response.status_code != 200:
+                _response_json = _response.json()
+                raise APIError(_response_json)
+            raise APIError(
                 f"Failed to fetch next page of upcoming Agile prices: {e}."
             ) from e
