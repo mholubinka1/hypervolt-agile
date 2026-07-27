@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging.config
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from logging import Logger, getLogger
-from typing import Awaitable, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from common.constants import APP_NAME, PILOT_UNPLUG_CONFIRMATION_SECS
@@ -33,7 +33,7 @@ def _generate_id() -> str:
 class HypervoltProtocol:
     def __init__(
         self,
-        send_message: Callable[[Dict], Awaitable[None]],
+        send_message: Callable[[dict], Awaitable[None]],
         on_state_update: HypervoltChargerStateUpdateCallback,
         is_connected: asyncio.Event,
     ) -> None:
@@ -42,9 +42,9 @@ class HypervoltProtocol:
         self._is_connected = is_connected
         self._reconnecting: bool = False
         self._consecutive_lock_failures: int = 0
-        self._pilot_unplugged_at: Optional[datetime] = None
+        self._pilot_unplugged_at: datetime | None = None
 
-        self._handlers: Dict[str, Callable[..., Awaitable[None]]] = {
+        self._handlers: dict[str, Callable[..., Awaitable[None]]] = {
             "login": self._on_login_response,
             "sync.snapshot": self._on_sync_response,
             "sync.apply": self._on_sync_response,
@@ -62,7 +62,7 @@ class HypervoltProtocol:
             "flex.status": self._on_ignored_message,
         }
 
-    async def handle(self, method: str, result: Dict, id: Optional[str]) -> None:
+    async def handle(self, method: str, result: dict, id: str | None) -> None:
         _handler = self._handlers.get(method)
         if not _handler:
             logger.debug(f"No handler implemented for method {method}.")
@@ -101,7 +101,7 @@ class HypervoltProtocol:
 
     # region Handlers
 
-    async def on_error(self, method: str, error: Dict) -> None:
+    async def on_error(self, method: str, error: dict) -> None:
         if method == "schedule.set":
             logger.warning(f"schedule.set error: {error}.")
             await self._on_state_update(
@@ -120,7 +120,7 @@ class HypervoltProtocol:
         else:
             logger.warning(f"Websocket error for method {method}: {error}.")
 
-    async def _on_login_response(self, result: Dict, id: Optional[str] = None) -> None:
+    async def _on_login_response(self, result: dict, id: str | None = None) -> None:
         if result.get("authenticated"):
             if self._reconnecting:
                 logger.debug("Websocket reconnected.")
@@ -134,7 +134,7 @@ class HypervoltProtocol:
             logger.error("Websocket login failed.")
 
     async def _on_sync_response(
-        self, result: List[Dict[str, str]], id: Optional[str] = None
+        self, result: list[dict[str, str]], id: str | None = None
     ) -> None:
         _response_dict = {key: value for d in result for key, value in d.items()}
         _delta = HypervoltChargerStateDelta(
@@ -168,14 +168,12 @@ class HypervoltProtocol:
         )
         await self._on_state_update(_delta)
 
-    async def _on_session_response(
-        self, result: Dict, id: Optional[str] = None
-    ) -> None:
+    async def _on_session_response(self, result: dict, id: str | None = None) -> None:
         _delta = HypervoltChargerStateDelta(is_charging=result.get("charging"))
         await self._on_state_update(_delta)
 
     async def _on_pilot_status_response(
-        self, result: Dict, id: Optional[str] = None
+        self, result: dict, id: str | None = None
     ) -> None:
         _pilot = (
             result.get("pilot_status") or result.get("composite_pilot_status", "")[:1]
@@ -198,7 +196,7 @@ class HypervoltProtocol:
                 )
 
     async def _on_schedule_set_response(
-        self, result: Dict, id: Optional[str] = None
+        self, result: dict, id: str | None = None
     ) -> None:
         if result.get("applied"):
             _sessions = []
@@ -223,7 +221,7 @@ class HypervoltProtocol:
             logger.error(f"Schedule not applied: id={id}, result={result}")
 
     async def _on_schedules_get_response(
-        self, result: Dict, id: Optional[str] = None
+        self, result: dict, id: str | None = None
     ) -> None:
         _applied = result.get("applied") if result else None
         if not _applied:
@@ -257,14 +255,14 @@ class HypervoltProtocol:
                 )
             )
 
-    async def _on_ignored_message(self, result: Dict, id: Optional[str] = None) -> None:
+    async def _on_ignored_message(self, result: dict, id: str | None = None) -> None:
         pass
 
     # endregion
 
     # region Helpers
 
-    def _parse_sessions(self, applied: Dict) -> List[HypervoltSession]:
+    def _parse_sessions(self, applied: dict) -> list[HypervoltSession]:
         _sessions = []
         for _s in applied.get("sessions", []):
             try:

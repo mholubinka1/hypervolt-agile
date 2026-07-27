@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import logging.config
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from functools import wraps
 from logging import Logger, getLogger
 from typing import (
     Any,
-    Callable,
-    Dict,
-    Optional,
 )
 from zoneinfo import ZoneInfo
 
@@ -46,7 +44,7 @@ class HypervoltRestClient:
 
     access_token: str
     _access_token_expiry_time: datetime
-    _refresh_token: Optional[str] = None
+    _refresh_token: str | None = None
 
     _client: httpx.AsyncClient
 
@@ -124,7 +122,7 @@ class HypervoltRestClient:
         _response_json = _response.json()
         self._update_tokens(_response_json)
 
-    def _update_tokens(self, response_json: Dict) -> None:
+    def _update_tokens(self, response_json: dict) -> None:
         self.access_token = response_json["access_token"]
         self._refresh_token = response_json["refresh_token"]
 
@@ -134,7 +132,6 @@ class HypervoltRestClient:
         )
 
         self._client.headers["authorization"] = f"Bearer {self.access_token}"
-        return
 
     # endregion
 

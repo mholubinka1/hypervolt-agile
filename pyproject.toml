@@ -20,7 +20,7 @@ pydantic = "^2.12.5"
 isort = "^8.0.1"
 black = "^26.3.1"
 mypy = ">=1.8,<3.0"
-ruff = "^0.15.8"
+ruff = "^0.16.0"
 pre-commit = "^4.3.0"
 types-pyyaml = "^6.0.12.20250915"
 bandit = {version = "^1.9.4", extras = ["toml"]}
@@ -28,6 +28,15 @@ bandit = {version = "^1.9.4", extras = ["toml"]}
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff.lint]
+# BLE001 (blind except Exception) is disabled repo-wide: every hit is a caller-supplied
+# callable or a top-level entrypoint/reconnect boundary where no narrower exception type
+# exists to catch, so the rule adds noise rather than catching real bugs here.
+# I001 (import sorting) is disabled: isort --profile black already owns import order in
+# CI, and it disagrees with ruff's isort implementation on a couple of groupings, so
+# running both fights over the same job.
+ignore = ["BLE001", "I001"]
 
 [tool.mypy]
 plugins = ["pydantic.mypy"]

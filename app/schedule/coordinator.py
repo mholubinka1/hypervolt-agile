@@ -1,7 +1,6 @@
 import logging.config
 from datetime import datetime, timedelta
 from logging import Logger, getLogger
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 from common.constants import APP_NAME, SESSION_CLOCK_OFFSET_MINS
@@ -20,10 +19,10 @@ class ScheduleCoordinator:
     def __init__(self, scheduler: Scheduler, config: AppConfig) -> None:
         self._scheduler = scheduler
         self._config = config
-        self._charger_client: Optional[HypervoltChargerClient] = None
-        self._car_was_plugged: Optional[bool] = None
-        self._was_connected: Optional[bool] = None
-        self._disconnected_at: Optional[datetime] = None
+        self._charger_client: HypervoltChargerClient | None = None
+        self._car_was_plugged: bool | None = None
+        self._was_connected: bool | None = None
+        self._disconnected_at: datetime | None = None
 
     async def close(self) -> None:
         if self._charger_client:
@@ -35,8 +34,8 @@ class ScheduleCoordinator:
                 self._charger_client = await HypervoltChargerClient.create(
                     config=self._config
                 )
-            except Exception as e:
-                logger.exception(f"Failed to initialise charger client: {e}")
+            except Exception:
+                logger.exception("Failed to initialise charger client.")
                 return
         try:
             _car_plugged = self._charger_client.charger_state.car_plugged
@@ -64,8 +63,8 @@ class ScheduleCoordinator:
             if self._can_push():
                 await self._apply_charging_schedule()
                 await self._lock_control()
-        except Exception as e:
-            logger.exception(f"Error in schedule coordinator run loop: {e}")
+        except Exception:
+            logger.exception("Error in schedule coordinator run loop.")
 
     def _can_push(self) -> bool:
         if self._charger_client is None:

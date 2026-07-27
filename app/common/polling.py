@@ -1,9 +1,10 @@
 import asyncio
 import logging.config
 import time
+from collections.abc import Awaitable, Callable
 from inspect import iscoroutinefunction
 from logging import Logger, getLogger
-from typing import Any, Awaitable, Callable, Optional, Union
+from typing import Any
 
 from common.constants import APP_NAME
 from common.logging import config
@@ -11,8 +12,8 @@ from common.logging import config
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
-TaskType = Union[Callable[[], None], Callable[[], Awaitable[None]]]
-OnTickType = Optional[Callable[[], Any]]
+TaskType = Callable[[], None] | Callable[[], Awaitable[None]]
+OnTickType = Callable[[], Any] | None
 
 
 async def every(delay: float, task: TaskType, on_tick: OnTickType = None) -> None:
@@ -25,11 +26,11 @@ async def every(delay: float, task: TaskType, on_tick: OnTickType = None) -> Non
                 await task()  # Run async function in new event loop
             else:
                 task()
-        except Exception as e:
-            logger.exception(f"Unhandled exception in scheduled task: {e}")
+        except Exception:
+            logger.exception("Unhandled exception in scheduled task.")
         if on_tick:
             try:
                 on_tick()
-            except Exception as e:
-                logger.exception(f"Unhandled exception in tick callback: {e}")
+            except Exception:
+                logger.exception("Unhandled exception in tick callback.")
         _next += (time.time() - _next) // delay * delay + delay

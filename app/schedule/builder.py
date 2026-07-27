@@ -4,7 +4,6 @@ import logging.config
 import math
 from datetime import datetime, timedelta
 from logging import Logger, getLogger
-from typing import List, Optional, Tuple
 
 from common.constants import APP_NAME, ELECTRICITY_VAT_RATE, SESSION_CLOCK_OFFSET_MINS
 from common.logging import config
@@ -24,7 +23,7 @@ class ScheduleBuilder:
         )
         self._limit_exc_vat = limit_exc_vat
 
-    def build(self, prices: List[Price]) -> Tuple[List[ChargeSession], Optional[float]]:
+    def build(self, prices: list[Price]) -> tuple[list[ChargeSession], float | None]:
         _lowest_prices = self._select_cheapest(prices)
         if len(_lowest_prices) < self._charging_periods:
             logger.warning(
@@ -40,16 +39,16 @@ class ScheduleBuilder:
         )
         return self._merge_periods(_lowest_prices), _average_schedule_price
 
-    def _select_cheapest(self, prices: List[Price]) -> List[Price]:
+    def _select_cheapest(self, prices: list[Price]) -> list[Price]:
         _filtered = [p for p in prices if p.value_exc_vat < self._limit_exc_vat]
         _sorted = sorted(_filtered, key=lambda p: p.value_exc_vat)
         return _sorted[: self._charging_periods]
 
-    def _merge_periods(self, price_periods: List[Price]) -> List[ChargeSession]:
+    def _merge_periods(self, price_periods: list[Price]) -> list[ChargeSession]:
         if not price_periods:
             return []
         _sorted = sorted(price_periods, key=lambda p: p.valid_from)
-        _groups: List[Tuple[datetime, datetime, List[Price]]] = []
+        _groups: list[tuple[datetime, datetime, list[Price]]] = []
         _current_start = _sorted[0].valid_from
         _current_end = _sorted[0].valid_to
         _current_prices = [_sorted[0]]

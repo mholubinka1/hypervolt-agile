@@ -1,7 +1,4 @@
-from typing import Optional
-
-
-def is_null_or_empty(s: Optional[str]) -> bool:
+def is_null_or_empty(s: str | None) -> bool:
     if not s:
         return True
     return s.strip() == ""

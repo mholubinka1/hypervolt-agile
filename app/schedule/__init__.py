@@ -1,7 +1,6 @@
 import logging.config
 from datetime import datetime, timedelta
 from logging import Logger, getLogger
-from typing import List, Optional
 from zoneinfo import ZoneInfo
 
 from common.constants import APP_NAME, ELECTRICITY_VAT_RATE, TIMEZONE
@@ -26,20 +25,20 @@ class Scheduler:
             limit_exc_vat=config.schedule.limit / ELECTRICITY_VAT_RATE,
         )
 
-        self._agile_prices: List[Price] = []
+        self._agile_prices: list[Price] = []
         self._time_until: datetime = datetime.now(ZoneInfo("UTC"))
-        self._last_schedule_update: Optional[datetime] = None
-        self._last_schedule_verify: Optional[datetime] = None
-        self._schedule: List[ChargeSession] = []
-        self._average_price_per_kwh: Optional[float] = None
+        self._last_schedule_update: datetime | None = None
+        self._last_schedule_verify: datetime | None = None
+        self._schedule: list[ChargeSession] = []
+        self._average_price_per_kwh: float | None = None
         self._invalidated: bool = False
 
     @property
-    def schedule(self) -> List[ChargeSession]:
+    def schedule(self) -> list[ChargeSession]:
         return self._schedule
 
     @property
-    def average_price_per_kwh(self) -> Optional[float]:
+    def average_price_per_kwh(self) -> float | None:
         return self._average_price_per_kwh
 
     @property
@@ -114,8 +113,8 @@ class Scheduler:
             for session in self._schedule:
                 logger.info(f"Session: {session.format(self._timezone)}.")
             self._invalidated = False
-        except Exception as e:
-            logger.exception(f"Failed to rebuild schedule on car plugged in: {e}")
+        except Exception:
+            logger.exception("Failed to rebuild schedule on car plugged in.")
 
     async def _rebuild_on_new_prices(self) -> None:
         try:
@@ -138,5 +137,5 @@ class Scheduler:
             logger.info(f"New schedule created: {len(self._schedule)} sessions.")
             for session in self._schedule:
                 logger.info(f"Session: {session.format(self._timezone)}.")
-        except Exception as e:
-            logger.exception(f"Failed to create charging schedule: {e}")
+        except Exception:
+            logger.exception("Failed to create charging schedule.")
