@@ -15,11 +15,12 @@ Widen `handle()`'s `result` parameter to accurately reflect that its shape varie
 
 ## Implementation Decisions
 
-- **Module changed**: `app/hypervolt/client/protocol.py` only.
-- **Interface change**: `handle(self, method: str, result: dict, id: str | None)` → `handle(self, method: str, result: dict | list[dict[str, Any]], id: str | None)`.
+- **Application code changed**: `app/hypervolt/client/protocol.py` only (this PR also adds its own spec/issue docs under `.agent-docs/`, per the repo's standard workflow).
+- **Interface change**: `handle(self, method: str, result: dict, id: str | None)` → `handle(self, method: str, result: dict[str, Any] | list[dict[str, Any]], id: str | None)`.
   - Rejected: a fully type-safe per-method dispatch (e.g. overloads or a typed protocol keyed by method) that would let mypy verify each handler's parameter type — ruled out as unnecessary machinery for a 14-entry internal dispatch table.
   - Rejected (caught in review): a top-level `| Any` for "other shapes the API may send" — every one of the 14 dispatched methods needs exactly `dict` or `list[dict[str, Any]]` and nothing else, so a speculative `Any` on top added no real coverage and, since mypy treats `X | Any` as absorbed into `Any` for assignability, gave no more type-checking power than the plain-`Any` alternative the spec explicitly rejected.
   - Rejected (caught in review): `list[dict[str, str]]` for the sync methods — the observed wire example shows values of mixed types (float, str, int, list, bool), so `str` was a second dishonest type introduced by the same PR meant to remove one. Corrected to `list[dict[str, Any]]`.
+  - Also caught in review: the `dict` arm was left unparameterised while the `list` arm was fully parameterised. JSON object keys are always `str`, so tightened to `dict[str, Any]` for consistency.
   - Also caught in review: the original comment and this spec cited `.reference/hypervolt_api_client.py` as the source of truth, but `.reference/` is gitignored and not part of this repository's checkout — an unverifiable citation for anyone but the author. Replaced with an inline example of the actual observed payload shape (see Problem Statement above) so the claim stands on its own.
 - `_on_sync_response`'s own parameter type had the identical `list[dict[str, str]]` mistake (pre-existing, from the ruff 0.16 upgrade's mechanical typing pass) — fixed to `list[dict[str, Any]]` alongside `handle()` for consistency, since leaving it wrong right next to the corrected line would reintroduce the exact problem this change fixes.
 - `.agent-docs/context.md` is not updated: the varying wire-format shape is an implementation detail of the protocol, not domain terminology, and the glossary format explicitly excludes implementation details.

@@ -17,10 +17,10 @@ Correction after Copilot review: the original comment/spec/issue cited `.referen
 ### Acceptance criteria
 
 - [ ] `handle()`'s `result` parameter type no longer asserts `dict` for methods that actually return a list
-- [ ] `result`'s type does not contain a speculative `Any` where every dispatched method's real shape is already known (`dict` or `list[dict[str, Any]]`)
+- [ ] `result`'s type does not contain a speculative `Any` where every dispatched method's real shape is already known (`dict[str, Any]` or `list[dict[str, Any]]`)
 - [ ] A comment on `handle()` documents the per-method shape variance with a concrete, in-repo-verifiable example
 - [ ] `poetry run mypy app` passes
 - [ ] Full pre-commit hook suite (ruff, isort --profile black, black, mypy, bandit) passes on the changed file
-- [ ] No other file changes beyond `protocol.py`; no behaviour change
+- [ ] No other application code changes beyond `protocol.py`; no behaviour change
 
 ---

@@ -64,7 +64,7 @@ class HypervoltProtocol:
         }
 
     async def handle(
-        self, method: str, result: dict | list[dict[str, Any]], id: str | None
+        self, method: str, result: dict[str, Any] | list[dict[str, Any]], id: str | None
     ) -> None:
         # Result shape depends on method: most responses are a dict, but
         # sync.snapshot/sync.apply return a list of single-key dicts with
