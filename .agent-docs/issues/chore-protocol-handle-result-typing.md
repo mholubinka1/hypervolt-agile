@@ -1,5 +1,7 @@
 # Issues: chore/protocol-handle-result-typing
 
+> Work complete — PR ready to merge.
+
 ## Fix HypervoltProtocol.handle result type annotation
 
 **Issue**: #51
@@ -16,11 +18,11 @@ Correction after Copilot review: the original comment/spec/issue cited `.referen
 
 ### Acceptance criteria
 
-- [ ] `handle()`'s `result` parameter type no longer asserts `dict` for methods that actually return a list
-- [ ] `result`'s type does not contain a speculative `Any` where every dispatched method's real shape is already known (`dict[str, Any]` or `list[dict[str, Any]]`)
-- [ ] A comment on `handle()` documents the per-method shape variance with a concrete, in-repo-verifiable example
-- [ ] `poetry run mypy app` passes
-- [ ] Full pre-commit hook suite (ruff, isort --profile black, black, mypy, bandit) passes on the changed file
-- [ ] No other application code changes beyond `protocol.py`; no behaviour change
+- [x] `handle()`'s `result` parameter type no longer asserts `dict` for methods that actually return a list
+- [x] `result`'s type does not contain a speculative `Any` where every dispatched method's real shape is already known (`dict[str, Any]` or `list[dict[str, Any]]`)
+- [x] A comment on `handle()` documents the per-method shape variance with a concrete, in-repo-verifiable example
+- [x] `poetry run mypy app` passes
+- [x] Full pre-commit hook suite (ruff, isort --profile black, black, mypy, bandit) passes on the changed file
+- [x] No other application code changes beyond `protocol.py`; no behaviour change
 
 ---
