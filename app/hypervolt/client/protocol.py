@@ -5,6 +5,7 @@ import logging.config
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from logging import Logger, getLogger
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from common.constants import APP_NAME, PILOT_UNPLUG_CONFIRMATION_SECS
@@ -62,7 +63,12 @@ class HypervoltProtocol:
             "flex.status": self._on_ignored_message,
         }
 
-    async def handle(self, method: str, result: dict, id: str | None) -> None:
+    async def handle(
+        self, method: str, result: dict | list[dict[str, str]] | Any, id: str | None
+    ) -> None:
+        # Result shape depends on method: most responses are a dict, but
+        # sync.snapshot/sync.apply return a list of single-key dicts (see
+        # _on_sync_response). Any covers other shapes the API may send.
         _handler = self._handlers.get(method)
         if not _handler:
             logger.debug(f"No handler implemented for method {method}.")
