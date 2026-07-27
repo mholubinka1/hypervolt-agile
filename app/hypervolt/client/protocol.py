@@ -64,11 +64,12 @@ class HypervoltProtocol:
         }
 
     async def handle(
-        self, method: str, result: dict | list[dict[str, str]] | Any, id: str | None
+        self, method: str, result: dict | list[dict[str, Any]], id: str | None
     ) -> None:
         # Result shape depends on method: most responses are a dict, but
-        # sync.snapshot/sync.apply return a list of single-key dicts (see
-        # _on_sync_response). Any covers other shapes the API may send.
+        # sync.snapshot/sync.apply return a list of single-key dicts with
+        # mixed-type values (see .reference/hypervolt_api_client.py and
+        # _on_sync_response).
         _handler = self._handlers.get(method)
         if not _handler:
             logger.debug(f"No handler implemented for method {method}.")
@@ -140,7 +141,7 @@ class HypervoltProtocol:
             logger.error("Websocket login failed.")
 
     async def _on_sync_response(
-        self, result: list[dict[str, str]], id: str | None = None
+        self, result: list[dict[str, Any]], id: str | None = None
     ) -> None:
         _response_dict = {key: value for d in result for key, value in d.items()}
         _delta = HypervoltChargerStateDelta(

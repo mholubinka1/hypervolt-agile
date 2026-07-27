@@ -6,7 +6,7 @@
 
 ## Solution
 
-Widen `handle()`'s `result` parameter to accurately reflect that its shape varies by method — `dict` for most, `list[dict[str, str]]` for the two sync methods, and potentially other JSON shapes the Hypervolt API could send. A short comment on the method documents which methods return which shape and why the type is permissive. No behaviour changes.
+Widen `handle()`'s `result` parameter to accurately reflect that its shape varies by method — `dict` for most, `list[dict[str, Any]]` for the two sync methods (the reference wire example has mixed-type values — float, str, int, list, bool — so `str` alone would be a second dishonest type). A short comment on the method documents which methods return which shape, citing `.reference/hypervolt_api_client.py`. No behaviour changes.
 
 ## User Stories
 
@@ -16,10 +16,11 @@ Widen `handle()`'s `result` parameter to accurately reflect that its shape varie
 ## Implementation Decisions
 
 - **Module changed**: `app/hypervolt/client/protocol.py` only.
-- **Interface change**: `handle(self, method: str, result: dict, id: str | None)` → `handle(self, method: str, result: dict | list[dict[str, str]] | Any, id: str | None)`.
+- **Interface change**: `handle(self, method: str, result: dict, id: str | None)` → `handle(self, method: str, result: dict | list[dict[str, Any]], id: str | None)`.
   - Rejected: a fully type-safe per-method dispatch (e.g. overloads or a typed protocol keyed by method) that would let mypy verify each handler's parameter type — ruled out as unnecessary machinery for a 14-entry internal dispatch table.
-  - Rejected: annotating as plain `Any` — chosen against in favour of a union that documents the two concretely-known shapes (`dict`, `list[dict[str, str]]`) alongside `Any` for anything else, so the annotation itself carries information for a reader rather than erasing it.
-- Individual handler methods (`_on_sync_response`, `_on_login_response`, etc.) keep their existing, already-accurate parameter types — only the dispatch entry point's signature was wrong.
+  - Rejected (caught in review): a top-level `| Any` for "other shapes the API may send" — every one of the 14 dispatched methods needs exactly `dict` or `list[dict[str, Any]]` and nothing else, so a speculative `Any` on top added no real coverage and, since mypy treats `X | Any` as absorbed into `Any` for assignability, gave no more type-checking power than the plain-`Any` alternative the spec explicitly rejected.
+  - Rejected (caught in review): `list[dict[str, str]]` for the sync methods — the reference wire example (`.reference/hypervolt_api_client.py:432`) shows values of mixed types (float, str, int, list, bool), so `str` was a second dishonest type introduced by the same PR meant to remove one. Corrected to `list[dict[str, Any]]`.
+- `_on_sync_response`'s own parameter type had the identical `list[dict[str, str]]` mistake (pre-existing, from the ruff 0.16 upgrade's mechanical typing pass) — fixed to `list[dict[str, Any]]` alongside `handle()` for consistency, since leaving it wrong right next to the corrected line would reintroduce the exact problem this change fixes.
 - `.agent-docs/context.md` is not updated: the varying wire-format shape is an implementation detail of the protocol, not domain terminology, and the glossary format explicitly excludes implementation details.
 - No ADR: the change is trivially reversible (a type annotation and a comment), so it doesn't meet the "hard to reverse" bar.
 
