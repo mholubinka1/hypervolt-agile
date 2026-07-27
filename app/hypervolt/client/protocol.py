@@ -5,6 +5,7 @@ import logging.config
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from logging import Logger, getLogger
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from common.constants import APP_NAME, PILOT_UNPLUG_CONFIRMATION_SECS
@@ -62,7 +63,14 @@ class HypervoltProtocol:
             "flex.status": self._on_ignored_message,
         }
 
-    async def handle(self, method: str, result: dict, id: str | None) -> None:
+    async def handle(
+        self, method: str, result: dict[str, Any] | list[dict[str, Any]], id: str | None
+    ) -> None:
+        # Result shape depends on method: most responses are a dict, but
+        # sync.snapshot/sync.apply return a list of single-key dicts with
+        # mixed-type values, e.g. [{"brightness": 0.25}, {"lock_state":
+        # "unlocked"}, {"max_current": 32000}, {"features": ["super_eco"]},
+        # {"random_start": True}] — see _on_sync_response.
         _handler = self._handlers.get(method)
         if not _handler:
             logger.debug(f"No handler implemented for method {method}.")
@@ -134,7 +142,7 @@ class HypervoltProtocol:
             logger.error("Websocket login failed.")
 
     async def _on_sync_response(
-        self, result: list[dict[str, str]], id: str | None = None
+        self, result: list[dict[str, Any]], id: str | None = None
     ) -> None:
         _response_dict = {key: value for d in result for key, value in d.items()}
         _delta = HypervoltChargerStateDelta(
