@@ -76,7 +76,10 @@ credits on every push regardless of intent.
   `ubuntu-latest` — no self-hosted migration, since that was never in scope here (unlike the
   `octopus-monitoring` precedent, this repo's `ci-checks.yml` was never exploitable and moving
   it to self-hosted infrastructure is a separate cost/architecture decision, not part of this
-  security pass).
+  security pass). The checkout step's `ref: ${{ github.event.pull_request.head.sha ||
+  github.sha }}` override is also removed — it's dead once `pull_request` is gone (the
+  expression always resolved to `github.sha` on `push` events anyway), so this is inert
+  cleanup, not a behavioural change.
 - No `ci-fork-checks.yml`, no composite action — there is nothing to fall back to and nothing
   to deduplicate, since no second workflow exists.
 - **`.github/CODEOWNERS`**: single line, `* @mholubinka1`.

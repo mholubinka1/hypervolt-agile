@@ -19,3 +19,10 @@ type-check, security scan, or Docker build — until the owner chooses to pull i
 of this repo. The alternative (a `ci-fork-checks.yml` gated on `head.repo.full_name !=
 github.repository`, as done on `octopus-monitoring`) was considered and rejected as
 unnecessary complexity for a repo where outside contribution isn't a goal.
+
+**Known residual gap, accepted rather than fixed**: `ci-arm64.yml`'s Docker build/push step is
+still unconditional (`push: true`, `branches: ['**']`) — any push by a repo collaborator to any
+branch publishes an image to Docker Hub, pre-existing behaviour this pass didn't touch. That's
+a separate, non-fork-related concern from the exposure this ADR addresses (it requires push
+access to this repo, which a fork PR alone never grants) and is left as a future cleanup if it
+ever becomes a problem.
