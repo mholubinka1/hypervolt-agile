@@ -26,3 +26,16 @@ branch publishes an image to Docker Hub, pre-existing behaviour this pass didn't
 a separate, non-fork-related concern from the exposure this ADR addresses (it requires push
 access to this repo, which a fork PR alone never grants) and is left as a future cleanup if it
 ever becomes a problem.
+
+**Post-merge verification**: confirmed on a real PR against `main` after this change merged
+(PR #64) — `ci-arm64.yml`/`ci-checks.yml` did not run on the `pull_request` event, and the
+`push` run's status checks attached correctly to the PR. CODEOWNERS reviewer auto-assignment
+did **not** trigger, because GitHub never requests a review from a PR's own author — and on
+this repo the sole code owner (`* @mholubinka1`) is also always the PR author. This isn't a
+misconfiguration: the ruleset's `require_code_owner_review` still shows in the PR's merge
+requirements, but in practice it's satisfied by the same owner-bypass behaviour already
+confirmed on `octopus-monitoring` (merge proceeds with `mergeStateStatus: CLEAN`, no approving
+review recorded), not by an actual reviewer being requested or by a real approval. The
+practical effect of this ruleset rule on a solo-maintainer repo is closer to documentation of
+intent than an enforced review gate — worth knowing if a second maintainer is ever added,
+since only then would CODEOWNERS actually start requesting a live review.
