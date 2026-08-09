@@ -106,10 +106,35 @@ existing "no tests, verify by execution" convention:
   its `on:` block anymore.
 - After the ruleset edit: `gh api repos/mholubinka1/hypervolt-agile/rulesets/16484655` shows
   `require_code_owner_review: true` and no `copilot_code_review` rule present.
-- After CODEOWNERS: confirmed present with correct content; reviewer auto-assignment verified
-  on the next real PR post-merge (recorded as a follow-up, not verifiable pre-merge).
+- After CODEOWNERS: confirmed present with correct content.
 - After deleting `auto_request_review.yml`: confirm it no longer appears in
   `gh workflow list` (deleted, not just disabled).
+
+## Final Verified State (post-merge, PR #63 + #64)
+
+All items above shipped as planned, with one correction to an assumption made during
+planning:
+
+- ✅ `push`-only triggers confirmed on a real PR (#64): no `pull_request`-triggered runs
+  fired for `ci-arm64.yml` or `ci-checks.yml`; the `push` run's status checks attached
+  correctly to the PR.
+- ✅ Ruleset `16484655` confirmed via `gh api`: `require_code_owner_review: true`,
+  `required_approving_review_count: 0`, no `copilot_code_review` rule present.
+- ✅ `.github/CODEOWNERS` present with `* @mholubinka1`; `auto_request_review.yml` and
+  `.github/reviewers.yml` deleted.
+- ⚠️ **Correction**: the plan assumed CODEOWNERS would auto-assign `mholubinka1` as
+  reviewer on the next real PR. It does not — GitHub hard-blocks requesting a review from a
+  PR's own author, confirmed both via CODEOWNERS and a direct manual
+  `gh pr edit --add-reviewer` API call (which silently no-ops). On a repo where the sole
+  CODEOWNER is also always the PR author, `require_code_owner_review` never produces a live
+  review request or a formal approval — merges proceed via the owner's ruleset-bypass
+  privilege on personal repos (same behaviour already proven on `octopus-monitoring`). The
+  rule functions as documentation of intent, not an enforced gate, unless a second
+  maintainer is ever added. A side effect: PRs opened by the owner never appear in GitHub's
+  "Needs your review" dashboard bucket, only "Waiting for review or checks" — this is a
+  platform limitation, not something fixable via configuration.
+- ⏳ **Still outstanding** (manual-only, no API exists): "Require approval for all outside
+  collaborators" under Settings → Actions → General.
 
 ## Out of Scope
 
