@@ -1,5 +1,7 @@
 # Issues: chore-cicd-copilot-pipeline-hardening
 
+> Work complete — PR ready to merge.
+
 ## Close the self-hosted runner exposure and drop redundant hosted PR runs (#59)
 
 **Blocked by**: None
@@ -19,12 +21,12 @@ status checks still attach correctly via SHA-matching on `push`.
 
 ### Acceptance criteria
 
-- [ ] `ci-arm64.yml`: `on:` is `push` only; runner label and build/push steps unchanged
-- [ ] `ci-checks.yml`: `on:` is `push` only; runner (`ubuntu-latest`) and all steps unchanged
-- [ ] No new fork-PR fallback workflow exists
-- [ ] New ADR added to `.agent-docs/adr/` documenting the push-only + no-fork-coverage
+- [x] `ci-arm64.yml`: `on:` is `push` only; runner label and build/push steps unchanged
+- [x] `ci-checks.yml`: `on:` is `push` only; runner (`ubuntu-latest`) and all steps unchanged
+- [x] No new fork-PR fallback workflow exists
+- [x] New ADR added to `.agent-docs/adr/` documenting the push-only + no-fork-coverage
       decision
-- [ ] A real push on this branch triggers both workflows successfully (`gh run watch`)
+- [x] A real push on this branch triggers both workflows successfully (`gh run watch`)
 
 ---
 
@@ -45,8 +47,8 @@ ruleset on a personal repo despite GitHub blocking self-approval.
 
 ### Acceptance criteria
 
-- [ ] `.github/CODEOWNERS` contains `* @mholubinka1`
-- [ ] Ruleset `16484655`'s `pull_request` rule has `require_code_owner_review: true`,
+- [x] `.github/CODEOWNERS` contains `* @mholubinka1`
+- [x] Ruleset `16484655`'s `pull_request` rule has `require_code_owner_review: true`,
       `required_approving_review_count: 0`, all other parameters unchanged (verified via
       `gh api repos/mholubinka1/hypervolt-agile/rulesets/16484655`)
 
@@ -65,7 +67,7 @@ leaving on-demand/manual Copilot review untouched.
 
 ### Acceptance criteria
 
-- [ ] Ruleset `16484655`'s `rules` array no longer contains a `copilot_code_review` entry
+- [x] Ruleset `16484655`'s `rules` array no longer contains a `copilot_code_review` entry
       (verified via `gh api`)
 
 ---
@@ -86,10 +88,10 @@ PR post-merge, since this can't be proven from inside this PR.
 
 ### Acceptance criteria
 
-- [ ] `auto_request_review.yml` disabled via `gh api` before deletion
-- [ ] `.github/workflows/auto_request_review.yml` deleted
-- [ ] `.github/reviewers.yml` deleted
-- [ ] Follow-up note recorded: after this PR merges, confirm `mholubinka1` is auto-assigned
+- [x] `auto_request_review.yml` disabled via `gh api` before deletion
+- [x] `.github/workflows/auto_request_review.yml` deleted
+- [x] `.github/reviewers.yml` deleted
+- [x] Follow-up note recorded: after this PR merges, confirm `mholubinka1` is auto-assigned
       via CODEOWNERS on the next real PR
 
 ---
