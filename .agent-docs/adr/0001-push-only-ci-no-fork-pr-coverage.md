@@ -26,3 +26,8 @@ branch publishes an image to Docker Hub, pre-existing behaviour this pass didn't
 a separate, non-fork-related concern from the exposure this ADR addresses (it requires push
 access to this repo, which a fork PR alone never grants) and is left as a future cleanup if it
 ever becomes a problem.
+
+**Post-merge verification**: confirmed on a real PR against `main` after this change merged —
+`ci-arm64.yml`/`ci-checks.yml` did not run on the `pull_request` event, `mholubinka1` was
+auto-assigned as reviewer via CODEOWNERS, and required status checks from the branch's `push`
+run attached correctly to the PR.
