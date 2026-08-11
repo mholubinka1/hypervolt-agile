@@ -60,5 +60,8 @@ jobs:
           max_attempts: 3
           retry_wait_seconds: 15
           timeout_minutes: 5
+          # Builds from the already-checked-out local context (.), not a remote git#sha
+          # fetch — docker/build-push-action's default remote-fetch behaviour was a prior
+          # source of CI failures. Do not revert to a remote git context.
           command: |
             docker buildx build --push --tag "$DOCKER_IMAGE_TAG" .
