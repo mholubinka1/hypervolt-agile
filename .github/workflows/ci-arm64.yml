@@ -39,6 +39,7 @@ jobs:
         with:
           max_attempts: 3
           retry_wait_seconds: 15
+          timeout_minutes: 5
           command: |
             echo "$DOCKERHUB_TOKEN" | docker login "$DOCKER_REGISTRY" -u "$DOCKERHUB_USERNAME" --password-stdin
 
@@ -58,5 +59,6 @@ jobs:
         with:
           max_attempts: 3
           retry_wait_seconds: 15
+          timeout_minutes: 5
           command: |
             docker buildx build --push --tag "$DOCKER_IMAGE_TAG" .
