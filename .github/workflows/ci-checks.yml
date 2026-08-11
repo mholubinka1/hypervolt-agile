@@ -11,12 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -27,7 +27,7 @@ jobs:
         run: poetry install
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 'lts/*'
 
@@ -56,7 +56,7 @@ jobs:
         run: find . -name "*.md" -not -path "./.git/*" -print0 | xargs -0 -r markdown-link-check --config .markdown-link-check.json
 
       - name: Scan for secrets with gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
