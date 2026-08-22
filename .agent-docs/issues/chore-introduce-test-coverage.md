@@ -1,5 +1,7 @@
 # Issues: chore-introduce-test-coverage
 
+> Work complete — PR ready to merge.
+
 ## Test infrastructure and seeded pure-logic coverage — [#78](https://github.com/mholubinka1/hypervolt-agile/issues/78)
 
 **Blocked by**: None
@@ -18,16 +20,16 @@ positives on test code — mypy can't resolve `app`-rooted imports in isolation,
 
 ### Acceptance criteria
 
-- [ ] `poetry run pytest --cov=app --cov-report=term-missing` runs green locally
-- [ ] Tests cover: config load success, missing section, missing file, blank credentials,
+- [x] `poetry run pytest --cov=app --cov-report=term-missing` runs green locally
+- [x] Tests cover: config load success, missing section, missing file, blank credentials,
       out-of-range schedule fields
-- [ ] Tests cover: schedule builder merging contiguous cheapest periods, keeping non-contiguous
+- [x] Tests cover: schedule builder merging contiguous cheapest periods, keeping non-contiguous
       periods separate, returning nothing when no price is under the limit, rounding up
       fractional half-hour durations
-- [ ] Tests cover: retry decorator recovering after transient failures and raising after
+- [x] Tests cover: retry decorator recovering after transient failures and raising after
       exhausting attempts
-- [ ] Tests cover: `ChargeSession.format` for same-day, overnight, and DST-crossing sessions
-- [ ] `poetry run pre-commit run --all-files` passes
+- [x] Tests cover: `ChargeSession.format` for same-day, overnight, and DST-crossing sessions
+- [x] `poetry run pre-commit run --all-files` passes
 
 ---
 
@@ -47,11 +49,11 @@ A push directly to `main` skips the comparison since it establishes the new base
 
 ### Acceptance criteria
 
-- [ ] CI runs `pytest --cov=app` and produces a JSON coverage report
-- [ ] A branch with coverage >= main's passes the check
-- [ ] A branch with coverage < main's fails the check with a clear error message
-- [ ] A push to `main` itself always passes the check
-- [ ] Verified by direct local execution against real `origin/main` (no pytest test for the
+- [x] CI runs `pytest --cov=app` and produces a JSON coverage report
+- [x] A branch with coverage >= main's passes the check
+- [x] A branch with coverage < main's fails the check with a clear error message
+- [x] A push to `main` itself always passes the check
+- [x] Verified by direct local execution against real `origin/main` (no pytest test for the
       script itself — see spec's Testing Decisions)
 
 ---
