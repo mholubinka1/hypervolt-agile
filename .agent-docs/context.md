@@ -51,6 +51,28 @@ _Avoid_: cancelled, override
 **Car plugged**:
 Whether a vehicle is currently connected to the charger; combined with release state to decide whether the scheduler should act.
 
+## LED Theme Control
+
+**LED Theme**:
+The resolved outcome for "what should the LEDs show right now" — a brightness plus an optional LED Effect — chosen once per poll cycle by walking the priority stack while charging.
+_Avoid_: LED state, lighting mode
+
+**LED Effect**:
+The visual pattern applied to the charger's LEDs: either a built-in effect the charger firmware already knows how to render by name (e.g. `halloween_mode`), or a `steady_array` — an explicit 51-value RGB array the app constructs and sends itself.
+_Avoid_: LED pattern, colour scheme
+
+**Custom theme**:
+An operator-defined LED Effect backed by a static colour YAML file in `led_effects/`, mapped to a year-agnostic date window in `config.yml`. Pure data — no logic, no config of its own.
+_Avoid_: custom effect, theme file
+
+**LED Theme Extension**:
+An operator-registered Python module implementing the `LedThemeProvider` protocol, resolving a theme dynamically (e.g. from a sports fixtures API) rather than from a fixed calendar window. Fully self-contained — each extension operates from its own isolated config, with nothing shared or inherited between extensions.
+_Avoid_: LED plugin, dynamic theme
+
+**Priority stack**:
+The fixed authority order used to resolve which LED Theme applies when multiple sources could match at once: registered extensions (config list order) beat custom themes (config list order) beat built-in presets.
+_Avoid_: resolution order, precedence
+
 ## Boundaries
 
 **Octopus client**:
