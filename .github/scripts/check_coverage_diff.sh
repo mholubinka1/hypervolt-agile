@@ -44,17 +44,26 @@ else
 fi
 echo "Coverage on main: ${main_coverage}%"
 
-# Everything past this point is the deliberate pass/fail policy decision, not an
-# infrastructure failure, so it reports its own dedicated ::error:: rather than
-# the generic one above.
-trap - ERR
-
-python -c "
+# Run as the condition of an `if` so bash's ERR trap exemption rules apply: a
+# deliberate "coverage decreased" exit (code 2, which already printed its own
+# specific ::error::) does not also trigger the generic infra-failure message
+# below, but any other failure inside this block (e.g. a malformed value) still
+# does, since it isn't the exit code we're specifically handling.
+if python -c "
 current = float('${current_coverage}')
 main = float('${main_coverage}')
 print(f'Comparing coverage: {current:.2f}% (this branch) vs {main:.2f}% (main)')
 if current < main:
     print(f'::error::Test coverage decreased from {main:.2f}% (main) to {current:.2f}% (this branch).')
-    raise SystemExit(1)
+    raise SystemExit(2)
 print('Coverage did not decrease.')
-"
+"; then
+    exit 0
+else
+    comparison_exit=$?
+    if [ "${comparison_exit}" -eq 2 ]; then
+        exit 1
+    fi
+    echo "::error::check_coverage_diff.sh failed while comparing coverage percentages — see the output above for the underlying error."
+    exit "${comparison_exit}"
+fi
