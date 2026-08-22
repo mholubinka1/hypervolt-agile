@@ -6,6 +6,15 @@
 # that the checkout has full history (`fetch-depth: 0`) so `origin/main` is available.
 set -euo pipefail
 
+main_worktree=""
+cleanup() {
+    if [ -n "${main_worktree}" ]; then
+        git worktree remove --force "${main_worktree}" 2>/dev/null || rm -rf "${main_worktree}"
+    fi
+}
+trap cleanup EXIT
+trap 'echo "::error::check_coverage_diff.sh failed around line ${LINENO} — see the command output above for the underlying error."' ERR
+
 read_percent_covered() {
     python -c "import json; print(json.load(open('$1'))['totals']['percent_covered'])"
 }
@@ -18,10 +27,9 @@ if [ "${CURRENT_REF_NAME}" = "main" ]; then
     exit 0
 fi
 
-git fetch origin main --quiet
 main_worktree="$(mktemp -d)"
+git fetch origin main --quiet
 git worktree add --quiet --detach "${main_worktree}" origin/main
-trap 'git worktree remove --force "${main_worktree}"' EXIT
 
 if [ -d "${main_worktree}/tests" ]; then
     (
@@ -35,6 +43,11 @@ else
     main_coverage=0
 fi
 echo "Coverage on main: ${main_coverage}%"
+
+# Everything past this point is the deliberate pass/fail policy decision, not an
+# infrastructure failure, so it reports its own dedicated ::error:: rather than
+# the generic one above.
+trap - ERR
 
 python -c "
 current = float('${current_coverage}')

@@ -2,7 +2,6 @@ import pytest
 from common.decorator import retry
 
 
-@pytest.mark.asyncio
 async def test_retry_returns_result_on_first_success() -> None:
     calls = 0
 
@@ -16,7 +15,6 @@ async def test_retry_returns_result_on_first_success() -> None:
     assert calls == 1
 
 
-@pytest.mark.asyncio
 async def test_retry_recovers_after_transient_failures() -> None:
     calls = 0
 
@@ -32,7 +30,6 @@ async def test_retry_recovers_after_transient_failures() -> None:
     assert calls == 3
 
 
-@pytest.mark.asyncio
 async def test_retry_raises_after_exhausting_attempts() -> None:
     calls = 0
 

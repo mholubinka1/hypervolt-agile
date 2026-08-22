@@ -42,3 +42,18 @@ def test_format_converts_to_requested_timezone() -> None:
     # Both instants land on the same local (London) calendar date, 6 July, even
     # though they're on different UTC dates — so the day name is not repeated.
     assert result == "Monday, 00:30 → 02:00 @ £0.1000/kWh inc. VAT"
+
+
+def test_format_session_spanning_the_spring_dst_transition() -> None:
+    # UK clocks go forward at 01:00 UTC on 29 March 2026 (01:00 GMT -> 02:00 BST).
+    # This session starts before the transition and ends after it, so start and
+    # end must each be converted using a *different* UTC offset.
+    session = ChargeSession(
+        start=datetime(2026, 3, 29, 0, 30, tzinfo=ZoneInfo("UTC")),  # 00:30 GMT
+        end=datetime(2026, 3, 29, 2, 0, tzinfo=ZoneInfo("UTC")),  # 03:00 BST
+        average_price_per_kwh=0.12,
+    )
+
+    result = session.format("Europe/London")
+
+    assert result == "Sunday, 00:30 → 03:00 @ £0.1200/kWh inc. VAT"
