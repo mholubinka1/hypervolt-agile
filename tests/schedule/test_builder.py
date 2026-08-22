@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
 from common.model import Price
 from schedule.builder import ScheduleBuilder
 
@@ -31,8 +32,8 @@ def test_build_merges_contiguous_cheapest_periods_into_one_session() -> None:
     session = sessions[0]
     assert session.start == _DAY + timedelta(minutes=1)
     assert session.end == _DAY + timedelta(hours=1) - timedelta(minutes=1)
-    assert session.average_price_per_kwh == 0.1575
-    assert average_price == 0.1575
+    assert session.average_price_per_kwh == pytest.approx(0.1575)
+    assert average_price == pytest.approx(0.1575)
 
 
 def test_build_keeps_non_contiguous_cheapest_periods_as_separate_sessions() -> None:
