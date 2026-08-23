@@ -1,0 +1,5 @@
+name: qe_ii
+default_colour: "#6A0DAD"  # royal purple
+segments:
+  - colour: "#FFD700"  # gold jubilee sash
+    ranges: [[23, 27]]

@@ -1,0 +1,5 @@
+name: diana
+default_colour: "#FFFFFF"  # white
+segments:
+  - colour: "#6CA0DC"  # forget-me-not blue
+    ranges: [[20, 30]]

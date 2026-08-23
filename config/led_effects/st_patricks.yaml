@@ -1,0 +1,7 @@
+name: st_patricks
+default_colour: "#009A44"  # Irish flag green
+segments:
+  - colour: "#FFFFFF"  # Irish flag white
+    ranges: [[17, 33]]
+  - colour: "#FF883E"  # Irish flag orange
+    ranges: [[34, 50]]

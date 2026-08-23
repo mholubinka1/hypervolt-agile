@@ -1,0 +1,5 @@
+name: peace
+default_colour: "#0057B7"  # Ukraine flag blue
+segments:
+  - colour: "#FFD700"  # Ukraine flag yellow
+    ranges: [[26, 50]]
