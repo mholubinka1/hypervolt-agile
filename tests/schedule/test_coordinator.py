@@ -54,6 +54,30 @@ async def test_pushes_zero_brightness_when_charging_stops() -> None:
     charger_client.apply_led_state.assert_awaited_once_with(0.0, None)
 
 
+async def test_pushes_configured_brightness_instead_of_default() -> None:
+    coordinator, charger_client = _coordinator(
+        led=LedConfig(enabled=True, brightness=0.8),
+        is_charging=True,
+        led_brightness=0.0,
+    )
+
+    await coordinator._apply_led_state()
+
+    charger_client.apply_led_state.assert_awaited_once_with(0.8, None)
+
+
+async def test_off_state_ignores_configured_brightness() -> None:
+    coordinator, charger_client = _coordinator(
+        led=LedConfig(enabled=True, brightness=0.8),
+        is_charging=False,
+        led_brightness=1.0,
+    )
+
+    await coordinator._apply_led_state()
+
+    charger_client.apply_led_state.assert_awaited_once_with(0.0, None)
+
+
 async def test_sends_no_led_messages_when_no_led_block_in_config() -> None:
     coordinator, charger_client = _coordinator(
         led=None, is_charging=True, led_brightness=0.0

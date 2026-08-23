@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from config import ConfigLoader, Octopus, Schedule
+from config import ConfigLoader, LedConfig, Octopus, Schedule
 
 _VALID_CONFIG_YAML = """
 octopus:
@@ -83,3 +83,13 @@ def test_schedule_rejects_out_of_range_values(field: str, value: float) -> None:
 
     with pytest.raises(ValidationError):
         Schedule(**values)
+
+
+def test_led_config_defaults_brightness_to_half_when_omitted() -> None:
+    assert LedConfig().brightness == 0.5
+
+
+@pytest.mark.parametrize("brightness", [0, -0.1, 1.1])
+def test_led_config_rejects_out_of_range_brightness(brightness: float) -> None:
+    with pytest.raises(ValidationError):
+        LedConfig(brightness=brightness)

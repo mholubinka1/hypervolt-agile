@@ -76,7 +76,7 @@ class ScheduleCoordinator:
         _state = self._charger_client.charger_state
         if _state.is_charging is None:
             return
-        _brightness = 0.5 if _state.is_charging else 0.0
+        _brightness = _led_config.brightness if _state.is_charging else 0.0
         await self._charger_client.apply_led_state(_brightness, None)
 
     def _can_push(self) -> bool:

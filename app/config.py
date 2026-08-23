@@ -52,6 +52,7 @@ class Schedule(BaseModel):
 
 class LedConfig(BaseModel):
     enabled: bool = True
+    brightness: float = Field(0.5, gt=0, le=1)
 
 
 class AppConfig(BaseModel):
