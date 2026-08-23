@@ -1,5 +1,7 @@
 # Issues: feature-led-brightness-and-builtin-themes
 
+> Work complete — PR ready to merge.
+
 ## Push LED brightness while charging (#75)
 
 **Blocked by**: None
@@ -23,23 +25,23 @@ extends this method rather than reworking it.
 
 ### Acceptance criteria
 
-- [ ] Given `led` is enabled, `is_charging` is `True`, and `led_brightness` is not the configured
+- [x] Given `led` is enabled, `is_charging` is `True`, and `led_brightness` is not the configured
       brightness, when the scheduler runs, then the configured brightness is sent to the charger
-- [ ] Given `led` is enabled with no `brightness` key set, when the scheduler runs while charging,
+- [x] Given `led` is enabled with no `brightness` key set, when the scheduler runs while charging,
       then `0.5` is sent (default)
-- [ ] Given `led.brightness: 0.8` is set, when the scheduler runs while charging, then `0.8` is
+- [x] Given `led.brightness: 0.8` is set, when the scheduler runs while charging, then `0.8` is
       sent, not `0.5`
-- [ ] Given `led` is enabled, `is_charging` is `False`, and `led_brightness` is not `0.0`, when
+- [x] Given `led` is enabled, `is_charging` is `False`, and `led_brightness` is not `0.0`, when
       the scheduler runs, then brightness `0.0` is sent to the charger (never the configured
       value — the off state is not configurable)
-- [ ] Given `is_charging` is `True` and `led_brightness` already matches the configured
+- [x] Given `is_charging` is `True` and `led_brightness` already matches the configured
       brightness, when the scheduler runs, then no LED message is sent
-- [ ] Given no `led:` block exists in `config.yml`, when the scheduler runs, then no LED messages
+- [x] Given no `led:` block exists in `config.yml`, when the scheduler runs, then no LED messages
       are ever sent
-- [ ] Given `led.enabled` is `false`, when the scheduler runs, then no LED messages are sent, and
+- [x] Given `led.enabled` is `false`, when the scheduler runs, then no LED messages are sent, and
       whatever brightness was last commanded stays as-is (no reset push)
-- [ ] `config/config.yml.template` documents the `led:` block with `enabled` and `brightness`
-- [ ] LED control runs every cycle regardless of `_can_push()` (verified by forcing a released /
+- [x] `config/config.yml.template` documents the `led:` block with `enabled` and `brightness`
+- [x] LED control runs every cycle regardless of `_can_push()` (verified by forcing a released /
       not-pushable state while `is_charging` is `True` and confirming brightness is still sent)
 
 ---
@@ -66,20 +68,20 @@ against a new
 
 ### Acceptance criteria
 
-- [ ] Given the local datetime is 31 Oct (any time) through 1 Nov 06:00 and `is_charging` is
+- [x] Given the local datetime is 31 Oct (any time) through 1 Nov 06:00 and `is_charging` is
       `True`, when the scheduler runs, then `effect_name` `halloween_mode` is sent
-- [ ] Given the local datetime is between 24 Dec 00:00 and 31 Dec 06:00 and `is_charging` is
+- [x] Given the local datetime is between 24 Dec 00:00 and 31 Dec 06:00 and `is_charging` is
       `True`, then `effect_name` `christmas_mode` is sent
-- [ ] Given the local datetime is between 31 Dec 06:00 and 1 Jan 06:00 and `is_charging` is
+- [x] Given the local datetime is between 31 Dec 06:00 and 1 Jan 06:00 and `is_charging` is
       `True`, then `effect_name` `party_mode` is sent
-- [ ] Given the local datetime falls within no theme window and `is_charging` is `True`, then
+- [x] Given the local datetime falls within no theme window and `is_charging` is `True`, then
       the configured brightness is sent if needed and no `effect_name` is sent
-- [ ] Given `halloween_mode` is active mid-charge, when the local datetime passes 1 Nov 06:00,
+- [x] Given `halloween_mode` is active mid-charge, when the local datetime passes 1 Nov 06:00,
       then `effect_name: "none"` is sent on the next cycle (the wire sentinel that clears an
       active effect — **corrected 2026-08-23**, was "no effect is sent", but that would leave
       the theme showing on the physical charger indefinitely) and `_current_led_effect` is
       cleared
-- [ ] No redundant effect push when `_current_led_effect` already matches the resolved theme
+- [x] No redundant effect push when `_current_led_effect` already matches the resolved theme
       (including no redundant `"none"` sends when nothing was ever active)
 
 ---
