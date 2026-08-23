@@ -46,8 +46,8 @@ A loader function converts hex colours to normalised RGB floats and constructs t
 
 **`app/hypervolt/led.py` additions**:
 - `load_custom_effect(path: Path) -> list[dict]` — parses one `led_effects/*.yaml` file into the
-  51-element `leds` array. Raises on missing file or malformed content (missing
-  `default_colour`, invalid hex, out-of-range index — including negative indices, added
+  51-element `leds` array. Raises on missing file or malformed content (missing `default_colour`,
+  a segment missing `colour`, invalid hex, out-of-range index — including negative indices, added
   2026-08-24 after a review pass caught that a negative index silently wrapped to the last LED
   via Python list semantics instead of raising); the caller (config loading) is responsible for
   catching this and applying the log-and-skip policy below — `load_custom_effect` itself stays a

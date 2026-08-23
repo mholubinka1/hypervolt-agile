@@ -95,6 +95,20 @@ def test_load_custom_effect_raises_on_missing_file(tmp_path: Path) -> None:
         load_custom_effect(tmp_path / "does-not-exist.yaml")
 
 
+def test_load_custom_effect_raises_when_segment_colour_missing(tmp_path: Path) -> None:
+    path = _write(
+        tmp_path,
+        """
+        default_colour: "#000000"
+        segments:
+          - indices: [0]
+        """,
+    )
+
+    with pytest.raises(ValueError):
+        load_custom_effect(path)
+
+
 def test_load_custom_effect_raises_when_default_colour_missing(tmp_path: Path) -> None:
     path = _write(tmp_path, "name: no-default\n")
 

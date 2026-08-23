@@ -58,10 +58,7 @@ class CustomLedTheme(BaseModel):
 
     @field_validator("start", "end")
     def must_be_a_valid_window_date(cls, v: str) -> str:
-        try:
-            parse_window_date(v)
-        except ValueError as e:
-            raise ValueError(f"Invalid date window {v!r}: {e}") from e
+        parse_window_date(v)
         return v
 
 

@@ -47,6 +47,8 @@ def load_custom_effect(path: Path) -> list[dict[str, float]]:
     _default = _hex_to_rgb(_content["default_colour"])
     _leds = [dict(_default) for _ in range(_LED_COUNT)]
     for segment in _content.get("segments", []):
+        if "colour" not in segment:
+            raise ValueError(f"{path}: segment missing required 'colour'.")
         _colour = _hex_to_rgb(segment["colour"])
         _indices = list(segment.get("indices", []))
         for _range_start, _range_end in segment.get("ranges", []):
