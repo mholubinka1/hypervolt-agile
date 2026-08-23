@@ -17,6 +17,10 @@ from config import AppConfig
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
+# Wire sentinel the charger understands as "stop showing an effect" -- there is
+# no separate clear/disable message, this is sent as an ordinary effect_name.
+_NO_EFFECT = "none"
+
 
 class HypervoltChargerClient:
     _polling_interval: int
@@ -60,6 +64,7 @@ class HypervoltChargerClient:
         self._rest_client = rest_client
         self._charger = rest_client.charger
         self._last_pushed_sessions: list[HypervoltSession] | None = None
+        self._current_led_effect: str | None = None
 
         self._charger_state = HypervoltChargerState(self._charger)
         self._ws_client = HypervoltWebSocketClient(
@@ -172,6 +177,17 @@ class HypervoltChargerClient:
         ]
         await self._ws_client.set_charging_schedule(sessions)
         return True
+
+    async def apply_led_state(self, brightness: float, effect_name: str | None) -> None:
+        if not self.is_connected:
+            return
+        if brightness != self._charger_state.led_brightness:
+            logger.info(f"Setting LED brightness to {brightness}.")
+            await self._ws_client.set_led_brightness(brightness)
+        if effect_name != self._current_led_effect:
+            logger.info(f"Setting LED effect to {effect_name or _NO_EFFECT}.")
+            await self._ws_client.set_led_effect(effect_name or _NO_EFFECT)
+        self._current_led_effect = effect_name
 
     async def lock(self) -> None:
         if not self.is_connected:

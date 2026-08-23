@@ -3,9 +3,10 @@ from datetime import datetime, timedelta
 from logging import Logger, getLogger
 from zoneinfo import ZoneInfo
 
-from common.constants import APP_NAME, SESSION_CLOCK_OFFSET_MINS
+from common.constants import APP_NAME, SESSION_CLOCK_OFFSET_MINS, TIMEZONE
 from common.logging import config
 from hypervolt.charger import HypervoltChargerClient
+from hypervolt.led import resolve_theme
 from hypervolt.model import HypervoltSession, LockStatus, ReleaseState
 from schedule import Scheduler
 
@@ -58,6 +59,7 @@ class ScheduleCoordinator:
             if not _is_connected:
                 return
             await self._charger_client.refresh()
+            await self._apply_led_state()
             if self._scheduler.should_verify():
                 await self._charger_client.verify_schedule()
             if self._can_push():
@@ -65,6 +67,23 @@ class ScheduleCoordinator:
                 await self._lock_control()
         except Exception:
             logger.exception("Error in schedule coordinator run loop.")
+
+    async def _apply_led_state(self) -> None:
+        if self._charger_client is None:
+            return
+        _led_config = self._config.led
+        if _led_config is None or not _led_config.enabled:
+            return
+        _state = self._charger_client.charger_state
+        if _state.is_charging is None:
+            return
+        if not _state.is_charging:
+            await self._charger_client.apply_led_state(0.0, None)
+            return
+        _target = resolve_theme(datetime.now(ZoneInfo(TIMEZONE)))
+        await self._charger_client.apply_led_state(
+            _led_config.brightness, _target.effect_name if _target else None
+        )
 
     def _can_push(self) -> bool:
         if self._charger_client is None:
