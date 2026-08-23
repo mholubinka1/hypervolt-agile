@@ -71,9 +71,11 @@ parses inbound responses (`_on_*_response`) plus two thin wrappers (`sync()`,
 and sends the message itself via `_send_message()`, with no `HypervoltProtocol` involvement.
 
 **`app/hypervolt/client/websocket.py`** (`HypervoltWebSocketClient`): new `set_led_brightness(brightness:
-float) -> None` and `set_led_effect(effect_name: str | None) -> None`, each building and sending
-a `sync.apply` message with the relevant param, following `set_lock_state()`'s exact pattern —
-no `HypervoltProtocol` changes needed for this slice.
+float) -> None` and `set_led_effect(effect_name: str) -> None` (the caller in `HypervoltChargerClient`
+always resolves the `"none"` sentinel before calling — see "Clearing an active effect" below — so
+this method never needs to accept `None`), each building and sending a `sync.apply` message with
+the relevant param, following `set_lock_state()`'s exact pattern — no `HypervoltProtocol` changes
+needed for this slice.
 
 **`app/schedule/coordinator.py`** (`ScheduleCoordinator`): new `_apply_led_state()` method,
 called from `run()` unconditionally after `refresh()` — critically, **not** nested inside the
