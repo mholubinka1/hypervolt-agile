@@ -9,6 +9,7 @@ import yaml
 from common.constants import APP_NAME
 from common.logging import config
 from common.utils import is_null_or_empty
+from hypervolt.led import parse_window_date
 from pydantic import BaseModel, Field, field_validator
 
 logging.config.dictConfig(config)
@@ -50,9 +51,24 @@ class Schedule(BaseModel):
     poll: int = Field(..., alias="poll_every_secs", ge=2, le=3600)
 
 
+class CustomLedTheme(BaseModel):
+    effect: str
+    start: str
+    end: str
+
+    @field_validator("start", "end")
+    def must_be_a_valid_window_date(cls, v: str) -> str:
+        try:
+            parse_window_date(v)
+        except ValueError as e:
+            raise ValueError(f"Invalid date window {v!r}: {e}") from e
+        return v
+
+
 class LedConfig(BaseModel):
     enabled: bool = True
     brightness: float = Field(0.5, gt=0, le=1)
+    custom_themes: list[CustomLedTheme] = []
 
 
 class AppConfig(BaseModel):

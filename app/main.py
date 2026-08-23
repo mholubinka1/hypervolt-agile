@@ -10,6 +10,7 @@ from pathlib import Path
 from common.constants import APP_NAME
 from common.logging import config, configure_file_logging
 from common.polling import every
+from hypervolt.led import load_custom_themes
 from octopus.client import AgileClient
 from octopus.postcode import is_valid_postcode
 from schedule import Scheduler
@@ -58,8 +59,16 @@ async def main() -> None:
         await agile_client.close()
         sys.exit(1)
 
+    custom_themes = (
+        load_custom_themes(
+            app_config.led.custom_themes, config_path.parent / "led_effects"
+        )
+        if app_config.led is not None
+        else []
+    )
+
     scheduler = Scheduler(agile_client, app_config)
-    coordinator = ScheduleCoordinator(scheduler, app_config)
+    coordinator = ScheduleCoordinator(scheduler, app_config, custom_themes)
     _poll = app_config.schedule.poll
     _config_mtime = config_path.stat().st_mtime
 

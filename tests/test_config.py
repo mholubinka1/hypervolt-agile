@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from config import ConfigLoader, LedConfig, Octopus, Schedule
+from config import ConfigLoader, CustomLedTheme, LedConfig, Octopus, Schedule
 
 _VALID_CONFIG_YAML = """
 octopus:
@@ -97,3 +97,19 @@ def test_led_config_accepts_full_brightness() -> None:
 def test_led_config_rejects_out_of_range_brightness(brightness: float) -> None:
     with pytest.raises(ValidationError):
         LedConfig(brightness=brightness)
+
+
+def test_custom_led_theme_accepts_valid_date_strings() -> None:
+    theme = CustomLedTheme(effect="peace", start="03-14", end="03-16 06:00")
+
+    assert theme.effect == "peace"
+    assert theme.start == "03-14"
+    assert theme.end == "03-16 06:00"
+
+
+@pytest.mark.parametrize("field", ["start", "end"])
+def test_custom_led_theme_rejects_malformed_date_string(field: str) -> None:
+    values = {"effect": "peace", "start": "03-14", "end": "03-16", field: "not-a-date"}
+
+    with pytest.raises(ValidationError):
+        CustomLedTheme(**values)

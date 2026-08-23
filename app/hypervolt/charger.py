@@ -178,15 +178,25 @@ class HypervoltChargerClient:
         await self._ws_client.set_charging_schedule(sessions)
         return True
 
-    async def apply_led_state(self, brightness: float, effect_name: str | None) -> None:
+    async def apply_led_state(
+        self,
+        brightness: float,
+        effect_name: str | None,
+        leds: list[dict[str, float]] | None = None,
+    ) -> None:
         if not self.is_connected:
             return
         if brightness != self._charger_state.led_brightness:
             logger.info(f"Setting LED brightness to {brightness}.")
             await self._ws_client.set_led_brightness(brightness)
         if effect_name != self._current_led_effect:
-            logger.info(f"Setting LED effect to {effect_name or _NO_EFFECT}.")
-            await self._ws_client.set_led_effect(effect_name or _NO_EFFECT)
+            if leds is not None:
+                logger.info("Setting LED effect to steady_array.")
+                await self._ws_client.set_led_effect("steady_array", leds=leds)
+            else:
+                _wire_effect_name = effect_name or _NO_EFFECT
+                logger.info(f"Setting LED effect to {_wire_effect_name}.")
+                await self._ws_client.set_led_effect(_wire_effect_name)
         self._current_led_effect = effect_name
 
     async def lock(self) -> None:

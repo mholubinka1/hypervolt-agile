@@ -1,4 +1,5 @@
 import logging.config
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from logging import Logger, getLogger
 from zoneinfo import ZoneInfo
@@ -6,7 +7,7 @@ from zoneinfo import ZoneInfo
 from common.constants import APP_NAME, SESSION_CLOCK_OFFSET_MINS, TIMEZONE
 from common.logging import config
 from hypervolt.charger import HypervoltChargerClient
-from hypervolt.led import resolve_theme
+from hypervolt.led import LedTheme, Window, resolve_theme
 from hypervolt.model import HypervoltSession, LockStatus, ReleaseState
 from schedule import Scheduler
 
@@ -17,9 +18,15 @@ logger: Logger = getLogger(APP_NAME)
 
 
 class ScheduleCoordinator:
-    def __init__(self, scheduler: Scheduler, config: AppConfig) -> None:
+    def __init__(
+        self,
+        scheduler: Scheduler,
+        config: AppConfig,
+        custom_themes: Sequence[tuple[LedTheme, Window, Window]] = (),
+    ) -> None:
         self._scheduler = scheduler
         self._config = config
+        self._custom_themes = custom_themes
         self._charger_client: HypervoltChargerClient | None = None
         self._car_was_plugged: bool | None = None
         self._was_connected: bool | None = None
@@ -80,10 +87,17 @@ class ScheduleCoordinator:
         if not _state.is_charging:
             await self._charger_client.apply_led_state(0.0, None)
             return
-        _target = resolve_theme(datetime.now(ZoneInfo(TIMEZONE)))
-        await self._charger_client.apply_led_state(
-            _led_config.brightness, _target.effect_name if _target else None
+        _target = resolve_theme(
+            datetime.now(ZoneInfo(TIMEZONE)), custom_themes=self._custom_themes
         )
+        if _target is not None and _target.leds is not None:
+            await self._charger_client.apply_led_state(
+                _led_config.brightness, _target.effect_name, leds=_target.leds
+            )
+        else:
+            await self._charger_client.apply_led_state(
+                _led_config.brightness, _target.effect_name if _target else None
+            )
 
     def _can_push(self) -> bool:
         if self._charger_client is None:

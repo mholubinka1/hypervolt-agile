@@ -83,6 +83,37 @@ async def test_off_state_ignores_configured_brightness() -> None:
     charger_client.apply_led_state.assert_awaited_once_with(0.0, None)
 
 
+async def test_passes_custom_themes_through_to_resolve_theme() -> None:
+    custom_themes = [(LedTheme(effect_name="peace"), (3, 14, 0, 0), (3, 16, 0, 0))]
+    coordinator, _charger_client = _coordinator(
+        led=LedConfig(enabled=True), is_charging=True, led_brightness=0.0
+    )
+    coordinator._custom_themes = custom_themes
+
+    with patch(
+        "schedule.coordinator.resolve_theme", return_value=None
+    ) as mock_resolve_theme:
+        await coordinator._apply_led_state()
+
+    _, kwargs = mock_resolve_theme.call_args
+    assert kwargs["custom_themes"] == custom_themes
+
+
+async def test_pushes_custom_theme_leds_while_charging() -> None:
+    coordinator, charger_client = _coordinator(
+        led=LedConfig(enabled=True), is_charging=True, led_brightness=0.0
+    )
+    leds = [{"r": 0.0, "g": 0.34, "b": 0.72}]
+
+    with patch(
+        "schedule.coordinator.resolve_theme",
+        return_value=LedTheme(effect_name="peace", leds=leds),
+    ):
+        await coordinator._apply_led_state()
+
+    charger_client.apply_led_state.assert_awaited_once_with(0.5, "peace", leds=leds)
+
+
 async def test_pushes_resolved_theme_effect_while_charging() -> None:
     coordinator, charger_client = _coordinator(
         led=LedConfig(enabled=True), is_charging=True, led_brightness=0.0
