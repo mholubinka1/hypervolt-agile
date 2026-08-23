@@ -89,6 +89,10 @@ def test_led_config_defaults_brightness_to_half_when_omitted() -> None:
     assert LedConfig().brightness == 0.5
 
 
+def test_led_config_accepts_full_brightness() -> None:
+    assert LedConfig(brightness=1.0).brightness == 1.0
+
+
 @pytest.mark.parametrize("brightness", [0, -0.1, 1.1])
 def test_led_config_rejects_out_of_range_brightness(brightness: float) -> None:
     with pytest.raises(ValidationError):

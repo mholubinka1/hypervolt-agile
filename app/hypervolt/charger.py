@@ -182,8 +182,10 @@ class HypervoltChargerClient:
         if not self.is_connected:
             return
         if brightness != self._charger_state.led_brightness:
+            logger.info(f"Setting LED brightness to {brightness}.")
             await self._ws_client.set_led_brightness(brightness)
         if effect_name != self._current_led_effect:
+            logger.info(f"Setting LED effect to {effect_name or _NO_EFFECT}.")
             await self._ws_client.set_led_effect(effect_name or _NO_EFFECT)
         self._current_led_effect = effect_name
 
