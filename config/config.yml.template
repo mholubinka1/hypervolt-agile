@@ -11,6 +11,6 @@ schedule:
   price_limit_incl_vat: 30
 # led:
 #   enabled: true                  # Set to false to pause LED control without losing config. Omit the whole `led:` block to disable entirely.
-#   brightness: 0.5                # 0-1, LED brightness while charging (default: 0.5). LEDs always go fully off when not charging, regardless of this value.
+#   brightness: 0.5                # >0 and <=1, LED brightness while charging (default: 0.5). LEDs always go fully off when not charging, regardless of this value.
 # log_file: /logs/hypervolt-agile-scheduler.log   # Omit to log to console only. In Docker, /logs is bind-mounted from /home/pi/.log/hypervolt-agile.
 # log_level: INFO                # Console log level (default: INFO). File log level is always INFO.
