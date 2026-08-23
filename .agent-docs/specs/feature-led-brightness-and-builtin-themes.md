@@ -170,6 +170,9 @@ substitute for the automated coverage above.
 - The `led_brightness` defaulting bug described in the original feature write-up
   (`FEATURES.md`) is already fixed in the current codebase — `protocol.py` already defaults it
   to `None`, not `0.0`, when absent from the wire response. No change needed here.
-- See ADR 0005 (extension polling lifecycle) and ADR 0007 (LED config degrades gracefully vs.
-  core config fail-fast) for the reasoning behind `led.py`'s shape, even though this slice's own
-  failure surface is minimal (a single boolean).
+- See ADR 0005 (extension polling lifecycle) and ADR 0007 (external LED resources degrade
+  gracefully; `led:` config values themselves stay fail-fast like the rest of `AppConfig`) for
+  the reasoning behind `led.py`'s shape. This slice's own config surface (`enabled`, `brightness`)
+  is validated the ordinary pydantic way and has no external-resource failure mode of its own —
+  ADR 0007's graceful-degradation half only becomes relevant once the later slices add
+  `custom_themes`/`extensions`.

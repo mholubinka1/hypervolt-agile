@@ -63,8 +63,8 @@ the result in an `ExtensionWrapper`. **Any failure in this sequence** — file n
 in the module implementing the protocol, `__init__` raising on bad config, or `start()` raising —
 logs an error naming the extension and the underlying exception, and that extension is simply
 omitted from the returned list. The app starts regardless, and every other extension, custom
-theme, and built-in continues to work (ADR 0007 — LED config degrades gracefully everywhere,
-including here).
+theme, and built-in continues to work (ADR 0007 — external LED resources, including a broken
+extension file, degrade gracefully; only `config.yml` values themselves are fail-fast).
 
 **`resolve_theme(now, extensions, custom_themes)`**: the extension tier (previously always empty)
 is now populated — walks `extensions` in config list order, calling each wrapper's `resolve(now)`
