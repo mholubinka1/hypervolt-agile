@@ -40,7 +40,7 @@ class LedThemeProvider(Protocol):
 needing live data (an HTTP call, a sensor read) starts its own `asyncio.create_task()` background
 poll loop inside `start()`, on whatever cadence it chooses, and caches the result on itself.
 `resolve(now)` must do nothing but return that cached value. **The scheduler never awaits
-anything I/O-bound from an extension** — see ADR 0002. This is a hard contract, not just a
+anything I/O-bound from an extension** — see ADR 0005. This is a hard contract, not just a
 convention: the only reason a per-call timeout isn't needed anywhere in `resolve_theme` is that
 `resolve()` is guaranteed cheap by construction.
 
@@ -63,7 +63,7 @@ the result in an `ExtensionWrapper`. **Any failure in this sequence** — file n
 in the module implementing the protocol, `__init__` raising on bad config, or `start()` raising —
 logs an error naming the extension and the underlying exception, and that extension is simply
 omitted from the returned list. The app starts regardless, and every other extension, custom
-theme, and built-in continues to work (ADR 0004 — LED config degrades gracefully everywhere,
+theme, and built-in continues to work (ADR 0007 — LED config degrades gracefully everywhere,
 including here).
 
 **`resolve_theme(now, extensions, custom_themes)`**: the extension tier (previously always empty)
@@ -71,12 +71,12 @@ is now populated — walks `extensions` in config list order, calling each wrapp
 (cheap by contract) and returning the first non-`None` result. Falls through to custom themes,
 then built-ins, exactly as already implemented in the prior two slices.
 
-**Extension config isolation** (ADR 0003): each `ExtensionEntry`'s `config: dict` is passed to
+**Extension config isolation** (ADR 0006): each `ExtensionEntry`'s `config: dict` is passed to
 that extension alone, at construction time. There is no shared or global configuration read from
 anywhere else — every extension must be able to operate correctly from its own `config:` block in
 total isolation from every other extension.
 
-**Deployment — new `/extensions` mount** (ADR 0003): `extensions/*.py` is executable operator
+**Deployment — new `/extensions` mount** (ADR 0006): `extensions/*.py` is executable operator
 code, so it cannot live inside `app/` (baked into the Docker image at build time) or share
 `/config` (kept as global app configuration only). New `--extensions-dir` CLI argument on
 `main.py` (optional, default `None` — required only if `led.extensions` is non-empty; if
@@ -133,4 +133,4 @@ No automated tests, per project convention ([[no-tests]]) — verification throu
 Depends on both prior slices having merged — this is the final tier of an already-established
 priority stack and diffing mechanism, not new architecture. The `start()` hook and the
 `/extensions` mount are the two genuinely new pieces of infrastructure this slice adds; see ADR
-0002 and ADR 0003 for the reasoning behind both.
+0005 and ADR 0006 for the reasoning behind both.

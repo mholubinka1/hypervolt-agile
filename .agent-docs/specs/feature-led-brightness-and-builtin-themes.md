@@ -53,7 +53,7 @@ effect. The active effect must therefore be tracked locally.
   three-tier priority stack and returns the first match: registered extensions (highest
   authority) → custom YAML themes → built-in presets (lowest). This slice populates only the
   built-in tier; `extensions` and `custom_themes` parameters exist now so the function's shape
-  does not change when the next two slices land (see ADR 0002 and ADR 0003 for why extensions in
+  does not change when the next two slices land (see ADR 0005 and ADR 0006 for why extensions in
   particular are designed to never block this resolution with I/O).
 
 **`app/hypervolt/charger.py`** (`HypervoltChargerClient`): new `apply_led_state(brightness:
@@ -154,6 +154,6 @@ substitute for the automated coverage above.
 - The `led_brightness` defaulting bug described in the original feature write-up
   (`FEATURES.md`) is already fixed in the current codebase — `protocol.py` already defaults it
   to `None`, not `0.0`, when absent from the wire response. No change needed here.
-- See ADR 0002 (extension polling lifecycle) and ADR 0004 (LED config degrades gracefully vs.
+- See ADR 0005 (extension polling lifecycle) and ADR 0007 (LED config degrades gracefully vs.
   core config fail-fast) for the reasoning behind `led.py`'s shape, even though this slice's own
   failure surface is minimal (a single boolean).

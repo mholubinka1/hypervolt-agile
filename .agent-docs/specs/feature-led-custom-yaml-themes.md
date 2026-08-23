@@ -64,7 +64,7 @@ A loader function converts hex colours to normalised RGB floats and constructs t
 `start`/`end` are validated via a pydantic `field_validator` against the `MM-DD` or
 `MM-DD HH:MM` format at config-load time — a malformed date string is a config-authoring error in
 the file the operator just edited, and fails loudly the same way every other `AppConfig` field
-already does (see ADR 0004's contrast between core config's fail-fast validation and this
+already does (see ADR 0007's contrast between core config's fail-fast validation and this
 feature's own runtime graceful-degradation). `LedConfig` gains
 `custom_themes: list[CustomLedTheme] = []`.
 
@@ -73,7 +73,7 @@ resolved at startup, once, when custom themes are loaded — for each `CustomLed
 `load_custom_effect(led_effects_dir / f"{effect}.yaml")`; on any exception, log an error naming
 the effect and the exception, and drop that entry from the in-memory list `resolve_theme` walks.
 The app starts regardless and every other configured theme, extension, and built-in continues to
-work (ADR 0004). This is deliberately different from the date-string case above: a bad *value the
+work (ADR 0007). This is deliberately different from the date-string case above: a bad *value the
 operator typed directly into config.yml* fails the config load outright (matches the rest of
 `AppConfig`), whereas a bad *external YAML file* — which might be a shipped file, might be edited
 independently of config.yml, and isn't itself part of the validated config schema — degrades
