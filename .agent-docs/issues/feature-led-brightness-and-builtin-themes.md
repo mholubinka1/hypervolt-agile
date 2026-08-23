@@ -9,7 +9,8 @@
 ### What to build
 
 Full path for brightness control, with no effects yet: a `led:` block in `config.yml`
-(`LedConfig(enabled: bool = True)` on `AppConfig`), a `set_led_brightness` method on
+(`LedConfig(enabled: bool = True, brightness: float = Field(0.5, gt=0, le=1))` on `AppConfig` —
+**brightness added 2026-08-23**, defaults to 50% when omitted), a `set_led_brightness` method on
 `HypervoltWebSocketClient` (matching `set_lock_state`'s pattern — no `HypervoltProtocol` change
 needed, see spec), a new `apply_led_state(brightness,
 effect_name)` method on `HypervoltChargerClient` that diffs against the charger's echoed
@@ -22,17 +23,22 @@ extends this method rather than reworking it.
 
 ### Acceptance criteria
 
-- [ ] Given `led` is enabled, `is_charging` is `True`, and `led_brightness` is not `0.5`, when
-      the scheduler runs, then brightness `0.5` is sent to the charger
+- [ ] Given `led` is enabled, `is_charging` is `True`, and `led_brightness` is not the configured
+      brightness, when the scheduler runs, then the configured brightness is sent to the charger
+- [ ] Given `led` is enabled with no `brightness` key set, when the scheduler runs while charging,
+      then `0.5` is sent (default)
+- [ ] Given `led.brightness: 0.8` is set, when the scheduler runs while charging, then `0.8` is
+      sent, not `0.5`
 - [ ] Given `led` is enabled, `is_charging` is `False`, and `led_brightness` is not `0.0`, when
-      the scheduler runs, then brightness `0.0` is sent to the charger
-- [ ] Given `is_charging` is `True` and `led_brightness` is already `0.5`, when the scheduler
-      runs, then no LED message is sent
+      the scheduler runs, then brightness `0.0` is sent to the charger (never the configured
+      value — the off state is not configurable)
+- [ ] Given `is_charging` is `True` and `led_brightness` already matches the configured
+      brightness, when the scheduler runs, then no LED message is sent
 - [ ] Given no `led:` block exists in `config.yml`, when the scheduler runs, then no LED messages
       are ever sent
 - [ ] Given `led.enabled` is `false`, when the scheduler runs, then no LED messages are sent, and
       whatever brightness was last commanded stays as-is (no reset push)
-- [ ] `config/config.yml.template` documents the `led:` block with `enabled`
+- [ ] `config/config.yml.template` documents the `led:` block with `enabled` and `brightness`
 - [ ] LED control runs every cycle regardless of `_can_push()` (verified by forcing a released /
       not-pushable state while `is_charging` is `True` and confirming brightness is still sent)
 
@@ -67,7 +73,7 @@ against a new
 - [ ] Given the local datetime is between 31 Dec 06:00 and 1 Jan 06:00 and `is_charging` is
       `True`, then `effect_name` `party_mode` is sent
 - [ ] Given the local datetime falls within no theme window and `is_charging` is `True`, then
-      brightness `0.5` is sent if needed and no `effect_name` is sent
+      the configured brightness is sent if needed and no `effect_name` is sent
 - [ ] Given `halloween_mode` is active mid-charge, when the local datetime passes 1 Nov 06:00,
       then no effect is sent on the next cycle and `_current_led_effect` is cleared
 - [ ] No redundant effect push when `_current_led_effect` already matches the resolved theme

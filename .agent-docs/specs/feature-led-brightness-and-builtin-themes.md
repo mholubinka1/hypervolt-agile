@@ -83,16 +83,19 @@ controls; it must reflect reality even when the scheduler itself is holding back
 state, or a plug-and-charge session the app didn't initiate). Gating is solely:
 `config.led is not None and config.led.enabled and charger_state.is_charging is not None`.
 When `is_charging` is `True`: resolve the target theme via `led.py`'s `resolve_theme(now)` and
-call `charger_client.apply_led_state(0.5, target.effect_name if target else None)`. When
-`is_charging` is `False`: call `charger_client.apply_led_state(0.0, None)`.
+call `charger_client.apply_led_state(config.led.brightness, target.effect_name if target else
+None)`. When `is_charging` is `False`: call `charger_client.apply_led_state(0.0, None)` — the
+configured brightness only applies while actually charging; the off state is never configurable.
 
-**`app/config.py`**: new `LedConfig(BaseModel)` with a single field, `enabled: bool = True`
-(present-but-omitted `enabled` key defaults to on; the `led:` block being entirely absent is what
-disables the feature — an explicit `enabled: false` pauses it while retaining any future
-`custom_themes`/`extensions` config the operator has already written for the later slices). Add
-`led: LedConfig | None = None` to `AppConfig`.
+**`app/config.py`**: new `LedConfig(BaseModel)` with `enabled: bool = True` (present-but-omitted
+`enabled` key defaults to on; the `led:` block being entirely absent is what disables the feature
+— an explicit `enabled: false` pauses it while retaining any future `custom_themes`/`extensions`
+config the operator has already written for the later slices) and `brightness: float = Field(0.5,
+gt=0, le=1)` (**changed 2026-08-23**, was hardcoded — omitting the key still defaults to 50%,
+matching the `gt`/`le` bound style already used on `Schedule`'s fields). Add `led: LedConfig |
+None = None` to `AppConfig`.
 
-**`config/config.yml.template`**: document the `led:` block with just `enabled`.
+**`config/config.yml.template`**: document the `led:` block with `enabled` and `brightness`.
 
 **Wire formats**:
 ```json
@@ -140,7 +143,9 @@ substitute for the automated coverage above.
   `feature/led-custom-yaml-themes`.
 - Dynamic `LedThemeProvider` extensions (`extensions/`, `/extensions` mount) — final slice,
   `feature/led-theme-extensions`.
-- Configurable brightness — hardcoded at 0.5, no story requires tuning it.
+- ~~Configurable brightness — hardcoded at 0.5, no story requires tuning it.~~ **Reversed
+  2026-08-23** — brightness is now a `LedConfig` field (`brightness: float = Field(0.5, gt=0,
+  le=1)`, see Implementation Decisions), defaulting to 50% when omitted.
 - Any reset-to-default push when `enabled` transitions to `false` — the LEDs stay frozen in
   whatever they last showed, by design.
 
