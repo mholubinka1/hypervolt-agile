@@ -28,8 +28,11 @@ re-read every cycle.
 ### Acceptance criteria
 
 - [ ] Given a `custom_themes` entry whose date window matches `now` and `is_charging` is `True`,
-      when the scheduler runs, then `effect_name: "steady_array"` and the theme's exact `leds`
-      array (as produced by `load_custom_effect`) are sent
+      when the scheduler runs, then the wire `effect_name: "steady_array"` and the theme's exact
+      `leds` array (as produced by `load_custom_effect`) are sent — internally the theme is
+      identified by its own name (e.g. `"peace"`), only the wire value sent to the charger is
+      `"steady_array"` (**corrected 2026-08-24**, was stated as if `effect_name` itself were
+      `"steady_array"`, contradicting the identity fix)
 - [ ] Given a custom theme and a built-in both match the same date, when the scheduler runs, then
       the custom theme takes priority
 - [ ] Given `now` matches no custom theme, when the scheduler runs, then built-ins are resolved as
@@ -45,6 +48,9 @@ re-read every cycle.
 - [ ] Given a `custom_themes` entry has a malformed `start`/`end` date string directly in
       `config.yml`, when the app starts, then it fails to start with a clear validation error,
       the same as any other bad `AppConfig` value
+- [ ] Given a `custom_themes` entry has `02-29` as its `start`/`end`, when the app starts, then it
+      fails to start with a clear validation error (**added 2026-08-24**, caught by review —
+      would otherwise crash `resolve_theme` on any non-leap year)
 - [ ] `load_custom_themes` is called once at startup (not per scheduler cycle)
 
 ---

@@ -1,9 +1,28 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from hypervolt.led import resolve_theme
+from hypervolt.led import LedTheme, resolve_theme
 
 _LONDON = ZoneInfo("Europe/London")
+
+
+def test_resolve_theme_returns_a_defensive_copy_of_the_leds_array() -> None:
+    # A stored theme (built-in or custom) is returned by reference from the
+    # same underlying list on every matching call -- a caller mutating the
+    # returned leds array must not corrupt what the next call returns.
+    stored = LedTheme(effect_name="peace", leds=[{"r": 0.0, "g": 0.0, "b": 0.0}])
+    custom_themes = [(stored, (3, 14, 0, 0), (3, 16, 0, 0))]
+    now = datetime(2026, 3, 15, 12, 0, tzinfo=_LONDON)
+
+    result_1 = resolve_theme(now, custom_themes=custom_themes)
+    assert result_1 is not None
+    assert result_1.leds is not None
+    result_1.leds[0]["r"] = 1.0
+
+    result_2 = resolve_theme(now, custom_themes=custom_themes)
+    assert result_2 is not None
+    assert result_2.leds is not None
+    assert result_2.leds[0]["r"] == 0.0
 
 
 def test_resolve_theme_returns_halloween_mode_during_its_window() -> None:

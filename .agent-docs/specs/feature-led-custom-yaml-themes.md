@@ -46,10 +46,13 @@ A loader function converts hex colours to normalised RGB floats and constructs t
 
 **`app/hypervolt/led.py` additions**:
 - `load_custom_effect(path: Path) -> list[dict]` — parses one `led_effects/*.yaml` file into the
-  51-element `leds` array. Raises on missing file or malformed content (missing `default_colour`,
-  a segment missing `colour`, invalid hex, out-of-range index — including negative indices, added
+  51-element `leds` array. Raises on missing file or malformed content: missing `default_colour`,
+  a segment missing `colour`, invalid hex, out-of-range index (including negative indices, added
   2026-08-24 after a review pass caught that a negative index silently wrapped to the last LED
-  via Python list semantics instead of raising); the caller (config loading) is responsible for
+  via Python list semantics instead of raising), and a malformed `ranges` entry where the end
+  comes before the start (added the same pass — `range(51, 51)` for e.g. `[51, 50]` expands to
+  *empty*, so the per-index bounds check never even saw the out-of-range endpoint and silently
+  accepted it; now validated before expanding). The caller (config loading) is responsible for
   catching this and applying the log-and-skip policy below — `load_custom_effect` itself stays a
   pure, throwing parser.
 - `resolve_theme(now, extensions, custom_themes)` — the middle tier (previously an empty list)
@@ -67,13 +70,21 @@ A loader function converts hex colours to normalised RGB floats and constructs t
 - `parse_window_date(s: str) -> Window` — parses `"MM-DD"` or `"MM-DD HH:MM"` into the same
   `Window` tuple shape `BUILT_IN_THEMES` uses. Used both by `config.py`'s pydantic validator (to
   fail fast on a malformed string) and by the startup loader that builds the runtime
-  `custom_themes` list passed to `resolve_theme` — one parser, not two.
+  `custom_themes` list passed to `resolve_theme` — one parser, not two. **Hardened 2026-08-24**:
+  `strptime` alone accepts non-zero-padded fields (`"2-3"`, `"10-31 6:0"`) even though the
+  documented grammar is strictly `MM-DD`/`HH:MM` — a round-trip through the same format (re-format
+  the parsed value and compare to the original) now catches that silent looseness.
 
 **`LedTheme` dataclass — corrected 2026-08-23**: gains `leds: list[dict] | None = None`, and is
 now `frozen=True` — the `BUILT_IN_THEMES` refactor below has `resolve_theme` return the same
 singleton `LedTheme` instance by reference on every matching call, so it must stay immutable to
-avoid one caller's mutation corrupting state shared across scheduler cycles. Separately,
-**`effect_name` changes meaning**: it's the theme's *semantic identity*, used for diffing in
+avoid one caller's mutation corrupting state shared across scheduler cycles.
+**Hardened 2026-08-24**: `frozen=True` alone only stops *field reassignment* — the nested `leds`
+list (and its inner RGB dicts) stays mutable, so a caller could still do `theme.leds[0]["r"] =
+1.0` and corrupt the shared singleton despite the frozen guarantee. `resolve_theme` now returns a
+defensive copy (a new `LedTheme` with a deep-copied `leds` list) rather than the stored instance
+itself — the singleton storage optimisation is unchanged, only what's handed back to the caller.
+Separately, **`effect_name` changes meaning**: it's the theme's *semantic identity*, used for diffing in
 `apply_led_state` (see below) — not necessarily the literal wire value. For a built-in, identity
 and wire value are the same (`"halloween_mode"`). For a custom theme, `effect_name` is the
 theme's own name from its YAML (e.g. `"peace"`), not the wire effect `"steady_array"` — the
@@ -99,7 +110,13 @@ needed, the *wire* effect name differs from the semantic identity only for custo
 the file the operator just edited, and fails loudly the same way every other `AppConfig` field
 already does (see ADR 0007's contrast between core config's fail-fast validation and this
 feature's own runtime graceful-degradation). `LedConfig` gains
-`custom_themes: list[CustomLedTheme] = []`.
+`custom_themes: list[CustomLedTheme] = []`. **Two more validators added 2026-08-24** (review
+findings): `start`/`end` additionally reject `"02-29"` specifically — `parse_window_date` accepts
+it as valid `MM-DD` syntax, but `resolve_theme`'s window materialisation constructs a real
+`datetime` for whatever the actual current year is, which crashes on any non-leap year; and
+`effect` rejects any value matching a `BUILT_IN_THEMES` name (`halloween_mode`, `christmas_mode`,
+`party_mode`) — since `effect_name` is the diffing identity, a custom theme reusing a built-in's
+name would make `apply_led_state` unable to tell the two apart if their windows ever overlapped.
 
 **Startup loading**: a new function — `load_custom_themes(entries: list[CustomLedTheme],
 led_effects_dir: Path) -> list[tuple[LedTheme, Window, Window]]` in `led.py` — runs once at
@@ -115,12 +132,24 @@ extension, and built-in continues to work (ADR 0007). This is deliberately diffe
 date-string case above: a bad *value the operator typed directly into config.yml* fails the
 config load outright (matches the rest of `AppConfig`), whereas a bad *external YAML file* — which
 might be a shipped file, might be edited independently of config.yml, and isn't itself part of
-the validated config schema — degrades gracefully instead.
+the validated config schema — degrades gracefully instead. **Extracted 2026-08-24** (review
+finding — this wiring had no test coverage of its own): `main.py`'s ternary
+(`load_custom_themes(...) if app_config.led is not None else []`) moved into a small, directly
+testable `load_custom_themes_for_config(led_config, led_effects_dir)` in `led.py`; `main.py` now
+just calls it.
 
 **`led_effects_dir` resolution**: `config_path.parent / "led_effects"` — no new CLI argument.
-This mirrors `config.yml`'s own location exactly (both are declarative data an operator edits),
-and in the deployed container resolves to `/config/led_effects` since `config.yml` already lives
-at `/config/config.yml`.
+This mirrors `config.yml`'s own location exactly (both are declarative data an operator edits).
+**Deployment gap found and fixed 2026-08-24** (review finding): the deployed container does
+**not** get this "for free" the way the comment previously implied — only `config.yml` itself is
+bind-mounted (`docker-compose.yml`: `/home/pi/.config/hypervolt-agile:/config`), and the
+Dockerfile never copies the repo's `config/led_effects/` into the image. An operator enabling any
+shipped example in the real deployed environment would silently get "file not found, dropped"
+(the graceful-degradation path above) rather than the theme actually working. `README.md`'s
+Docker deployment section and `config.yml.template`'s `custom_themes` comment now both say
+explicitly to copy `config/led_effects/*.yaml` into `/home/pi/.config/hypervolt-agile/led_effects/`
+alongside `config.yml` — matching the existing pattern where `config.yml` itself isn't baked into
+the image either, it's operator-provided via the same bind mount.
 
 **Shipped theme files** (`led_effects/`, five files): `peace.yaml`, `qe_ii.yaml`, `diana.yaml`,
 `st_george.yaml`, `st_patricks.yaml`. Each is referenced from `config.yml.template` as a
@@ -152,7 +181,15 @@ commented-out example `custom_themes:` entry, not enabled by default.
   non-existent or malformed YAML file is dropped from the returned list (not raised), and other
   valid entries in the same call are still returned.
 - **`CustomLedTheme` date-string validation** — tested like `Schedule`'s field validators in
-  `test_config.py`: a malformed `start`/`end` string raises `ValidationError` at config-load time.
+  `test_config.py`: a malformed `start`/`end` string raises `ValidationError` at config-load time,
+  and so do the two 2026-08-24 additions (`"02-29"`, a reserved built-in name).
+- **`HypervoltWebSocketClient.set_led_effect`'s wire serialisation** — added 2026-08-24 (review
+  finding): the charger tests mock `set_led_effect` entirely, so a bug that dropped `leds` from
+  the wire payload would never be caught. `tests/hypervolt/test_websocket.py` constructs a real
+  `HypervoltWebSocketClient` and mocks only `_send_message` (the actual I/O boundary), asserting
+  the built message includes both `effect_name` and `leds`.
+- **`load_custom_themes_for_config`** — added 2026-08-24 alongside its extraction from `main.py`:
+  the `led_config is None` → `[]` branch and the normal loading branch are both tested directly.
 
 Manual verification remains worthwhile for the same reason as slice 1: physically observing the
 LEDs once, as a wire-format sanity check that `steady_array` + a real `leds` array actually

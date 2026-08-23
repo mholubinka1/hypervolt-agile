@@ -12,7 +12,7 @@ schedule:
 # led:
 #   enabled: true                  # Set to false to pause LED control without losing config. Omit the whole `led:` block to disable entirely.
 #   brightness: 0.5                # >0 and <=1, LED brightness while charging (default: 0.5). LEDs always go fully off when not charging, regardless of this value.
-#   custom_themes:                 # Static colour patterns for dates that matter to you, priority over built-in seasonal effects. Ships with five ready-made examples in led_effects/ -- uncomment any to enable, or add your own led_effects/*.yaml and a matching entry here.
+#   custom_themes:                 # Static colour patterns for dates that matter to you, priority over built-in seasonal effects. Five ready-made examples ship in this repo's config/led_effects/ -- to use one, copy the matching *.yaml file into the SAME directory as your real config.yml (in Docker: /home/pi/.config/hypervolt-agile/led_effects/, since only config.yml itself is bind-mounted, these files are not baked into the image) and uncomment the matching entry below, or add your own led_effects/*.yaml and a matching entry.
 #     - effect: peace               # led_effects/peace.yaml -- Ukraine flag colours
 #       start: "02-24"
 #       end: "02-25"

@@ -140,3 +140,24 @@ def test_load_custom_effect_raises_on_out_of_range_index(
 
     with pytest.raises(IndexError):
         load_custom_effect(path)
+
+
+@pytest.mark.parametrize("range_value", [[51, 50], [0, 51], [-1, 5]])
+def test_load_custom_effect_raises_on_malformed_range(
+    tmp_path: Path, range_value: list[int]
+) -> None:
+    # A reversed range (end < start) expands to an empty Python range and
+    # would otherwise silently skip validation entirely; an end past the LED
+    # count, or a negative start, must still be caught.
+    path = _write(
+        tmp_path,
+        f"""
+        default_colour: "#000000"
+        segments:
+          - colour: "#FFD700"
+            ranges: [{range_value}]
+        """,
+    )
+
+    with pytest.raises((ValueError, IndexError)):
+        load_custom_effect(path)

@@ -113,3 +113,21 @@ def test_custom_led_theme_rejects_malformed_date_string(field: str) -> None:
 
     with pytest.raises(ValidationError):
         CustomLedTheme(**values)
+
+
+@pytest.mark.parametrize("effect", ["halloween_mode", "christmas_mode", "party_mode"])
+def test_custom_led_theme_rejects_built_in_theme_name(effect: str) -> None:
+    # A custom theme sharing a built-in's identity would make apply_led_state's
+    # diffing unable to tell them apart if their windows ever overlapped.
+    with pytest.raises(ValidationError):
+        CustomLedTheme(effect=effect, start="03-14", end="03-16")
+
+
+@pytest.mark.parametrize("field", ["start", "end"])
+def test_custom_led_theme_rejects_leap_day(field: str) -> None:
+    # Windows are materialised against arbitrary real years -- "02-29" would
+    # crash resolve_theme() on any non-leap year, so it's rejected up front.
+    values = {"effect": "peace", "start": "03-14", "end": "03-16", field: "02-29"}
+
+    with pytest.raises(ValidationError):
+        CustomLedTheme(**values)

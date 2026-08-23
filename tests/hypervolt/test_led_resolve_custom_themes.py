@@ -14,7 +14,7 @@ def test_resolve_theme_returns_custom_theme_during_its_window() -> None:
 
     theme = resolve_theme(now, custom_themes=custom_themes)
 
-    assert theme is _PEACE
+    assert theme == _PEACE
 
 
 def test_resolve_theme_prefers_custom_theme_over_built_in_on_same_date() -> None:
@@ -24,7 +24,7 @@ def test_resolve_theme_prefers_custom_theme_over_built_in_on_same_date() -> None
 
     theme = resolve_theme(now, custom_themes=custom_themes)
 
-    assert theme is _PEACE
+    assert theme == _PEACE
 
 
 def test_resolve_theme_falls_through_to_built_in_when_no_custom_theme_matches() -> None:
@@ -49,4 +49,4 @@ def test_resolve_theme_uses_config_list_order_when_custom_windows_overlap() -> N
 
     theme = resolve_theme(now, custom_themes=custom_themes)
 
-    assert theme is _PEACE
+    assert theme == _PEACE

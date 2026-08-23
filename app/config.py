@@ -9,11 +9,13 @@ import yaml
 from common.constants import APP_NAME
 from common.logging import config
 from common.utils import is_null_or_empty
-from hypervolt.led import parse_window_date
+from hypervolt.led import BUILT_IN_THEMES, parse_window_date
 from pydantic import BaseModel, Field, field_validator
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
+
+_RESERVED_LED_EFFECT_NAMES = {theme.effect_name for theme, _, _ in BUILT_IN_THEMES}
 
 
 class Octopus(BaseModel):
@@ -56,9 +58,25 @@ class CustomLedTheme(BaseModel):
     start: str
     end: str
 
+    @field_validator("effect")
+    def must_not_collide_with_a_built_in_theme(cls, v: str) -> str:
+        if v in _RESERVED_LED_EFFECT_NAMES:
+            raise ValueError(
+                f"{v!r} is a built-in theme name and can't be reused as a custom "
+                "theme's effect -- apply_led_state diffs on this name, so a "
+                "collision would make it unable to tell the two apart."
+            )
+        return v
+
     @field_validator("start", "end")
     def must_be_a_valid_window_date(cls, v: str) -> str:
-        parse_window_date(v)
+        _month, _day, _, _ = parse_window_date(v)
+        if (_month, _day) == (2, 29):
+            raise ValueError(
+                f"{v!r}: 29 February is not a valid window boundary -- windows are "
+                "materialised against real calendar years and this would crash on "
+                "any non-leap year."
+            )
         return v
 
 
