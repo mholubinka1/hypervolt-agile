@@ -117,6 +117,15 @@ class HypervoltWebSocketClient:
             }
         )
 
+    async def set_led_effect(self, effect_name: str) -> None:
+        await self._send_message(
+            {
+                "id": _generate_id(),
+                "method": "sync.apply",
+                "params": {"effect_name": effect_name},
+            }
+        )
+
     async def set_charging_schedule(
         self,
         schedule: list[dict],

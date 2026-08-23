@@ -60,6 +60,7 @@ class HypervoltChargerClient:
         self._rest_client = rest_client
         self._charger = rest_client.charger
         self._last_pushed_sessions: list[HypervoltSession] | None = None
+        self._current_led_effect: str | None = None
 
         self._charger_state = HypervoltChargerState(self._charger)
         self._ws_client = HypervoltWebSocketClient(
@@ -178,6 +179,9 @@ class HypervoltChargerClient:
             return
         if brightness != self._charger_state.led_brightness:
             await self._ws_client.set_led_brightness(brightness)
+        if effect_name is not None and effect_name != self._current_led_effect:
+            await self._ws_client.set_led_effect(effect_name)
+        self._current_led_effect = effect_name
 
     async def lock(self) -> None:
         if not self.is_connected:

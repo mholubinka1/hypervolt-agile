@@ -3,9 +3,10 @@ from datetime import datetime, timedelta
 from logging import Logger, getLogger
 from zoneinfo import ZoneInfo
 
-from common.constants import APP_NAME, SESSION_CLOCK_OFFSET_MINS
+from common.constants import APP_NAME, SESSION_CLOCK_OFFSET_MINS, TIMEZONE
 from common.logging import config
 from hypervolt.charger import HypervoltChargerClient
+from hypervolt.led import resolve_theme
 from hypervolt.model import HypervoltSession, LockStatus, ReleaseState
 from schedule import Scheduler
 
@@ -76,8 +77,13 @@ class ScheduleCoordinator:
         _state = self._charger_client.charger_state
         if _state.is_charging is None:
             return
-        _brightness = _led_config.brightness if _state.is_charging else 0.0
-        await self._charger_client.apply_led_state(_brightness, None)
+        if not _state.is_charging:
+            await self._charger_client.apply_led_state(0.0, None)
+            return
+        _target = resolve_theme(datetime.now(ZoneInfo(TIMEZONE)))
+        await self._charger_client.apply_led_state(
+            _led_config.brightness, _target.effect_name if _target else None
+        )
 
     def _can_push(self) -> bool:
         if self._charger_client is None:

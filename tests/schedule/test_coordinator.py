@@ -1,6 +1,7 @@
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from hypervolt.charger import HypervoltChargerClient
+from hypervolt.led import LedTheme
 from schedule.coordinator import ScheduleCoordinator
 
 from config import AppConfig, Hypervolt, LedConfig, Octopus, Schedule
@@ -39,7 +40,8 @@ async def test_pushes_half_brightness_when_charging_starts() -> None:
         led=LedConfig(enabled=True), is_charging=True, led_brightness=0.0
     )
 
-    await coordinator._apply_led_state()
+    with patch("schedule.coordinator.resolve_theme", return_value=None):
+        await coordinator._apply_led_state()
 
     charger_client.apply_led_state.assert_awaited_once_with(0.5, None)
 
@@ -61,7 +63,8 @@ async def test_pushes_configured_brightness_instead_of_default() -> None:
         led_brightness=0.0,
     )
 
-    await coordinator._apply_led_state()
+    with patch("schedule.coordinator.resolve_theme", return_value=None):
+        await coordinator._apply_led_state()
 
     charger_client.apply_led_state.assert_awaited_once_with(0.8, None)
 
@@ -76,6 +79,20 @@ async def test_off_state_ignores_configured_brightness() -> None:
     await coordinator._apply_led_state()
 
     charger_client.apply_led_state.assert_awaited_once_with(0.0, None)
+
+
+async def test_pushes_resolved_theme_effect_while_charging() -> None:
+    coordinator, charger_client = _coordinator(
+        led=LedConfig(enabled=True), is_charging=True, led_brightness=0.0
+    )
+
+    with patch(
+        "schedule.coordinator.resolve_theme",
+        return_value=LedTheme(effect_name="halloween_mode"),
+    ):
+        await coordinator._apply_led_state()
+
+    charger_client.apply_led_state.assert_awaited_once_with(0.5, "halloween_mode")
 
 
 async def test_sends_no_led_messages_when_no_led_block_in_config() -> None:
@@ -121,6 +138,7 @@ async def test_run_applies_led_state_even_when_schedule_cannot_be_pushed() -> No
     )
     coordinator._charger_client = charger_client
 
-    await coordinator.run()
+    with patch("schedule.coordinator.resolve_theme", return_value=None):
+        await coordinator.run()
 
     charger_client.apply_led_state.assert_awaited_once_with(0.5, None)
