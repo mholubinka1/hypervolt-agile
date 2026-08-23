@@ -45,7 +45,7 @@ async def test_pushes_half_brightness_when_charging_starts() -> None:
     with patch("schedule.coordinator.resolve_theme", return_value=None):
         await coordinator._apply_led_state()
 
-    charger_client.apply_led_state.assert_awaited_once_with(0.5, None)
+    charger_client.apply_led_state.assert_awaited_once_with(0.5, None, leds=None)
 
 
 async def test_pushes_zero_brightness_when_charging_stops() -> None:
@@ -68,7 +68,7 @@ async def test_pushes_configured_brightness_instead_of_default() -> None:
     with patch("schedule.coordinator.resolve_theme", return_value=None):
         await coordinator._apply_led_state()
 
-    charger_client.apply_led_state.assert_awaited_once_with(0.8, None)
+    charger_client.apply_led_state.assert_awaited_once_with(0.8, None, leds=None)
 
 
 async def test_off_state_ignores_configured_brightness() -> None:
@@ -125,7 +125,9 @@ async def test_pushes_resolved_theme_effect_while_charging() -> None:
     ):
         await coordinator._apply_led_state()
 
-    charger_client.apply_led_state.assert_awaited_once_with(0.5, "halloween_mode")
+    charger_client.apply_led_state.assert_awaited_once_with(
+        0.5, "halloween_mode", leds=None
+    )
 
 
 async def test_sends_no_led_messages_when_no_led_block_in_config() -> None:
@@ -176,4 +178,4 @@ async def test_run_applies_led_state_even_when_schedule_cannot_be_pushed() -> No
     with patch("schedule.coordinator.resolve_theme", return_value=None):
         await coordinator.run()
 
-    charger_client.apply_led_state.assert_awaited_once_with(0.5, None)
+    charger_client.apply_led_state.assert_awaited_once_with(0.5, None, leds=None)

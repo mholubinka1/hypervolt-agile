@@ -110,14 +110,17 @@ def test_load_custom_effect_raises_on_invalid_hex(tmp_path: Path, colour: str) -
         load_custom_effect(path)
 
 
-def test_load_custom_effect_raises_on_out_of_range_index(tmp_path: Path) -> None:
+@pytest.mark.parametrize("index", [51, -1])
+def test_load_custom_effect_raises_on_out_of_range_index(
+    tmp_path: Path, index: int
+) -> None:
     path = _write(
         tmp_path,
-        """
+        f"""
         default_colour: "#000000"
         segments:
           - colour: "#FFD700"
-            indices: [51]
+            indices: [{index}]
         """,
     )
 

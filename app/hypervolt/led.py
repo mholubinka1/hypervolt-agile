@@ -23,8 +23,11 @@ _LOCAL_TZ = ZoneInfo(TIMEZONE)
 _LED_COUNT = 51
 
 
-@dataclass
+@dataclass(frozen=True)
 class LedTheme:
+    # BUILT_IN_THEMES holds singleton instances returned by reference on every
+    # resolve_theme() call, so this must stay immutable -- a mutating caller
+    # would otherwise corrupt state shared across scheduler cycles.
     effect_name: str
     leds: list[dict[str, float]] | None = None
 
@@ -49,6 +52,10 @@ def load_custom_effect(path: Path) -> list[dict[str, float]]:
         for _range_start, _range_end in segment.get("ranges", []):
             _indices.extend(range(_range_start, _range_end + 1))
         for _index in _indices:
+            if not 0 <= _index < _LED_COUNT:
+                raise IndexError(
+                    f"{path}: LED index {_index} out of range (0-{_LED_COUNT - 1})."
+                )
             _leds[_index] = dict(_colour)
     return _leds
 

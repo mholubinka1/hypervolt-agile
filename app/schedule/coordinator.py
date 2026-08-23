@@ -90,14 +90,11 @@ class ScheduleCoordinator:
         _target = resolve_theme(
             datetime.now(ZoneInfo(TIMEZONE)), custom_themes=self._custom_themes
         )
-        if _target is not None and _target.leds is not None:
-            await self._charger_client.apply_led_state(
-                _led_config.brightness, _target.effect_name, leds=_target.leds
-            )
-        else:
-            await self._charger_client.apply_led_state(
-                _led_config.brightness, _target.effect_name if _target else None
-            )
+        await self._charger_client.apply_led_state(
+            _led_config.brightness,
+            _target.effect_name if _target is not None else None,
+            leds=_target.leds if _target is not None else None,
+        )
 
     def _can_push(self) -> bool:
         if self._charger_client is None:

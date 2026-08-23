@@ -47,22 +47,32 @@ A loader function converts hex colours to normalised RGB floats and constructs t
 **`app/hypervolt/led.py` additions**:
 - `load_custom_effect(path: Path) -> list[dict]` — parses one `led_effects/*.yaml` file into the
   51-element `leds` array. Raises on missing file or malformed content (missing
-  `default_colour`, invalid hex, out-of-range index); the caller (config loading) is responsible
-  for catching this and applying the log-and-skip policy below — `load_custom_effect` itself
-  stays a pure, throwing parser.
+  `default_colour`, invalid hex, out-of-range index — including negative indices, added
+  2026-08-24 after a review pass caught that a negative index silently wrapped to the last LED
+  via Python list semantics instead of raising); the caller (config loading) is responsible for
+  catching this and applying the log-and-skip policy below — `load_custom_effect` itself stays a
+  pure, throwing parser.
 - `resolve_theme(now, extensions, custom_themes)` — the middle tier (previously an empty list)
-  is now populated: `custom_themes` is `Sequence[tuple[LedTheme, _Window, _Window]]`, reusing the
+  is now populated: `custom_themes` is `Sequence[tuple[LedTheme, Window, Window]]`, reusing the
   exact same `(payload, start, end)` shape and `_window_for_year`/boundary-check loop
   `BUILT_IN_THEMES` already uses — for each entry, in `config.yml` list order, check whether `now`
   falls in its date window; return the first match's `LedTheme` (already fully built with its
   `leds` array — see below). Falls through to built-ins if nothing in this tier matches.
   Extension tier (still empty in this slice) remains checked first, per the existing signature.
-- `_parse_window_date(s: str) -> _Window` — parses `"MM-DD"` or `"MM-DD HH:MM"` into the same
-  `_Window` tuple shape `BUILT_IN_THEMES` uses. Used both by `config.py`'s pydantic validator (to
+  **Refactored 2026-08-24**: `BUILT_IN_THEMES` now stores `LedTheme` instances directly (was
+  raw `effect_name: str`), matching `custom_themes`' shape exactly — this let the two
+  previously-duplicated matching loops collapse into one shared `_resolve_from(now, entries)`
+  helper, called once for `custom_themes` and once for `BUILT_IN_THEMES`. Behaviour for built-in
+  themes is unchanged; this is a pure refactor.
+- `parse_window_date(s: str) -> Window` — parses `"MM-DD"` or `"MM-DD HH:MM"` into the same
+  `Window` tuple shape `BUILT_IN_THEMES` uses. Used both by `config.py`'s pydantic validator (to
   fail fast on a malformed string) and by the startup loader that builds the runtime
   `custom_themes` list passed to `resolve_theme` — one parser, not two.
 
-**`LedTheme` dataclass — corrected 2026-08-23**: gains `leds: list[dict] | None = None`, but
+**`LedTheme` dataclass — corrected 2026-08-23**: gains `leds: list[dict] | None = None`, and is
+now `frozen=True` — the `BUILT_IN_THEMES` refactor below has `resolve_theme` return the same
+singleton `LedTheme` instance by reference on every matching call, so it must stay immutable to
+avoid one caller's mutation corrupting state shared across scheduler cycles. Separately,
 **`effect_name` changes meaning**: it's the theme's *semantic identity*, used for diffing in
 `apply_led_state` (see below) — not necessarily the literal wire value. For a built-in, identity
 and wire value are the same (`"halloween_mode"`). For a custom theme, `effect_name` is the
@@ -84,7 +94,7 @@ needed, the *wire* effect name differs from the semantic identity only for custo
 
 **`app/config.py`**: new `CustomLedTheme(BaseModel)` with `effect: str`, `start: str`, `end: str`.
 `start`/`end` are validated via a pydantic `field_validator` (reusing `led.py`'s
-`_parse_window_date` so there's one date-format parser, not two) against the `MM-DD` or
+`parse_window_date` so there's one date-format parser, not two) against the `MM-DD` or
 `MM-DD HH:MM` format at config-load time — a malformed date string is a config-authoring error in
 the file the operator just edited, and fails loudly the same way every other `AppConfig` field
 already does (see ADR 0007's contrast between core config's fail-fast validation and this
@@ -92,12 +102,12 @@ feature's own runtime graceful-degradation). `LedConfig` gains
 `custom_themes: list[CustomLedTheme] = []`.
 
 **Startup loading**: a new function — `load_custom_themes(entries: list[CustomLedTheme],
-led_effects_dir: Path) -> list[tuple[LedTheme, _Window, _Window]]` in `led.py` — runs once at
+led_effects_dir: Path) -> list[tuple[LedTheme, Window, Window]]` in `led.py` — runs once at
 startup (called from `main.py`, where `config_path` is already available to compute
 `led_effects_dir`). For each `CustomLedTheme`, attempt `load_custom_effect(led_effects_dir /
 f"{effect}.yaml")`; on any exception, log an error naming the effect and the exception, and drop
 that entry; on success, build `(LedTheme(effect_name=entry.effect, leds=leds),
-_parse_window_date(entry.start), _parse_window_date(entry.end))` and keep it. The resulting list
+parse_window_date(entry.start), parse_window_date(entry.end))` and keep it. The resulting list
 is passed to `ScheduleCoordinator` (a new constructor parameter, stored and threaded through to
 every `resolve_theme(...)` call in `_apply_led_state()`) — resolved once, not re-loaded per
 cycle. The app starts regardless of any individual failure, and every other configured theme,
@@ -127,7 +137,7 @@ commented-out example `custom_themes:` entry, not enabled by default.
   with real temp YAML files (`tmp_path`): a valid file produces the exact expected 51-element
   `leds` array; missing `default_colour`, an invalid hex value, and an out-of-range segment index
   each raise.
-- **`_parse_window_date(s)`** — pure string parsing — tested directly for both `"MM-DD"` and
+- **`parse_window_date(s)`** — pure string parsing — tested directly for both `"MM-DD"` and
   `"MM-DD HH:MM"` forms and for malformed input raising.
 - **`resolve_theme`'s custom tier** — extends the existing pure-logic tests in `test_led.py`: a
   custom theme resolves during its window and falls through to built-ins outside it; a custom
