@@ -57,15 +57,25 @@ async def test_apply_led_state_skips_push_when_effect_already_matches() -> None:
     ws_client.set_led_effect.assert_not_awaited()
 
 
-async def test_apply_led_state_sends_no_effect_message_when_theme_ends() -> None:
-    # The charger never gets told to clear an effect explicitly -- no theme
-    # active just means no effect_name is sent this cycle, but the locally
-    # tracked state still needs to reflect that nothing is active any more.
+async def test_apply_led_state_sends_none_sentinel_when_theme_ends() -> None:
+    # "none" is the wire sentinel the charger understands as "stop showing an
+    # effect" -- without sending it explicitly, a theme would keep showing on
+    # the physical charger indefinitely once its window closed.
     client, ws_client = _charger_client(
         led_brightness=0.5, current_led_effect="halloween_mode"
     )
 
     await client.apply_led_state(0.5, None)
 
-    ws_client.set_led_effect.assert_not_awaited()
+    ws_client.set_led_effect.assert_awaited_once_with("none")
     assert client._current_led_effect is None
+
+
+async def test_apply_led_state_sends_no_redundant_none_when_nothing_was_active() -> (
+    None
+):
+    client, ws_client = _charger_client(led_brightness=0.5, current_led_effect=None)
+
+    await client.apply_led_state(0.5, None)
+
+    ws_client.set_led_effect.assert_not_awaited()

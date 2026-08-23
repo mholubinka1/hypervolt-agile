@@ -2,6 +2,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from hypervolt.charger import HypervoltChargerClient
 from hypervolt.led import LedTheme
+from octopus.client import AgileClient
+from schedule import Scheduler
 from schedule.coordinator import ScheduleCoordinator
 
 from config import AppConfig, Hypervolt, LedConfig, Octopus, Schedule
@@ -129,9 +131,11 @@ async def test_run_applies_led_state_even_when_schedule_cannot_be_pushed() -> No
         led_brightness=0.0,
     )
 
-    scheduler = Mock()
-    scheduler.update = AsyncMock()
-    scheduler.should_verify = Mock(return_value=False)
+    agile_client = Mock(spec=AgileClient)
+    agile_client.get_upcoming_prices = AsyncMock(return_value=[])
+    scheduler = Scheduler(
+        agile_client=agile_client, config=_config(LedConfig(enabled=True))
+    )
 
     coordinator = ScheduleCoordinator(
         scheduler=scheduler, config=_config(LedConfig(enabled=True))

@@ -17,6 +17,10 @@ from config import AppConfig
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
+# Wire sentinel the charger understands as "stop showing an effect" -- there is
+# no separate clear/disable message, this is sent as an ordinary effect_name.
+_NO_EFFECT = "none"
+
 
 class HypervoltChargerClient:
     _polling_interval: int
@@ -179,8 +183,8 @@ class HypervoltChargerClient:
             return
         if brightness != self._charger_state.led_brightness:
             await self._ws_client.set_led_brightness(brightness)
-        if effect_name is not None and effect_name != self._current_led_effect:
-            await self._ws_client.set_led_effect(effect_name)
+        if effect_name != self._current_led_effect:
+            await self._ws_client.set_led_effect(effect_name or _NO_EFFECT)
         self._current_led_effect = effect_name
 
     async def lock(self) -> None:
