@@ -58,6 +58,7 @@ class ScheduleCoordinator:
             if not _is_connected:
                 return
             await self._charger_client.refresh()
+            await self._apply_led_state()
             if self._scheduler.should_verify():
                 await self._charger_client.verify_schedule()
             if self._can_push():
@@ -65,6 +66,18 @@ class ScheduleCoordinator:
                 await self._lock_control()
         except Exception:
             logger.exception("Error in schedule coordinator run loop.")
+
+    async def _apply_led_state(self) -> None:
+        if self._charger_client is None:
+            return
+        _led_config = self._config.led
+        if _led_config is None or not _led_config.enabled:
+            return
+        _state = self._charger_client.charger_state
+        if _state.is_charging is None:
+            return
+        _brightness = 0.5 if _state.is_charging else 0.0
+        await self._charger_client.apply_led_state(_brightness, None)
 
     def _can_push(self) -> bool:
         if self._charger_client is None:

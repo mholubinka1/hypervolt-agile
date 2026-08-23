@@ -50,10 +50,15 @@ class Schedule(BaseModel):
     poll: int = Field(..., alias="poll_every_secs", ge=2, le=3600)
 
 
+class LedConfig(BaseModel):
+    enabled: bool = True
+
+
 class AppConfig(BaseModel):
     octopus: Octopus
     hypervolt: Hypervolt
     schedule: Schedule
+    led: LedConfig | None = None
     log_file: str | None = None
     log_level: str = "INFO"
 

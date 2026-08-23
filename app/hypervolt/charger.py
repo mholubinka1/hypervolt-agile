@@ -173,6 +173,12 @@ class HypervoltChargerClient:
         await self._ws_client.set_charging_schedule(sessions)
         return True
 
+    async def apply_led_state(self, brightness: float, effect_name: str | None) -> None:
+        if not self.is_connected:
+            return
+        if brightness != self._charger_state.led_brightness:
+            await self._ws_client.set_led_brightness(brightness)
+
     async def lock(self) -> None:
         if not self.is_connected:
             return

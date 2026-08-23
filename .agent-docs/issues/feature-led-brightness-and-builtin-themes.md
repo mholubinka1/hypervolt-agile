@@ -9,8 +9,9 @@
 ### What to build
 
 Full path for brightness control, with no effects yet: a `led:` block in `config.yml`
-(`LedConfig(enabled: bool = True)` on `AppConfig`), `set_led_brightness` request methods on
-`HypervoltProtocol` and `HypervoltWebSocketClient`, a new `apply_led_state(brightness,
+(`LedConfig(enabled: bool = True)` on `AppConfig`), a `set_led_brightness` method on
+`HypervoltWebSocketClient` (matching `set_lock_state`'s pattern — no `HypervoltProtocol` change
+needed, see spec), a new `apply_led_state(brightness,
 effect_name)` method on `HypervoltChargerClient` that diffs against the charger's echoed
 `led_brightness` before pushing (mirroring `apply_schedule`'s diffing pattern exactly), and
 `ScheduleCoordinator._apply_led_state()` called unconditionally from `run()` after `refresh()` —
@@ -51,8 +52,9 @@ New `app/hypervolt/led.py` module: a `LedTheme` dataclass (`effect_name: str`), 
 time), and `resolve_theme(now, extensions=(), custom_themes=()) -> Optional[LedTheme]` walking
 the three-tier priority stack — only the built-in tier is populated this issue, but the
 `extensions`/`custom_themes` parameters exist now so later work extends this signature rather
-than reworking it. Add `set_led_effect` to `HypervoltProtocol`/`HypervoltWebSocketClient`, and
-extend `apply_led_state` (from #1) to also diff/push `effect_name` against a new
+than reworking it. Add `set_led_effect` to `HypervoltWebSocketClient` (same pattern as
+`set_led_brightness`), and extend `apply_led_state` (from #1) to also diff/push `effect_name`
+against a new
 `_current_led_effect` field. `ScheduleCoordinator` resolves the target theme each cycle via
 `resolve_theme(now)` and passes its `effect_name` through.
 

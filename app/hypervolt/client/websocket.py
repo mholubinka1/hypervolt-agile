@@ -108,6 +108,15 @@ class HypervoltWebSocketClient:
             }
         )
 
+    async def set_led_brightness(self, brightness: float) -> None:
+        await self._send_message(
+            {
+                "id": _generate_id(),
+                "method": "sync.apply",
+                "params": {"brightness": brightness},
+            }
+        )
+
     async def set_charging_schedule(
         self,
         schedule: list[dict],

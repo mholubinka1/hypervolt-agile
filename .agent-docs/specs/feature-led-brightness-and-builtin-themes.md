@@ -64,13 +64,16 @@ active), since the charger never echoes it back. Pushes brightness only when it 
 `charger_state.led_brightness`; pushes the effect only when it differs from
 `_current_led_effect`; sends nothing when both already match.
 
-**`app/hypervolt/client/protocol.py`** (`HypervoltProtocol`): new request methods
-`set_led_brightness(brightness: float)` and `set_led_effect(effect_name: str | None)`, each
-sending a `sync.apply` message with the relevant param.
+**Corrected 2026-08-23**: `HypervoltProtocol` doesn't own outbound request-building — it only
+parses inbound responses (`_on_*_response`) plus two thin wrappers (`sync()`,
+`get_charging_schedule()`) that themselves just call back out to the websocket layer. The actual
+`sync.apply` push pattern lives on `HypervoltWebSocketClient` directly: `set_lock_state()` builds
+and sends the message itself via `_send_message()`, with no `HypervoltProtocol` involvement.
 
-**`app/hypervolt/client/websocket.py`** (`HypervoltWebSocketClient`): expose the two protocol
-methods as public methods, following the existing pattern for `set_lock_state` /
-`set_charging_schedule`.
+**`app/hypervolt/client/websocket.py`** (`HypervoltWebSocketClient`): new `set_led_brightness(brightness:
+float) -> None` and `set_led_effect(effect_name: str | None) -> None`, each building and sending
+a `sync.apply` message with the relevant param, following `set_lock_state()`'s exact pattern —
+no `HypervoltProtocol` changes needed for this slice.
 
 **`app/schedule/coordinator.py`** (`ScheduleCoordinator`): new `_apply_led_state()` method,
 called from `run()` unconditionally after `refresh()` — critically, **not** nested inside the
