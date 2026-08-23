@@ -99,6 +99,11 @@ extension uses the same `{"method": "sync.apply", "params": {"effect_name": "ste
 
 ## Testing Decisions
 
+**Stale — the `[[no-tests]]` convention referenced below was reversed 2026-08-23 (see
+`tests-required`); this slice hasn't been re-planned for pytest yet. Re-derive real test seams
+when this slice is actually picked up — don't implement it against the manual-verification list
+below.**
+
 No automated tests, per project convention ([[no-tests]]) — verification through execution:
 - Register a minimal test extension whose `resolve()` always returns a theme, and confirm it
   takes priority over a simultaneously-matching custom theme and built-in.

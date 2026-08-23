@@ -99,17 +99,37 @@ disables the feature — an explicit `enabled: false` pauses it while retaining 
 
 ## Testing Decisions
 
-This codebase does not write automated tests ([[no-tests]] convention) — verification is through
-execution. For this slice specifically:
-- Force `is_charging` True/False via a real charge session (or a short-circuited local run) and
-  confirm brightness 0.5/0.0 is sent exactly once per transition, with no redundant pushes on
-  subsequent cycles when state already matches (watch debug logs for `sync.apply` sends).
-- Run with the system clock set inside each of the three theme windows (and just outside their
-  boundaries) and confirm the correct `effect_name` is sent, and that no effect is sent outside
-  all windows.
-- Confirm `led.enabled: false` and an absent `led:` block both produce zero LED messages.
-- Confirm a config change from `enabled: true` to `enabled: false` mid-charge leaves the
-  currently-showing effect frozen (no reset command sent) — physically observe the LEDs.
+**Superseded 2026-08-23**: this codebase's earlier "no automated tests" convention has been
+reversed (see the `tests-required` memory) — pytest is now the test framework, seeded on
+`common/`, `config.py`, and `schedule/builder.py` in `chore/introduce-test-coverage`, with a CI
+coverage-diff gate that must not regress. This slice follows the same pattern rather than relying
+solely on manual execution.
+
+Two natural seams, chosen as the highest/deepest available for each concern:
+
+- **`app/hypervolt/led.py`'s `resolve_theme(now, extensions=(), custom_themes=())`** — pure
+  function, no I/O, directly testable with fixed `datetime`s. Covers every date-driven acceptance
+  criterion on #76 without touching the scheduler at all: each of the three seasonal windows
+  (inside, and just outside each boundary), the year-wrap case (`party_mode` spanning New Year's
+  Eve into January), and the "no window active" case returning `None`.
+- **`ScheduleCoordinator._apply_led_state()`** (exercised via `run()` or called directly) — the
+  seam for every criterion about *whether and what* gets pushed to the charger: brightness
+  0.5/0.0 on the `is_charging` True/False transition, no redundant push when state already
+  matches, the `led.enabled`/absent-`led:`-block gating, and LED control firing regardless of
+  `_can_push()`. `HypervoltChargerClient` is mocked here — it's the system boundary (owns the
+  real websocket I/O to the physical charger) — asserting `apply_led_state(brightness,
+  effect_name)` was called with the expected arguments, or not called at all. Nothing above this
+  boundary (the coordinator's own gating/diffing logic) is mocked.
+
+`apply_led_state()`'s own diffing behaviour (only pushing what changed) is exercised indirectly
+through the coordinator tests above rather than tested in isolation — it has no interesting logic
+of its own beyond the diff-and-call pattern `apply_schedule()` already established, so a dedicated
+unit test would just restate the implementation.
+
+Manual verification is still worthwhile for one thing no unit test can cover: physically observing
+the LEDs. Confirm on real hardware once, mainly as a wire-format sanity check (does `sync.apply`
+with `effect_name` actually produce the expected visual effect) — this is a one-time check, not a
+substitute for the automated coverage above.
 
 ## Out of Scope
 

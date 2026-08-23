@@ -92,6 +92,13 @@ commented-out example `custom_themes:` entry, not enabled by default.
 
 ## Testing Decisions
 
+**Stale — the `[[no-tests]]` convention referenced below was reversed 2026-08-23 (see
+`tests-required`); this slice hasn't been re-planned for pytest yet. Re-derive real test seams
+(likely: pure-logic tests on the YAML-parsing/theme-resolution code, plus a `ScheduleCoordinator`
+test mocking `HypervoltChargerClient` at the boundary, matching
+`feature-led-brightness-and-builtin-themes.md`'s Testing Decisions) when this slice is actually
+picked up — don't implement it against the manual-verification list below.**
+
 No automated tests, per project convention ([[no-tests]]) — verification through execution:
 - Add a `custom_themes` entry pointing at one shipped YAML (e.g. `peace`), set the system clock
   inside its window, force `is_charging` True, and confirm `steady_array` is sent with the exact
