@@ -140,10 +140,13 @@ Two natural seams, chosen as the highest/deepest available for each concern:
   effect_name)` was called with the expected arguments, or not called at all. Nothing above this
   boundary (the coordinator's own gating/diffing logic) is mocked.
 
-`apply_led_state()`'s own diffing behaviour (only pushing what changed) is exercised indirectly
-through the coordinator tests above rather than tested in isolation — it has no interesting logic
-of its own beyond the diff-and-call pattern `apply_schedule()` already established, so a dedicated
-unit test would just restate the implementation.
+**Corrected 2026-08-23**: `apply_led_state()`'s diffing turned out to need its own dedicated
+seam after all — the coordinator mocks `HypervoltChargerClient` wholesale, so "does the charger
+client actually skip a redundant push" isn't observable from the coordinator tests alone.
+`tests/hypervolt/test_charger.py` tests `HypervoltChargerClient.apply_led_state()` directly
+(mocking only `HypervoltWebSocketClient`, the next boundary down), covering: brightness/effect
+pushed when they differ, skipped when they already match, the `"none"` sentinel sent on an
+effect→no-effect transition, and no redundant `"none"` when nothing was ever active.
 
 Manual verification is still worthwhile for one thing no unit test can cover: physically observing
 the LEDs. Confirm on real hardware once, mainly as a wire-format sanity check (does `sync.apply`
