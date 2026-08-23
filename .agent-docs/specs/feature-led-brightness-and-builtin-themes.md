@@ -101,7 +101,18 @@ None = None` to `AppConfig`.
 ```json
 {"method": "sync.apply", "params": {"brightness": 0.5}}
 {"method": "sync.apply", "params": {"effect_name": "halloween_mode"}}
+{"method": "sync.apply", "params": {"effect_name": "none"}}
 ```
+
+**Clearing an active effect (added 2026-08-23)**: the literal string `"none"` is the wire
+sentinel that tells the charger to stop rendering a named effect and fall back to plain
+brightness — confirmed against a reference Hypervolt API client (a local, gitignored file, not
+part of this repo's history; matches the app's own UI, where selecting an effect exposes a
+"Disable" action). `apply_led_state` sends `effect_name="none"` whenever the resolved target
+transitions from a real effect to none, diffed the same way as any other effect change — not
+sent on every cycle, only on that transition. Without this, a theme would otherwise be left
+showing on the physical charger indefinitely once its window closed, since nothing else in the
+protocol clears it.
 
 ## Testing Decisions
 

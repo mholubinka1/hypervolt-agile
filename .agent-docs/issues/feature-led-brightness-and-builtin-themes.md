@@ -75,7 +75,11 @@ against a new
 - [ ] Given the local datetime falls within no theme window and `is_charging` is `True`, then
       the configured brightness is sent if needed and no `effect_name` is sent
 - [ ] Given `halloween_mode` is active mid-charge, when the local datetime passes 1 Nov 06:00,
-      then no effect is sent on the next cycle and `_current_led_effect` is cleared
+      then `effect_name: "none"` is sent on the next cycle (the wire sentinel that clears an
+      active effect — **corrected 2026-08-23**, was "no effect is sent", but that would leave
+      the theme showing on the physical charger indefinitely) and `_current_led_effect` is
+      cleared
 - [ ] No redundant effect push when `_current_led_effect` already matches the resolved theme
+      (including no redundant `"none"` sends when nothing was ever active)
 
 ---
