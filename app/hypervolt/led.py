@@ -141,11 +141,11 @@ def resolve_theme(
         _match = _resolve_from(now, BUILT_IN_THEMES)
     if _match is None:
         return None
-    # BUILT_IN_THEMES and the caller's custom_themes hold shared singleton
-    # instances, returned by reference on every matching call -- freezing the
-    # dataclass only stops field reassignment, not mutation of the nested
-    # `leds` list, so a defensive copy is the only real protection against a
-    # caller corrupting what a later cycle resolves to.
+    # _match above is the stored LedTheme itself (from BUILT_IN_THEMES or the
+    # caller's custom_themes), not a copy -- freezing the dataclass only stops
+    # field reassignment, not mutation of the nested `leds` list, so building
+    # a fresh LedTheme with a deep-copied `leds` below is the only real
+    # protection against a caller corrupting what a later cycle resolves to.
     return LedTheme(
         effect_name=_match.effect_name,
         leds=[dict(led) for led in _match.leds] if _match.leds is not None else None,
