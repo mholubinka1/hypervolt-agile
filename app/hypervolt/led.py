@@ -21,6 +21,12 @@ logger: Logger = getLogger(APP_NAME)
 
 _LOCAL_TZ = ZoneInfo(TIMEZONE)
 _LED_COUNT = 51
+# A fixed leap year, shared by parse_window_date (so "02-29" parses) and by
+# config.py's end_must_be_after_start validator (so its chronological check
+# uses the same reference year as everything else that materialises a Window
+# into real dates) -- one named constant instead of the literal 2000 living
+# in two places.
+REFERENCE_ANCHOR_YEAR = 2000
 
 
 @dataclass(frozen=True)
@@ -84,18 +90,20 @@ BUILT_IN_THEMES: list[tuple[LedTheme, Window, Window]] = [
 
 
 def parse_window_date(value: str) -> Window:
-    # A fixed leap year avoids Python's day-without-year parsing ambiguity
+    # REFERENCE_ANCHOR_YEAR avoids Python's day-without-year parsing ambiguity
     # (deprecated in 3.15) and lets "02-29" parse as a valid window boundary.
     for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
         try:
             # Naive is fine here -- only the calendar fields are used, the
             # result is never compared as an actual instant.
-            _parsed = datetime.strptime(f"2000-{value}", fmt)  # noqa: DTZ007
+            _parsed = datetime.strptime(  # noqa: DTZ007
+                f"{REFERENCE_ANCHOR_YEAR}-{value}", fmt
+            )
             # strptime accepts single-digit fields ("2-3", "10-31 6:0") even
             # though the documented grammar is strictly zero-padded -- a
             # round-trip through the same format catches that silently-loose
             # input, since re-formatting a valid one always yields it back.
-            if _parsed.strftime(fmt) != f"2000-{value}":
+            if _parsed.strftime(fmt) != f"{REFERENCE_ANCHOR_YEAR}-{value}":
                 continue
             return (_parsed.month, _parsed.day, _parsed.hour, _parsed.minute)
         except ValueError:
@@ -108,6 +116,8 @@ def parse_window_date(value: str) -> Window:
 def window_for_year(
     start: Window, end: Window, anchor_year: int
 ) -> tuple[datetime, datetime]:
+    # Public: also called from config.py's end_must_be_after_start validator
+    # to check chronological ordering at config-load time, not just here.
     start_month, start_day, start_hour, start_minute = start
     end_month, end_day, end_hour, end_minute = end
     _start = datetime(

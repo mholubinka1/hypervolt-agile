@@ -57,7 +57,7 @@ A loader function converts hex colours to normalised RGB floats and constructs t
   pure, throwing parser.
 - `resolve_theme(now, extensions, custom_themes)` — the middle tier (previously an empty list)
   is now populated: `custom_themes` is `Sequence[tuple[LedTheme, Window, Window]]`, reusing the
-  exact same `(payload, start, end)` shape and `_window_for_year`/boundary-check loop
+  exact same `(payload, start, end)` shape and `window_for_year`/boundary-check loop
   `BUILT_IN_THEMES` already uses — for each entry, in `config.yml` list order, check whether `now`
   falls in its date window; return the first match's `LedTheme` (already fully built with its
   `leds` array — see below). Falls through to built-ins if nothing in this tier matches.
@@ -117,6 +117,12 @@ it as valid `MM-DD` syntax, but `resolve_theme`'s window materialisation constru
 `effect` rejects any value matching a `BUILT_IN_THEMES` name (`halloween_mode`, `christmas_mode`,
 `party_mode`) — since `effect_name` is the diffing identity, a custom theme reusing a built-in's
 name would make `apply_led_state` unable to tell the two apart if their windows ever overlapped.
+**A third validator added 2026-08-24** (Copilot review finding): a `model_validator(mode="after")`
+(`end_must_be_after_start`) rejects a same-month or later-month `start`/`end` pair where `end` is
+chronologically before `start` (e.g. `start="03-16"`, `end="03-14"`) — such a window could never
+match any date and would silently never activate. A genuine year-wrap (`end_month < start_month`,
+e.g. `party_mode`'s New Year's Eve span) is still permitted; it's detected the same way
+`window_for_year` detects it for `BUILT_IN_THEMES` and `custom_themes` at match time.
 
 **Startup loading**: a new function — `load_custom_themes(entries: list[CustomLedTheme],
 led_effects_dir: Path) -> list[tuple[LedTheme, Window, Window]]` in `led.py` — runs once at

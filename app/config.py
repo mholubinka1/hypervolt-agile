@@ -9,7 +9,12 @@ import yaml
 from common.constants import APP_NAME
 from common.logging import config
 from common.utils import is_null_or_empty
-from hypervolt.led import BUILT_IN_THEMES, parse_window_date, window_for_year
+from hypervolt.led import (
+    BUILT_IN_THEMES,
+    REFERENCE_ANCHOR_YEAR,
+    parse_window_date,
+    window_for_year,
+)
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 logging.config.dictConfig(config)
@@ -89,7 +94,9 @@ class CustomLedTheme(BaseModel):
         # would silently never activate.
         _start_window = parse_window_date(self.start)
         _end_window = parse_window_date(self.end)
-        _start, _end = window_for_year(_start_window, _end_window, anchor_year=2000)
+        _start, _end = window_for_year(
+            _start_window, _end_window, anchor_year=REFERENCE_ANCHOR_YEAR
+        )
         if _end <= _start:
             raise ValueError(
                 f"Custom LED theme {self.effect!r}: window end {self.end!r} is not "
