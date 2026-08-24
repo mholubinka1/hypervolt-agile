@@ -131,3 +131,19 @@ def test_custom_led_theme_rejects_leap_day(field: str) -> None:
 
     with pytest.raises(ValidationError):
         CustomLedTheme(**values)
+
+
+def test_custom_led_theme_rejects_same_month_end_before_start() -> None:
+    # end_month < start_month is a deliberate year-wrap (like party_mode); but
+    # a same-month reversed pair (16 before 14) isn't a wrap -- it produces a
+    # window whose end is chronologically before its start, which can never
+    # match any date and would silently never activate.
+    with pytest.raises(ValidationError):
+        CustomLedTheme(effect="peace", start="03-16", end="03-14")
+
+
+def test_custom_led_theme_accepts_a_genuine_year_wrap() -> None:
+    theme = CustomLedTheme(effect="peace", start="12-15", end="01-05")
+
+    assert theme.start == "12-15"
+    assert theme.end == "01-05"

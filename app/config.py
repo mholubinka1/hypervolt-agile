@@ -9,8 +9,8 @@ import yaml
 from common.constants import APP_NAME
 from common.logging import config
 from common.utils import is_null_or_empty
-from hypervolt.led import BUILT_IN_THEMES, parse_window_date
-from pydantic import BaseModel, Field, field_validator
+from hypervolt.led import BUILT_IN_THEMES, parse_window_date, window_for_year
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
@@ -78,6 +78,25 @@ class CustomLedTheme(BaseModel):
                 "any non-leap year."
             )
         return v
+
+    @model_validator(mode="after")
+    def end_must_be_after_start(self) -> CustomLedTheme:
+        # end_month < start_month is a deliberate year-wrap (e.g. party_mode
+        # spans New Year's Eve). But a same-month or later-month pair with the
+        # end chronologically before the start (e.g. start="03-16",
+        # end="03-14") isn't a wrap -- it produces a window whose end instant
+        # never comes after its start, so it can never match any date and
+        # would silently never activate.
+        _start_window = parse_window_date(self.start)
+        _end_window = parse_window_date(self.end)
+        _start, _end = window_for_year(_start_window, _end_window, anchor_year=2000)
+        if _end <= _start:
+            raise ValueError(
+                f"Custom LED theme {self.effect!r}: window end {self.end!r} is not "
+                f"after start {self.start!r} -- this window could never match any "
+                "date."
+            )
+        return self
 
 
 class LedConfig(BaseModel):

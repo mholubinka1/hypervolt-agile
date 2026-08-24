@@ -67,7 +67,7 @@ Place your `config.yml` in `/home/pi/.config/hypervolt-agile/`, then run:
 docker-compose up -d
 ```
 
-If you're using custom LED themes (`led:.custom_themes` in `config.yml`), the `*.yaml` effect
+If you're using custom LED themes (`led.custom_themes` in `config.yml`), the `*.yaml` effect
 files are **not** baked into the Docker image — only `config.yml` itself is bind-mounted. Copy
 the effect files (this repo's `config/led_effects/*.yaml`, or your own) into
 `/home/pi/.config/hypervolt-agile/led_effects/` alongside `config.yml` too.

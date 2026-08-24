@@ -1,5 +1,7 @@
+import logging
 from pathlib import Path
 
+import pytest
 from hypervolt.led import load_custom_themes
 
 from config import CustomLedTheme
@@ -38,6 +40,20 @@ def test_load_custom_themes_drops_entry_with_missing_yaml_file(tmp_path: Path) -
 
     assert len(result) == 1
     assert result[0][0].effect_name == "peace"
+
+
+def test_load_custom_themes_logs_the_effect_name_and_exception_on_failure(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    entries = [CustomLedTheme(effect="does-not-exist", start="04-01", end="04-02")]
+
+    with caplog.at_level(logging.ERROR):
+        load_custom_themes(entries, tmp_path)
+
+    assert len(caplog.records) == 1
+    _message = caplog.records[0].message
+    assert "does-not-exist" in _message
+    assert "FileNotFoundError" in _message
 
 
 def test_load_custom_themes_drops_entry_with_malformed_yaml(tmp_path: Path) -> None:

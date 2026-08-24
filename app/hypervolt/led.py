@@ -25,9 +25,10 @@ _LED_COUNT = 51
 
 @dataclass(frozen=True)
 class LedTheme:
-    # BUILT_IN_THEMES holds singleton instances returned by reference on every
-    # resolve_theme() call, so this must stay immutable -- a mutating caller
-    # would otherwise corrupt state shared across scheduler cycles.
+    # BUILT_IN_THEMES and load_custom_themes() both hold long-lived singleton
+    # instances internally -- freezing this stops a caller from reassigning a
+    # field on one of those singletons (resolve_theme()'s defensive copy is
+    # what stops nested `leds` list mutation from reaching them, see below).
     effect_name: str
     leds: list[dict[str, float]] | None = None
 
@@ -55,6 +56,11 @@ def load_custom_effect(path: Path) -> list[dict[str, float]]:
             if _range_start > _range_end:
                 raise ValueError(
                     f"{path}: range [{_range_start}, {_range_end}] has end before start."
+                )
+            if not (0 <= _range_start < _LED_COUNT and 0 <= _range_end < _LED_COUNT):
+                raise IndexError(
+                    f"{path}: range [{_range_start}, {_range_end}] out of range "
+                    f"(0-{_LED_COUNT - 1})."
                 )
             _indices.extend(range(_range_start, _range_end + 1))
         for _index in _indices:
@@ -99,7 +105,7 @@ def parse_window_date(value: str) -> Window:
     )
 
 
-def _window_for_year(
+def window_for_year(
     start: Window, end: Window, anchor_year: int
 ) -> tuple[datetime, datetime]:
     start_month, start_day, start_hour, start_minute = start
@@ -119,7 +125,7 @@ def _resolve_from(
 ) -> LedTheme | None:
     for theme, start, end in entries:
         for anchor_year in (now.year, now.year - 1):
-            _start, _end = _window_for_year(start, end, anchor_year)
+            _start, _end = window_for_year(start, end, anchor_year)
             if _start <= now < _end:
                 return theme
     return None

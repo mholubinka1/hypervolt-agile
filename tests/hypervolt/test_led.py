@@ -7,9 +7,10 @@ _LONDON = ZoneInfo("Europe/London")
 
 
 def test_resolve_theme_returns_a_defensive_copy_of_the_leds_array() -> None:
-    # A stored theme (built-in or custom) is returned by reference from the
-    # same underlying list on every matching call -- a caller mutating the
-    # returned leds array must not corrupt what the next call returns.
+    # A stored theme (built-in or custom) is matched by reference internally
+    # on every call -- resolve_theme must hand back a copy, not the stored
+    # instance, so a caller mutating the returned leds array can't corrupt
+    # what the next call returns.
     stored = LedTheme(effect_name="peace", leds=[{"r": 0.0, "g": 0.0, "b": 0.0}])
     custom_themes = [(stored, (3, 14, 0, 0), (3, 16, 0, 0))]
     now = datetime(2026, 3, 15, 12, 0, tzinfo=_LONDON)

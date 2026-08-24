@@ -142,7 +142,9 @@ def test_load_custom_effect_raises_on_out_of_range_index(
         load_custom_effect(path)
 
 
-@pytest.mark.parametrize("range_value", [[51, 50], [0, 51], [-1, 5]])
+@pytest.mark.parametrize(
+    "range_value", [[51, 50], [0, 51], [-1, 5], [0, 1_000_000_000_000]]
+)
 def test_load_custom_effect_raises_on_malformed_range(
     tmp_path: Path, range_value: list[int]
 ) -> None:

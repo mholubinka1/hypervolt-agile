@@ -76,13 +76,13 @@ A loader function converts hex colours to normalised RGB floats and constructs t
   the parsed value and compare to the original) now catches that silent looseness.
 
 **`LedTheme` dataclass — corrected 2026-08-23**: gains `leds: list[dict] | None = None`, and is
-now `frozen=True` — the `BUILT_IN_THEMES` refactor below has `resolve_theme` return the same
+now `frozen=True` — the `BUILT_IN_THEMES` refactor below internally matches against the same
 singleton `LedTheme` instance by reference on every matching call, so it must stay immutable to
 avoid one caller's mutation corrupting state shared across scheduler cycles.
 **Hardened 2026-08-24**: `frozen=True` alone only stops *field reassignment* — the nested `leds`
 list (and its inner RGB dicts) stays mutable, so a caller could still do `theme.leds[0]["r"] =
 1.0` and corrupt the shared singleton despite the frozen guarantee. `resolve_theme` now returns a
-defensive copy (a new `LedTheme` with a deep-copied `leds` list) rather than the stored instance
+defensive copy (a new `LedTheme` with a deep-copied `leds` list) rather than the matched instance
 itself — the singleton storage optimisation is unchanged, only what's handed back to the caller.
 Separately, **`effect_name` changes meaning**: it's the theme's *semantic identity*, used for diffing in
 `apply_led_state` (see below) — not necessarily the literal wire value. For a built-in, identity
