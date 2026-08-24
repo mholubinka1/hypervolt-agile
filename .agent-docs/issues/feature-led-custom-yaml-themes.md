@@ -1,5 +1,7 @@
 # Issues: feature-led-custom-yaml-themes
 
+> Work complete — PR ready to merge.
+
 ## Load and apply a custom YAML theme during its date window — [#82](https://github.com/mholubinka1/hypervolt-agile/issues/82)
 
 **Blocked by**: None
@@ -27,31 +29,36 @@ re-read every cycle.
 
 ### Acceptance criteria
 
-- [ ] Given a `custom_themes` entry whose date window matches `now` and `is_charging` is `True`,
+- [x] Given a `custom_themes` entry whose date window matches `now` and `is_charging` is `True`,
       when the scheduler runs, then the wire `effect_name: "steady_array"` and the theme's exact
       `leds` array (as produced by `load_custom_effect`) are sent — internally the theme is
       identified by its own name (e.g. `"peace"`), only the wire value sent to the charger is
       `"steady_array"` (**corrected 2026-08-24**, was stated as if `effect_name` itself were
       `"steady_array"`, contradicting the identity fix)
-- [ ] Given a custom theme and a built-in both match the same date, when the scheduler runs, then
+- [x] Given a custom theme and a built-in both match the same date, when the scheduler runs, then
       the custom theme takes priority
-- [ ] Given `now` matches no custom theme, when the scheduler runs, then built-ins are resolved as
+- [x] Given `now` matches no custom theme, when the scheduler runs, then built-ins are resolved as
       before (no regression to slice 1 behaviour)
-- [ ] Given the currently-active theme changes from one custom theme to a different custom theme
+- [x] Given the currently-active theme changes from one custom theme to a different custom theme
       (both wire as `"steady_array"`), when the scheduler runs, then the new `leds` array is sent
       — this is not silently treated as "unchanged"
-- [ ] Given the currently-active theme is unchanged between cycles, when the scheduler runs, then
+- [x] Given the currently-active theme is unchanged between cycles, when the scheduler runs, then
       no redundant LED message is sent
-- [ ] Given a `custom_themes` entry's YAML file does not exist or is malformed, when the app
+- [x] Given a `custom_themes` entry's YAML file does not exist or is malformed, when the app
       starts, then it starts successfully, an error is logged naming the effect, and every other
       configured theme/built-in still resolves correctly
-- [ ] Given a `custom_themes` entry has a malformed `start`/`end` date string directly in
+- [x] Given a `custom_themes` entry has a malformed `start`/`end` date string directly in
       `config.yml`, when the app starts, then it fails to start with a clear validation error,
       the same as any other bad `AppConfig` value
-- [ ] Given a `custom_themes` entry has `02-29` as its `start`/`end`, when the app starts, then it
+- [x] Given a `custom_themes` entry has `02-29` as its `start`/`end`, when the app starts, then it
       fails to start with a clear validation error (**added 2026-08-24**, caught by review —
       would otherwise crash `resolve_theme` on any non-leap year)
-- [ ] `load_custom_themes` is called once at startup (not per scheduler cycle)
+- [x] Given a `custom_themes` entry has a same-month `start`/`end` pair where `end` is
+      chronologically before `start` (e.g. `start="03-16"`, `end="03-14"`), when the app starts,
+      then it fails to start with a clear validation error (**added 2026-08-24**, caught by
+      Copilot review round 2 — would otherwise silently produce a window that could never match
+      any date)
+- [x] `load_custom_themes` is called once at startup (not per scheduler cycle)
 
 ---
 
@@ -71,10 +78,10 @@ example `custom_themes:` entry, not enabled by default.
 
 ### Acceptance criteria
 
-- [ ] All five `led_effects/*.yaml` files exist, each parses successfully via
+- [x] All five `led_effects/*.yaml` files exist, each parses successfully via
       `load_custom_effect`, and each produces a visually sensible 51-element `leds` array for its
       theme
-- [ ] `config.yml.template` documents `custom_themes:` with all five files as commented-out
+- [x] `config.yml.template` documents `custom_themes:` with all five files as commented-out
       example entries
 
 ---
