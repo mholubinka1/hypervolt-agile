@@ -1,5 +1,4 @@
 import asyncio
-import logging.config
 from datetime import date, datetime
 from logging import Logger, getLogger
 from typing import Any
@@ -8,11 +7,17 @@ from zoneinfo import ZoneInfo
 import httpx
 from common.constants import APP_NAME, TIMEZONE
 from common.decorator import retry
-from common.logging import config
 from common.polling import every
 from hypervolt.led import LedTheme
 
-logging.config.dictConfig(config)
+# Deliberately does NOT call logging.config.dictConfig() -- unlike app/*
+# modules (imported once, early, before main.py's configure_file_logging()
+# runs), this module is loaded dynamically at runtime via load_extensions(),
+# which happens AFTER configure_file_logging() has already configured the
+# APP_NAME logger with a file handler. Re-running dictConfig here would
+# reset it back to console-only, silently breaking file logging app-wide the
+# moment any extension is loaded. The logger is already fully configured by
+# the time this module executes -- just look it up.
 logger: Logger = getLogger(APP_NAME)
 
 _LOCAL_TZ = ZoneInfo(TIMEZONE)
@@ -35,6 +40,15 @@ class SaintsFcExtension:
         self._poll_interval_secs = config.get(
             "poll_interval_secs", _DEFAULT_POLL_INTERVAL_SECS
         )
+        if (
+            isinstance(self._poll_interval_secs, bool)
+            or not isinstance(self._poll_interval_secs, (int, float))
+            or self._poll_interval_secs <= 0
+        ):
+            raise ValueError(
+                f"poll_interval_secs must be a positive number, got "
+                f"{self._poll_interval_secs!r}."
+            )
         self._client = httpx.AsyncClient(
             base_url=_API_BASE_URL, headers={"X-Auth-Token": self._api_key}
         )

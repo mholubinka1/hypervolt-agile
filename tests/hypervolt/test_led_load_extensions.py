@@ -171,6 +171,55 @@ async def test_load_extensions_drops_entry_whose_init_raises(
     assert "KeyError" in caplog.records[0].message
 
 
+async def test_load_extensions_rejects_a_name_that_escapes_extensions_dir_via_traversal(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A malicious or mistyped `name` (e.g. "../../etc/passwd") must not be
+    # able to import a Python file from outside extensions_dir -- entry.name
+    # is interpolated directly into the loaded path.
+    _extensions_dir = tmp_path / "extensions"
+    _extensions_dir.mkdir()
+    _outside_file = tmp_path / "outside.py"
+    _outside_file.write_text(_VALID_EXTENSION_SOURCE, encoding="utf-8")
+    _write_extension(_extensions_dir, "fake_ext", _VALID_EXTENSION_SOURCE)
+    entries = [
+        ExtensionEntry(name="../outside"),
+        ExtensionEntry(name="fake_ext"),
+    ]
+
+    with caplog.at_level(logging.ERROR):
+        result = await load_extensions(entries, _extensions_dir)
+
+    assert len(result) == 1
+    assert result[0].name == "fake_ext"
+    assert len(caplog.records) == 1
+    assert "../outside" in caplog.records[0].message
+
+
+async def test_load_extensions_rejects_an_absolute_path_name(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    _extensions_dir = tmp_path / "extensions"
+    _extensions_dir.mkdir()
+    _outside_file = tmp_path / "outside.py"
+    _outside_file.write_text(_VALID_EXTENSION_SOURCE, encoding="utf-8")
+    _write_extension(_extensions_dir, "fake_ext", _VALID_EXTENSION_SOURCE)
+    # An absolute path as `name` would make Path.__truediv__ discard
+    # extensions_dir entirely and resolve to the absolute path directly.
+    entries = [
+        ExtensionEntry(name=str(tmp_path / "outside")),
+        ExtensionEntry(name="fake_ext"),
+    ]
+
+    with caplog.at_level(logging.ERROR):
+        result = await load_extensions(entries, _extensions_dir)
+
+    assert len(result) == 1
+    assert result[0].name == "fake_ext"
+    assert len(caplog.records) == 1
+    assert repr(str(tmp_path / "outside")) in caplog.records[0].message
+
+
 async def test_load_extensions_stops_a_partially_constructed_provider_whose_start_raises(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -239,10 +239,16 @@ async def load_extensions(
     entries: Sequence[ExtensionEntry], extensions_dir: Path
 ) -> list[ExtensionWrapper]:
     _loaded: list[ExtensionWrapper] = []
+    _extensions_dir = extensions_dir.resolve()
     for entry in entries:
         _provider: LedThemeProvider | None = None
         try:
-            _provider_class = _load_provider_class(extensions_dir / f"{entry.name}.py")
+            _module_path = (extensions_dir / f"{entry.name}.py").resolve()
+            if not _module_path.is_relative_to(_extensions_dir):
+                raise ValueError(
+                    f"{entry.name!r} resolves outside extensions_dir {extensions_dir}."
+                )
+            _provider_class = _load_provider_class(_module_path)
             _provider = _provider_class(entry.config)
             if hasattr(_provider, "start"):
                 await _provider.start()

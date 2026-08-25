@@ -1,9 +1,13 @@
 from datetime import datetime
+from logging import getLogger
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import httpx
+from common.constants import APP_NAME
+from common.logging import configure_file_logging
 from hypervolt.led import load_extensions
 
 from config import ExtensionEntry
@@ -38,3 +42,24 @@ async def test_shipped_saints_fc_extension_loads_and_resolves_to_none_by_default
         theme = await result[0].resolve(datetime.now(tz=_LONDON))
         assert theme is None
         await result[0].stop()
+
+
+async def test_loading_shipped_saints_fc_does_not_clobber_file_logging_config(
+    tmp_path: Path,
+) -> None:
+    # main.py calls configure_file_logging() before load_extensions() runs.
+    # A dynamically-loaded extension's own module-level logging setup must
+    # not re-run dictConfig and strip the file handler main.py just added --
+    # that would silently break file logging app-wide the moment any
+    # extension is loaded.
+    configure_file_logging(str(tmp_path / "test.log"), "INFO")
+    assert any(isinstance(h, RotatingFileHandler) for h in getLogger(APP_NAME).handlers)
+    entries = [ExtensionEntry(name="saints_fc", config={"api_key": "test-key"})]
+
+    with patch("saints_fc.httpx.AsyncClient", side_effect=_no_match_client):
+        result = await load_extensions(entries, _EXTENSIONS_DIR)
+        await result[0].stop()
+
+    assert any(
+        isinstance(h, RotatingFileHandler) for h in getLogger(APP_NAME).handlers
+    ), "file handler was stripped by loading the extension"
