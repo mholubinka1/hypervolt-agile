@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import logging.config
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -190,6 +191,15 @@ class ExtensionWrapper:
     async def resolve(self, now: datetime) -> LedTheme | None:
         try:
             _result = await self._provider.resolve(now)
+            # Raised inside this try so a misbehaving extension's bad return
+            # value is funnelled through the same isolation/dedup handling
+            # below as any other resolve() failure, rather than propagating
+            # to crash resolve_theme's own .effect_name access.
+            if _result is not None and not isinstance(_result, LedTheme):
+                raise TypeError(
+                    f"resolve() returned {type(_result).__name__}, expected "
+                    "LedTheme or None"
+                )
         except Exception as e:
             if type(e) is not type(self._last_exception) or str(e) != str(
                 self._last_exception
@@ -217,21 +227,37 @@ class ExtensionWrapper:
 
 
 def _load_provider_class(module_path: Path) -> type[LedThemeProvider]:
-    _spec = importlib.util.spec_from_file_location(module_path.stem, module_path)
+    _spec = importlib.util.spec_from_file_location(
+        f"_hypervolt_extension.{module_path.stem}", module_path
+    )
     if _spec is None or _spec.loader is None:
         raise ImportError(f"Could not load module spec for {module_path}.")
     _module = importlib.util.module_from_spec(_spec)
-    _spec.loader.exec_module(_module)
-    _candidates = [
-        _cls
-        for _, _cls in inspect.getmembers(_module, inspect.isclass)
-        if _cls.__module__ == _module.__name__ and hasattr(_cls, "resolve")
-    ]
-    if len(_candidates) != 1:
-        raise ValueError(
-            f"{module_path}: expected exactly one class implementing "
-            f"LedThemeProvider, found {len(_candidates)}."
-        )
+    # module_from_spec() alone does not register the module in sys.modules --
+    # unlike a normal import, so anything the module's own top-level code
+    # relies on sys.modules for (e.g. @dataclass, via dataclasses._is_type,
+    # looks up sys.modules[cls.__module__] directly with no default) would
+    # otherwise crash during exec_module below. Matches importlib's own
+    # documented recipe for loading a module from a file path. The name is
+    # namespaced under "_hypervolt_extension." so an extension file that
+    # happens to share a name with a real module (e.g. "config.py") can
+    # never clobber -- or be clobbered by -- that module's sys.modules entry.
+    sys.modules[_spec.name] = _module
+    try:
+        _spec.loader.exec_module(_module)
+        _candidates = [
+            _cls
+            for _, _cls in inspect.getmembers(_module, inspect.isclass)
+            if _cls.__module__ == _module.__name__ and hasattr(_cls, "resolve")
+        ]
+        if len(_candidates) != 1:
+            raise ValueError(
+                f"{module_path}: expected exactly one class implementing "
+                f"LedThemeProvider, found {len(_candidates)}."
+            )
+    except Exception:
+        del sys.modules[_spec.name]
+        raise
     return _candidates[0]
 
 

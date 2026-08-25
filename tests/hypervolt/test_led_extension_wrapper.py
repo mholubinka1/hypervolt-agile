@@ -16,6 +16,11 @@ class _FailingProvider:
         raise self._exception
 
 
+class _MalformedProvider:
+    async def resolve(self, now: datetime) -> object:
+        return "not-a-led-theme"
+
+
 class _RecoveringProvider:
     def __init__(self, exception: Exception, theme: LedTheme) -> None:
         self._exception: Exception | None = exception
@@ -98,6 +103,26 @@ async def test_extension_wrapper_logs_nothing_on_a_successful_call_with_no_prior
 
     assert result == theme
     assert len(caplog.records) == 0
+
+
+async def test_extension_wrapper_treats_a_non_ledtheme_result_as_a_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The loader only checks for a `resolve` attribute at load time (led.py's
+    # _load_provider_class) -- a misbehaving extension can still return
+    # something that isn't a LedTheme or None. Without validating the result
+    # here, resolve_theme would dereference `_match.effect_name` on that
+    # value outside this isolation path, crashing the whole scheduler cycle
+    # instead of the misbehaving extension being logged and skipped like any
+    # other resolve failure.
+    wrapper = ExtensionWrapper(name="saints_fc", provider=_MalformedProvider())
+
+    with caplog.at_level(logging.WARNING):
+        result = await wrapper.resolve(datetime(2026, 8, 25, 12, 0, tzinfo=_LONDON))
+
+    assert result is None
+    assert len(caplog.records) == 1
+    assert "saints_fc" in caplog.records[0].message
 
 
 class _StoppableProvider:

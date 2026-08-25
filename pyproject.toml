@@ -66,7 +66,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.coverage.run]
-source = ["app"]
+source = ["app", "extensions"]
 branch = true
 
 [tool.coverage.report]

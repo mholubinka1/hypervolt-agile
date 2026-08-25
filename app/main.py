@@ -102,8 +102,14 @@ async def main() -> None:
             on_tick=lambda: _LIVENESS_FILE.write_text(str(time.time() + _poll * 4)),
         )
     finally:
-        await agile_client.close()
-        await coordinator.close()
+        try:
+            await agile_client.close()
+        except Exception:
+            logger.exception("Error closing Agile client.")
+        try:
+            await coordinator.close()
+        except Exception:
+            logger.exception("Error closing schedule coordinator.")
         for extension in extensions:
             await extension.stop()
 

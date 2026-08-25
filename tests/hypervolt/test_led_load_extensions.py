@@ -55,6 +55,28 @@ class BrokenInitExtension:
         return LedTheme(effect_name="broken")
 """
 
+_USES_DATACLASS_WITH_POSTPONED_ANNOTATIONS_SOURCE = """
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+
+from hypervolt.led import LedTheme
+
+
+@dataclass
+class _Config:
+    api_key: str
+
+
+class DataclassExtension:
+    def __init__(self, config: dict) -> None:
+        self._config = _Config(api_key=config["api_key"])
+
+    async def resolve(self, now: datetime) -> LedTheme | None:
+        return LedTheme(effect_name="dataclass_extension")
+"""
+
 _START_RAISES_AFTER_OPENING_A_RESOURCE_SOURCE = """
 from datetime import datetime
 from pathlib import Path
@@ -92,6 +114,29 @@ async def test_load_extensions_loads_a_valid_entry(tmp_path: Path) -> None:
     assert result[0].name == "fake_ext"
     theme = await result[0].resolve(datetime.now(tz=_LONDON))
     assert theme == LedTheme(effect_name="fake")
+
+
+async def test_load_extensions_loads_an_extension_using_a_dataclass_with_postponed_annotations(
+    tmp_path: Path,
+) -> None:
+    # importlib.util.module_from_spec()/exec_module() alone does NOT register
+    # the module in sys.modules, unlike a normal import -- @dataclass (via
+    # dataclasses._is_type) looks up sys.modules[cls.__module__] directly
+    # with no default, so a perfectly valid extension using `from __future__
+    # import annotations` combined with @dataclass would otherwise crash
+    # with an AttributeError on 'NoneType' during its own module exec,
+    # before load_extensions' own validation even runs.
+    _write_extension(
+        tmp_path,
+        "dataclass_ext",
+        _USES_DATACLASS_WITH_POSTPONED_ANNOTATIONS_SOURCE,
+    )
+    entries = [ExtensionEntry(name="dataclass_ext", config={"api_key": "test-key"})]
+
+    result = await load_extensions(entries, tmp_path)
+
+    assert len(result) == 1
+    assert result[0].name == "dataclass_ext"
 
 
 async def test_load_extensions_drops_entry_with_missing_file(

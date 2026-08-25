@@ -19,6 +19,11 @@ class _StaticProvider:
         return self._theme
 
 
+class _RaisingProvider:
+    async def resolve(self, now: datetime) -> LedTheme | None:
+        raise RuntimeError("fixtures API unreachable")
+
+
 async def test_resolve_theme_prefers_extension_over_matching_custom_theme() -> None:
     now = datetime(2026, 3, 15, 12, 0, tzinfo=_LONDON)
     extensions = [ExtensionWrapper(name="saints_fc", provider=_StaticProvider(_SAINTS))]
@@ -49,6 +54,22 @@ async def test_resolve_theme_falls_through_to_custom_themes_when_no_extension_ma
 ):
     now = datetime(2026, 3, 15, 12, 0, tzinfo=_LONDON)
     extensions = [ExtensionWrapper(name="saints_fc", provider=_StaticProvider(None))]
+    custom_themes = [(_PEACE, (3, 14, 0, 0), (3, 16, 0, 0))]
+
+    theme = await resolve_theme(now, extensions=extensions, custom_themes=custom_themes)
+
+    assert theme == _PEACE
+
+
+async def test_resolve_theme_falls_through_to_custom_themes_when_extension_raises() -> (
+    None
+):
+    # A regression in the extension loop (e.g. an exception propagating past
+    # ExtensionWrapper's isolation instead of being converted to None) must
+    # not be able to suppress every lower-priority theme -- only the
+    # misbehaving extension itself should ever be affected.
+    now = datetime(2026, 3, 15, 12, 0, tzinfo=_LONDON)
+    extensions = [ExtensionWrapper(name="broken", provider=_RaisingProvider())]
     custom_themes = [(_PEACE, (3, 14, 0, 0), (3, 16, 0, 0))]
 
     theme = await resolve_theme(now, extensions=extensions, custom_themes=custom_themes)

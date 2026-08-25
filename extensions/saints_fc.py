@@ -1,4 +1,5 @@
 import asyncio
+import math
 from datetime import date, datetime
 from logging import Logger, getLogger
 from typing import Any
@@ -8,6 +9,7 @@ import httpx
 from common.constants import APP_NAME, TIMEZONE
 from common.decorator import retry
 from common.polling import every
+from common.utils import is_null_or_empty
 from hypervolt.led import LedTheme
 
 # Deliberately does NOT call logging.config.dictConfig() -- unlike app/*
@@ -36,6 +38,8 @@ def _matchday_leds() -> list[dict[str, float]]:
 class SaintsFcExtension:
     def __init__(self, config: dict[str, Any]) -> None:
         self._api_key = config["api_key"]
+        if is_null_or_empty(self._api_key):
+            raise ValueError("api_key must not be blank.")
         self._team_id = config.get("team_id", _DEFAULT_TEAM_ID)
         self._poll_interval_secs = config.get(
             "poll_interval_secs", _DEFAULT_POLL_INTERVAL_SECS
@@ -43,6 +47,7 @@ class SaintsFcExtension:
         if (
             isinstance(self._poll_interval_secs, bool)
             or not isinstance(self._poll_interval_secs, (int, float))
+            or not math.isfinite(self._poll_interval_secs)
             or self._poll_interval_secs <= 0
         ):
             raise ValueError(

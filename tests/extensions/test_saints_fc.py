@@ -30,7 +30,10 @@ async def test_resolve_returns_none_before_any_poll_has_happened() -> None:
     assert theme is None
 
 
-@pytest.mark.parametrize("poll_interval_secs", [0, -10, "not-a-number", True, False])
+@pytest.mark.parametrize(
+    "poll_interval_secs",
+    [0, -10, "not-a-number", True, False, float("nan"), float("inf")],
+)
 def test_init_rejects_a_non_positive_or_non_numeric_poll_interval(
     poll_interval_secs: object,
 ) -> None:
@@ -43,6 +46,16 @@ def test_init_rejects_a_non_positive_or_non_numeric_poll_interval(
         SaintsFcExtension(
             {"api_key": "test-key", "poll_interval_secs": poll_interval_secs}
         )
+
+
+@pytest.mark.parametrize("api_key", ["", "   "])
+def test_init_rejects_a_blank_api_key(api_key: str) -> None:
+    # config["api_key"] only checks the key exists -- an explicitly blank
+    # value would otherwise start the extension with an invalid token,
+    # retrying (via @retry()) against football-data.org on every poll
+    # instead of being rejected and skipped at load time.
+    with pytest.raises(ValueError):
+        SaintsFcExtension({"api_key": api_key})
 
 
 def _mock_client(handler: httpx.MockTransport) -> httpx.AsyncClient:
