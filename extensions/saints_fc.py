@@ -45,8 +45,13 @@ def _matchday_leds() -> list[dict[str, float]]:
 class SaintsFcExtension:
     def __init__(self, config: dict[str, Any]) -> None:
         self._api_key = config.get("api_key", _DEFAULT_API_KEY)
-        if is_null_or_empty(self._api_key):
-            raise ValueError("api_key must not be blank.")
+        if not isinstance(self._api_key, str) or is_null_or_empty(self._api_key):
+            # Describe the type, not the value -- api_key is a credential, so
+            # it must never be echoed into a message a caller might log.
+            raise ValueError(
+                f"api_key must be a non-blank string, got type "
+                f"{type(self._api_key).__name__}."
+            )
         self._team_id = config.get("team_id", _DEFAULT_TEAM_ID)
         self._poll_interval_secs = config.get(
             "poll_interval_secs", _DEFAULT_POLL_INTERVAL_SECS

@@ -221,6 +221,18 @@ def test_init_rejects_a_blank_api_key(api_key: str) -> None:
         SaintsFcExtension({"api_key": api_key})
 
 
+@pytest.mark.parametrize("api_key", [3, 3.5, True, ["3"], None])
+def test_init_rejects_a_non_string_api_key(api_key: object) -> None:
+    # An unquoted numeric value in YAML (e.g. `api_key: 3`) parses as an int,
+    # not a str -- is_null_or_empty() assumes a str and calls .strip() on it,
+    # so without this check the extension would fail to load with a
+    # confusing AttributeError instead of this clean ValueError. None covers
+    # a bare `api_key:` line with no value, the most realistic real-world
+    # trigger.
+    with pytest.raises(ValueError):
+        SaintsFcExtension({"api_key": api_key})
+
+
 async def test_a_poll_failure_logs_a_warning_and_keeps_the_cached_value(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
