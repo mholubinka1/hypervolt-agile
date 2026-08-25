@@ -44,8 +44,10 @@ class LedThemeProvider(Protocol):
     async def stop(self) -> None: ...    # optional
 ```
 
-**Lifecycle** (ADR 0005, extended by this slice): `start()` is called once at app startup, after
-every registered extension has been successfully instantiated. An extension needing live data
+**Lifecycle** (ADR 0005, extended by this slice): `start()` is called once at app startup,
+immediately after that extension's own instantiation succeeds (`load_extensions` processes
+entries one at a time — see below — not as an instantiate-all-then-start-all batch). An extension
+needing live data
 (an HTTP poll, a sensor read) starts its own background `asyncio.create_task()` inside `start()`
 on its own cadence, and caches the result on itself — `resolve(now)` does nothing but return that
 cached value, so it never blocks the scheduler's poll cycle regardless of how slow the real data
@@ -54,6 +56,13 @@ source is. `stop()` is called once at app shutdown from `main.py`'s existing `fi
 `start()` created, mirroring the websocket client's `disconnect()` (`cancel()`, `await`, catch
 `CancelledError`). Both hooks are optional — an extension with no live-data needs (e.g. a purely
 computed theme) can omit both and just implement `resolve()`.
+
+**Hardened 2026-08-25** (code review): `ExtensionWrapper.stop()` also isolates exceptions from the
+provider's `stop()` (log a warning naming the extension and exception, don't propagate) —
+`main.py`'s shutdown `finally` block calls `stop()` on every loaded extension in a plain `for`
+loop, so one extension raising from `stop()` must not stop the rest from being cleaned up, or the
+whole point of adding `stop()` (preventing leaked background tasks) is defeated for every
+extension after the first bad one.
 
 `resolve()` is `async def` in the protocol even though a well-behaved extension never actually
 awaits inside it (per the caching pattern above) — see the `resolve_theme` change below for why
@@ -117,10 +126,16 @@ gets in slice 2).
 ### `--extensions-dir` CLI argument and Docker mount (ADR 0006)
 
 `main.py` gains `--extensions-dir` as an **optional** argument (unlike `--config-file`, which is
-required). It's only needed when `led.extensions` is non-empty; if extensions are configured but
-the flag was omitted, fail at startup with a clear error naming the missing flag (config values
-are fail-fast per ADR 0007's boundary — this is a config-authoring/deployment mistake, not an
-external-resource failure). If `led.extensions` is empty, the flag is simply unused.
+required). It's only needed when `led.enabled` is true and `led.extensions` is non-empty; if
+extensions are configured but the flag was omitted, fail at startup with a clear error naming the
+missing flag (config values are fail-fast per ADR 0007's boundary — this is a
+config-authoring/deployment mistake, not an external-resource failure). If `led.extensions` is
+empty, or `led.enabled` is `false`, the flag is simply unused and extensions are never loaded or
+started — **hardened 2026-08-25** (code review): the first implementation gated loading only on
+`led.extensions` being non-empty, so `enabled: false` still started every extension's background
+polling (burning e.g. `saints_fc`'s API quota) even though the result was never consumed by
+`_apply_led_state`. This fail-fast path also now closes `agile_client` before `sys.exit(1)`,
+matching the existing pattern used by the postcode-validation check just above it in `main.py`.
 
 Per ADR 0006, this is a directory separate from `--config-file`'s directory (which is where
 `led_effects/` lives) — extensions are executable code, not data, and get their own mount so
@@ -164,6 +179,14 @@ Wire-level, this behaves exactly like a custom YAML theme: `effect_name` is the 
 (`"saints_fc_matchday"`), the wire value sent is `"steady_array"` with the `leds` array — no
 changes needed to `apply_led_state` (already generic over any `LedTheme` with a non-`None` `leds`
 field, since slice 2).
+
+**Hardened 2026-08-25** (code review): the first implementation cached a bare `bool`
+(`_has_match_today`) rather than the date it was computed for, so `resolve(now)` never actually
+checked `now` against it — a stale match-day theme could linger briefly past midnight until the
+next poll corrected it. Fixed by caching `_match_date: date | None` instead, compared against
+`now`'s date on every `resolve()` call. Also, the initial implementation omitted the
+`common.decorator.retry` usage this section already committed to — added as `@retry()` on the
+HTTP-fetching call, matching `octopus/client.py`'s and `octopus/postcode.py`'s existing usage.
 
 ### `FEATURES.md` correction
 

@@ -41,6 +41,20 @@ class BrokenStartExtension:
         return LedTheme(effect_name="broken")
 """
 
+_INIT_RAISES_EXTENSION_SOURCE = """
+from datetime import datetime
+
+from hypervolt.led import LedTheme
+
+
+class BrokenInitExtension:
+    def __init__(self, config: dict) -> None:
+        raise KeyError("api_key")
+
+    async def resolve(self, now: datetime) -> LedTheme | None:
+        return LedTheme(effect_name="broken")
+"""
+
 
 def _write_extension(extensions_dir: Path, name: str, source: str) -> None:
     extensions_dir.mkdir(parents=True, exist_ok=True)
@@ -114,3 +128,23 @@ async def test_load_extensions_drops_entry_whose_start_raises(
     assert len(caplog.records) == 1
     assert "broken_ext" in caplog.records[0].message
     assert "RuntimeError" in caplog.records[0].message
+
+
+async def test_load_extensions_drops_entry_whose_init_raises(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    _write_extension(tmp_path, "broken_ext", _INIT_RAISES_EXTENSION_SOURCE)
+    _write_extension(tmp_path, "fake_ext", _VALID_EXTENSION_SOURCE)
+    entries = [
+        ExtensionEntry(name="broken_ext"),
+        ExtensionEntry(name="fake_ext"),
+    ]
+
+    with caplog.at_level(logging.ERROR):
+        result = await load_extensions(entries, tmp_path)
+
+    assert len(result) == 1
+    assert result[0].name == "fake_ext"
+    assert len(caplog.records) == 1
+    assert "broken_ext" in caplog.records[0].message
+    assert "KeyError" in caplog.records[0].message

@@ -69,11 +69,12 @@ async def main() -> None:
     )
 
     extensions: list[ExtensionWrapper] = []
-    if app_config.led and app_config.led.extensions:
+    if app_config.led and app_config.led.enabled and app_config.led.extensions:
         if args.extensions_dir is None:
             logger.critical(
                 "led.extensions is configured in config.yml but --extensions-dir was not provided."
             )
+            await agile_client.close()
             sys.exit(1)
         extensions = await load_extensions(
             app_config.led.extensions, Path(args.extensions_dir)

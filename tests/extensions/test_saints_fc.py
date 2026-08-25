@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
+from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -70,14 +71,49 @@ async def test_a_poll_failure_logs_a_warning_and_keeps_the_cached_value(
     await extension._poll_once()
 
     extension._client = _mock_client(httpx.MockTransport(_failing_handler))
-    with caplog.at_level(logging.WARNING):
+    with (
+        patch("common.decorator.asyncio.sleep", AsyncMock()),
+        caplog.at_level(logging.WARNING),
+    ):
         await extension._poll_once()
 
     theme = await extension.resolve(datetime(2026, 8, 25, 12, 0, tzinfo=_LONDON))
     assert theme is not None
     assert theme.effect_name == "saints_fc_matchday"
-    assert len(caplog.records) == 1
-    assert "saints_fc" in caplog.records[0].message
+    # common.decorator.retry logs its own warning per retry attempt (already
+    # covered by its own tests) -- what matters here is exactly one warning
+    # from saints_fc itself, once retries are exhausted.
+    _own_records = [r for r in caplog.records if "poll failed" in r.message]
+    assert len(_own_records) == 1
+
+
+async def test_a_single_transient_failure_is_retried_and_does_not_log_a_saints_fc_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _calls = {"count": 0}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        _calls["count"] += 1
+        if _calls["count"] == 1:
+            return httpx.Response(500)
+        return httpx.Response(200, json={"matches": [{"id": 1}]})
+
+    extension = SaintsFcExtension({"api_key": "test-key"})
+    extension._client = _mock_client(httpx.MockTransport(_handler))
+
+    with (
+        patch("common.decorator.asyncio.sleep", AsyncMock()),
+        caplog.at_level(logging.WARNING),
+    ):
+        await extension._poll_once()
+
+    theme = await extension.resolve(datetime(2026, 8, 25, 12, 0, tzinfo=_LONDON))
+    assert theme is not None
+    assert _calls["count"] == 2
+    # The retry succeeded within the retry budget, so saints_fc's own
+    # poll-failed warning (logged only once retries are exhausted) must not
+    # fire -- only common.decorator.retry's own per-attempt warning does.
+    assert not any("poll failed" in r.message for r in caplog.records)
 
 
 async def test_start_polls_in_the_background_without_the_caller_awaiting_it() -> None:

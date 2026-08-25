@@ -127,3 +127,27 @@ async def test_extension_wrapper_stop_is_a_no_op_when_the_provider_has_no_stop()
     wrapper = ExtensionWrapper(name="saints_fc", provider=provider)
 
     await wrapper.stop()  # must not raise
+
+
+class _StopRaisesProvider:
+    async def resolve(self, now: datetime) -> LedTheme | None:
+        return None
+
+    async def stop(self) -> None:
+        raise RuntimeError("could not close connection")
+
+
+async def test_extension_wrapper_stop_logs_and_swallows_a_raising_providers_stop(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A raising stop() must not propagate -- main.py's shutdown loop calls
+    # stop() on every loaded extension in turn, and one bad extension's stop()
+    # must not stop the rest of them from being cleaned up.
+    wrapper = ExtensionWrapper(name="saints_fc", provider=_StopRaisesProvider())
+
+    with caplog.at_level(logging.WARNING):
+        await wrapper.stop()  # must not raise
+
+    assert len(caplog.records) == 1
+    assert "saints_fc" in caplog.records[0].message
+    assert "RuntimeError" in caplog.records[0].message

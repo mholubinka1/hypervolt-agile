@@ -1,11 +1,12 @@
 import asyncio
 import logging.config
-from datetime import datetime
+from datetime import date, datetime
 from logging import Logger, getLogger
 from zoneinfo import ZoneInfo
 
 import httpx
 from common.constants import APP_NAME, TIMEZONE
+from common.decorator import retry
 from common.logging import config
 from common.polling import every
 from hypervolt.led import LedTheme
@@ -36,7 +37,7 @@ class SaintsFcExtension:
         self._client = httpx.AsyncClient(
             base_url=_API_BASE_URL, headers={"X-Auth-Token": self._api_key}
         )
-        self._has_match_today = False
+        self._match_date: date | None = None
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
@@ -53,22 +54,31 @@ class SaintsFcExtension:
                 pass
         await self._client.aclose()
 
+    @retry()
+    async def _fetch_has_match_today(self, today: date) -> bool:
+        _response = await self._client.get(
+            f"/teams/{self._team_id}/matches",
+            params={"dateFrom": today.isoformat(), "dateTo": today.isoformat()},
+        )
+        _response.raise_for_status()
+        _data = _response.json()
+        return len(_data.get("matches", [])) > 0
+
     async def _poll_once(self) -> None:
+        _today = datetime.now(_LOCAL_TZ).date()
         try:
-            _today = datetime.now(_LOCAL_TZ).date().isoformat()
-            _response = await self._client.get(
-                f"/teams/{self._team_id}/matches",
-                params={"dateFrom": _today, "dateTo": _today},
-            )
-            _response.raise_for_status()
-            _data = _response.json()
-            self._has_match_today = len(_data.get("matches", [])) > 0
+            _has_match = await self._fetch_has_match_today(_today)
         except Exception as e:
             logger.warning(
                 f"LED theme extension 'saints_fc' poll failed: {type(e).__name__}: {e}."
             )
+            return
+        self._match_date = _today if _has_match else None
 
     async def resolve(self, now: datetime) -> LedTheme | None:
-        if not self._has_match_today:
+        if (
+            self._match_date is None
+            or now.astimezone(_LOCAL_TZ).date() != self._match_date
+        ):
             return None
         return LedTheme(effect_name="saints_fc_matchday", leds=_matchday_leds())

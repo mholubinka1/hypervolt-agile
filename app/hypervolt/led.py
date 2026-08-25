@@ -205,8 +205,15 @@ class ExtensionWrapper:
         return _result
 
     async def stop(self) -> None:
-        if hasattr(self._provider, "stop"):
+        if not hasattr(self._provider, "stop"):
+            return
+        try:
             await self._provider.stop()
+        except Exception as e:
+            logger.warning(
+                f"LED theme extension {self.name!r} failed to stop cleanly: "
+                f"{type(e).__name__}: {e}."
+            )
 
 
 def _load_provider_class(module_path: Path) -> type[LedThemeProvider]:
