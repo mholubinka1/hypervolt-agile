@@ -20,3 +20,9 @@ never-blocking read. No timeout is needed anywhere, because nothing in the sched
 can hang. This follows the same pattern already used for the websocket client, which runs its
 own connection loop as an independent background task rather than being awaited inline from the
 scheduler.
+
+**Added 2026-08-25**: `LedThemeProvider` gets a symmetric optional `async def stop(self) -> None`,
+called once from `main.py`'s existing shutdown `finally` block (alongside `agile_client.close()`
+and `coordinator.close()`). It cancels and awaits any task `start()` created, exactly matching the
+websocket client's own `disconnect()` — `cancel()` the task, `await` it, catch `CancelledError`.
+Without this, a task an extension starts in `start()` leaks on every app restart.
