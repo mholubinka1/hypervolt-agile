@@ -103,9 +103,8 @@ class CustomLedTheme(_WindowedLedTheme):
     def must_not_collide_with_a_built_in_theme(cls, v: str) -> str:
         if v in _RESERVED_LED_EFFECT_NAMES:
             raise ValueError(
-                f"{v!r} is a built-in theme name and can't be reused as a custom "
-                "theme's effect -- apply_led_state diffs on this name, so a "
-                "collision would make it unable to tell the two apart."
+                f"{v!r} is a built-in theme name and is reserved -- a custom theme "
+                "can't reuse it as its own effect name."
             )
         return v
 
