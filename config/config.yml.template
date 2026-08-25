@@ -31,8 +31,8 @@ schedule:
 #   extensions:                     # Dynamic themes resolved by a Python module you register, priority over custom_themes and built-ins. A saints_fc reference implementation ships in this repo's extensions/ -- to use it, copy extensions/saints_fc.py into a SEPARATE directory from config.yml (in Docker: /home/pi/.config/hypervolt-agile-extensions/, mounted to /extensions -- see --extensions-dir) and uncomment the entry below.
 #     - name: saints_fc                # extensions/saints_fc.py -- lights up red/white on any Southampton FC match day
 #       config:
-#         api_key:                      # Required: your football-data.org API token
-#         team_id: 340                  # Optional, default 340 (Southampton FC)
-#         poll_interval_secs: 300       # Optional, default 300
+#         api_key: "3"                   # Optional, default "3" -- TheSportsDB's free shared key, no signup needed. Swap for a personal key (thesportsdb.com Patreon) for dedicated rate limits.
+#         team_id: 134778                # Optional, default 134778 (Southampton FC) -- a TheSportsDB team ID, NOT football-data.org's
+#         poll_time: "23:00"             # Optional, default "23:00" -- local (Europe/London) 24-hour time to check for tomorrow's fixture. Also checked once for *today* on startup, so a same-day deploy/restart doesn't miss a match happening that day.
 # log_file: /logs/hypervolt-agile-scheduler.log   # Omit to log to console only. In Docker, /logs is bind-mounted from /home/pi/.log/hypervolt-agile.
 # log_level: INFO                # Console log level (default: INFO). File log level is always INFO.

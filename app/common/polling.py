@@ -2,9 +2,11 @@ import asyncio
 import logging.config
 import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timedelta, timezone
 from inspect import iscoroutinefunction
 from logging import Logger, getLogger
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from common.constants import APP_NAME
 from common.logging import config
@@ -34,3 +36,28 @@ async def every(delay: float, task: TaskType, on_tick: OnTickType = None) -> Non
             except Exception:
                 logger.exception("Unhandled exception in tick callback.")
         _next += (time.time() - _next) // delay * delay + delay
+
+
+async def daily_at(hour: int, minute: int, tz: ZoneInfo, task: TaskType) -> None:
+    while True:
+        _now = datetime.now(tz)
+        _target = _now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if _target <= _now:
+            _target += timedelta(days=1)
+        # _now and _target share the same tz object -- Python's datetime
+        # subtraction special-cases two aware datetimes with an identical
+        # tzinfo attribute by comparing their naive fields directly rather
+        # than each one's resolved UTC offset, so a bare `_target - _now`
+        # silently drops an hour (or gains one) across a DST transition.
+        # Normalising to UTC first sidesteps that shortcut.
+        _sleep_seconds = (
+            _target.astimezone(timezone.utc) - _now.astimezone(timezone.utc)
+        ).total_seconds()
+        await asyncio.sleep(_sleep_seconds)
+        try:
+            if iscoroutinefunction(task):
+                await task()
+            else:
+                task()
+        except Exception:
+            logger.exception("Unhandled exception in scheduled task.")

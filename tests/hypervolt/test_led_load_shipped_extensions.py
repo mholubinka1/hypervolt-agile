@@ -19,7 +19,9 @@ _RealAsyncClient = httpx.AsyncClient
 
 def _no_match_client(*args: object, **kwargs: object) -> httpx.AsyncClient:
     def _handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"matches": []})
+        if "eventsnext.php" in str(request.url):
+            return httpx.Response(200, json={"events": None})
+        return httpx.Response(200, json={"results": None})
 
     kwargs["transport"] = httpx.MockTransport(_handler)
     return _RealAsyncClient(**kwargs)  # type: ignore[arg-type]
