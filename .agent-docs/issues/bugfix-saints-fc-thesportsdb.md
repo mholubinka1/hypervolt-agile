@@ -1,3 +1,5 @@
+> Work complete — PR ready to merge.
+
 # Issues: bugfix-saints-fc-thesportsdb
 
 ## Switch saints_fc from football-data.org to TheSportsDB — [#89](https://github.com/mholubinka1/hypervolt-agile/issues/89)
@@ -72,28 +74,28 @@ config schema entirely, replaced by `poll_time`.
 
 ### Acceptance criteria
 
-- [ ] Given `poll_time` is omitted from `config:`, when the extension is constructed, then it
+- [x] Given `poll_time` is omitted from `config:`, when the extension is constructed, then it
       defaults to `"23:00"`
-- [ ] Given `poll_time` is not a string, or is a string that isn't a valid `"HH:MM"` 24-hour time,
+- [x] Given `poll_time` is not a string, or is a string that isn't a valid `"HH:MM"` 24-hour time,
       when the extension is constructed, then a `ValueError` is raised
-- [ ] Given `start()` is called, when it runs, then it directly awaits one check for whether there is
+- [x] Given `start()` is called, when it runs, then it directly awaits one check for whether there is
       a match *today* before scheduling the recurring daily task
-- [ ] Given the recurring daily task fires, when it runs, then it checks whether there is a match
+- [x] Given the recurring daily task fires, when it runs, then it checks whether there is a match
       *tomorrow* (not today) relative to that poll's local date
-- [ ] Given a checked date (today at bootstrap, or tomorrow on a later poll) has a confirmed match,
+- [x] Given a checked date (today at bootstrap, or tomorrow on a later poll) has a confirmed match,
       when `resolve(now)` is called with a `now` whose Europe/London date matches that recorded date,
       then the matchday `LedTheme` is returned
-- [ ] Given both a bootstrap "today" match and a later "tomorrow" match have been confirmed at
+- [x] Given both a bootstrap "today" match and a later "tomorrow" match have been confirmed at
       different times, when `resolve(now)` is called for either date, then the matchday theme is
       returned for both — confirming one recorded date cannot silently overwrite the other
-- [ ] `common.polling.daily_at` sleeps until the next occurrence of the given local `hour:minute`,
+- [x] `common.polling.daily_at` sleeps until the next occurrence of the given local `hour:minute`,
       runs the task, then repeats; if "now" is already past that time today, the first run is
       scheduled for tomorrow; an unhandled exception from the task does not kill the loop (matching
       `every()`'s existing behaviour) — covered by new tests in `tests/common/test_polling.py`
-- [ ] `common.polling.every` and its existing consumer (`app/main.py`) are unchanged
-- [ ] `config.yml.template`'s `saints_fc` example documents `poll_time` (default `"23:00"`) and no
+- [x] `common.polling.every` and its existing consumer (`app/main.py`) are unchanged
+- [x] `config.yml.template`'s `saints_fc` example documents `poll_time` (default `"23:00"`) and no
       longer references `poll_interval_secs`
-- [ ] `tests/hypervolt/test_led_load_shipped_extensions.py`'s integration test still passes against
+- [x] `tests/hypervolt/test_led_load_shipped_extensions.py`'s integration test still passes against
       the real shipped extension
 
 ---
