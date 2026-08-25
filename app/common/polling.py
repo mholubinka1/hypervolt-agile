@@ -49,7 +49,7 @@ async def daily_at(hour: int, minute: int, tz: ZoneInfo, task: TaskType) -> None
         # tzinfo attribute by comparing their naive fields directly rather
         # than each one's resolved UTC offset, so a bare `_target - _now`
         # silently drops an hour (or gains one) across a DST transition.
-        # Normalizing to UTC first sidesteps that shortcut.
+        # Normalising to UTC first sidesteps that shortcut.
         _sleep_seconds = (
             _target.astimezone(timezone.utc) - _now.astimezone(timezone.utc)
         ).total_seconds()

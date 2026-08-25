@@ -165,10 +165,10 @@ alone: Python's datetime subtraction special-cases two aware datetimes that shar
 `tzinfo` object (which `_now` and `_target` always do here, since both come from the same `tz`
 argument) by comparing naive field values directly rather than each side's resolved UTC offset — a
 documented but easy-to-miss behaviour that silently drops or gains an hour across a DST transition if
-not worked around. `daily_at` sidesteps it by normalizing both sides to UTC (`.astimezone(timezone.utc)`)
+not worked around. `daily_at` sidesteps it by normalising both sides to UTC (`.astimezone(timezone.utc)`)
 before subtracting to compute the sleep duration, verified by a dedicated test
 (`test_daily_at_computes_the_correct_sleep_duration_across_a_spring_forward_transition`) that fails
-without the explicit UTC normalization. Lives in `common/polling.py` since it's a generic scheduling
+without the explicit UTC normalisation. Lives in `common/polling.py` since it's a generic scheduling
 primitive, not saints_fc-specific, matching the existing precedent of `every()` and
 `common.decorator.retry()` being shared utilities extensions consume.
 
