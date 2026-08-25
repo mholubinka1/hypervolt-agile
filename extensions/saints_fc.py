@@ -66,6 +66,14 @@ class SaintsFcExtension:
         )
         self._match_date: date | None = None
         self._task: asyncio.Task | None = None
+        # team_id's default changed meaning between providers (340 on
+        # football-data.org's ID space, 134778 on TheSportsDB's) -- there's
+        # no fixed ID format to validate an explicit override against, so a
+        # stale/wrong config value would otherwise silently track the wrong
+        # club. Logging the resolved value at least makes it visible.
+        logger.info(
+            f"LED theme extension 'saints_fc' tracking TheSportsDB team_id {self._team_id}."
+        )
 
     async def start(self) -> None:
         self._task = asyncio.create_task(

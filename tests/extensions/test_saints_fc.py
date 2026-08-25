@@ -41,6 +41,19 @@ def _router(
     return httpx.MockTransport(_handler)
 
 
+def test_init_logs_the_resolved_team_id(caplog: pytest.LogCaptureFixture) -> None:
+    # team_id's default silently changed meaning (340 on football-data.org's
+    # ID space vs 134778 on TheSportsDB's) -- an operator's existing config
+    # carrying over an old explicit team_id would otherwise silently track
+    # the wrong club with no error, since there's no fixed ID format to
+    # validate against. Logging the resolved value makes a stale/wrong
+    # config visible in logs instead.
+    with caplog.at_level(logging.INFO):
+        SaintsFcExtension({"team_id": 999})
+
+    assert any("999" in r.message for r in caplog.records)
+
+
 async def test_poll_uses_the_default_api_key_and_team_id_when_omitted() -> None:
     _captured_urls: list[str] = []
 
