@@ -23,9 +23,16 @@ from hypervolt.led import LedTheme
 logger: Logger = getLogger(APP_NAME)
 
 _LOCAL_TZ = ZoneInfo(TIMEZONE)
-_DEFAULT_TEAM_ID = 340
+# TheSportsDB's ID space, not football-data.org's -- Southampton FC is 340 on
+# football-data.org but 134778 on TheSportsDB.
+_DEFAULT_TEAM_ID = 134778
 _DEFAULT_POLL_INTERVAL_SECS = 300
-_API_BASE_URL = "https://api.football-data.org/v4"
+# TheSportsDB's free tier needs no registration: "3" is a public, shared test
+# key documented by TheSportsDB itself, embedded directly in the URL path
+# rather than sent as a header. Kept as a config default (not hardcoded) so
+# an operator can drop in a personal key later purely via config.yml.
+_DEFAULT_API_KEY = "3"
+_API_BASE_URL_TEMPLATE = "https://www.thesportsdb.com/api/v1/json/{api_key}"
 _LED_COUNT = 51
 _RED = {"r": 1.0, "g": 0.0, "b": 0.0}
 _WHITE = {"r": 1.0, "g": 1.0, "b": 1.0}
@@ -37,7 +44,7 @@ def _matchday_leds() -> list[dict[str, float]]:
 
 class SaintsFcExtension:
     def __init__(self, config: dict[str, Any]) -> None:
-        self._api_key = config["api_key"]
+        self._api_key = config.get("api_key", _DEFAULT_API_KEY)
         if is_null_or_empty(self._api_key):
             raise ValueError("api_key must not be blank.")
         self._team_id = config.get("team_id", _DEFAULT_TEAM_ID)
@@ -55,7 +62,7 @@ class SaintsFcExtension:
                 f"{self._poll_interval_secs!r}."
             )
         self._client = httpx.AsyncClient(
-            base_url=_API_BASE_URL, headers={"X-Auth-Token": self._api_key}
+            base_url=_API_BASE_URL_TEMPLATE.format(api_key=self._api_key)
         )
         self._match_date: date | None = None
         self._task: asyncio.Task | None = None
@@ -76,13 +83,23 @@ class SaintsFcExtension:
 
     @retry()
     async def _fetch_has_match_today(self, today: date) -> bool:
-        _response = await self._client.get(
-            f"/teams/{self._team_id}/matches",
-            params={"dateFrom": today.isoformat(), "dateTo": today.isoformat()},
+        _today_iso = today.isoformat()
+        _next_response = await self._client.get(
+            "/eventsnext.php", params={"id": self._team_id}
         )
-        _response.raise_for_status()
-        _data = _response.json()
-        return len(_data.get("matches", [])) > 0
+        _next_response.raise_for_status()
+        _next_events = _next_response.json().get("events") or []
+
+        _last_response = await self._client.get(
+            "/eventslast.php", params={"id": self._team_id}
+        )
+        _last_response.raise_for_status()
+        _last_events = _last_response.json().get("results") or []
+
+        return any(
+            _event.get("dateEventLocal") == _today_iso
+            for _event in _next_events + _last_events
+        )
 
     async def _poll_once(self) -> None:
         _today = datetime.now(_LOCAL_TZ).date()
