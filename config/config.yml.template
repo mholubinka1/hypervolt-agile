@@ -11,23 +11,21 @@ schedule:
   price_limit_incl_vat: 30
 # led:
 #   enabled: true                  # Set to false to pause LED control without losing config. Omit the whole `led:` block to disable entirely.
-#   brightness: 0.5                # >0 and <=1, LED brightness while charging (default: 0.5). LEDs always go fully off when not charging, regardless of this value.
-#   custom_themes:                 # Static colour patterns for dates that matter to you, priority over built-in seasonal effects. Five ready-made examples ship in this repo's config/led_effects/ -- to use one, copy the matching *.yaml file into the SAME directory as your real config.yml (in Docker: /home/pi/.config/hypervolt-agile/led_effects/, since only config.yml itself is bind-mounted, these files are not baked into the image) and uncomment the matching entry below, or add your own led_effects/*.yaml and a matching entry.
-#     - effect: peace               # led_effects/peace.yaml -- Ukraine flag colours
-#       start: "02-24"
-#       end: "02-25"
-#     - effect: qe_ii                # led_effects/qe_ii.yaml -- Platinum Jubilee tribute
-#       start: "06-02"
-#       end: "06-05"
-#     - effect: diana                # led_effects/diana.yaml -- Diana memorial tribute
-#       start: "08-31"
-#       end: "09-01"
-#     - effect: st_george             # led_effects/st_george.yaml -- St George's Day
-#       start: "04-23"
-#       end: "04-24"
-#     - effect: st_patricks           # led_effects/st_patricks.yaml -- St Patrick's Day
-#       start: "03-17"
-#       end: "03-18"
+#   brightness: 0.5                # >0 and <=1, LED brightness whenever the car is plugged in (default: 0.5) -- not just while actively charging. LEDs always go fully off when unplugged, regardless of this value.
+#   built_in_themes:                # Native charger effects, priority under custom_themes and extensions. Listing an effect here is what enables it -- omit one entirely to leave it off. Dates use MM-DD, or "MM-DD HH:MM" for a specific time (default 00:00).
+#     - effect: halloween_mode
+#       start: "10-31"
+#       end: "11-01 06:00"
+#     - effect: christmas_mode
+#       start: "12-24"
+#       end: "12-31 06:00"
+#     - effect: party_mode
+#       start: "12-31 06:00"
+#       end: "01-01 06:00"
+#   custom_themes:                 # Static colour patterns for dates that matter to you, priority over built-in seasonal effects. Add your own led_effects/*.yaml (in Docker: /home/pi/.config/hypervolt-agile/led_effects/, since only config.yml itself is bind-mounted) and a matching entry here, e.g.:
+#     - effect: my_theme              # led_effects/my_theme.yaml
+#       start: "MM-DD"
+#       end: "MM-DD"
 #   extensions:                     # Dynamic themes resolved by a Python module you register, priority over custom_themes and built-ins. A saints_fc reference implementation ships in this repo's extensions/ -- to use it, copy extensions/saints_fc.py into a SEPARATE directory from config.yml (in Docker: /home/pi/.config/hypervolt-agile-extensions/, mounted to /extensions -- see --extensions-dir) and uncomment the entry below.
 #     - name: saints_fc                # extensions/saints_fc.py -- lights up red/white on any Southampton FC match day
 #       config:

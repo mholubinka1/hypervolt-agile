@@ -48,6 +48,28 @@ schedule:
 
 Your Octopus account postcode is used to determine the charger's timezone automatically — no timezone configuration is needed.
 
+### LED Themes
+
+The charger's LEDs can show one of three built-in seasonal effects whenever the car is plugged in (not just while actively charging). Each is opt-in — listing an effect in `built_in_themes` is what enables it; leave one out and it never runs:
+
+```yaml
+led:
+  enabled: true
+  brightness: 0.5
+  built_in_themes:
+    - effect: halloween_mode
+      start: "10-31"
+      end: "11-01 06:00"
+    - effect: christmas_mode
+      start: "12-24"
+      end: "12-31 06:00"
+    - effect: party_mode
+      start: "12-31 06:00"
+      end: "01-01 06:00"
+```
+
+Dates use `MM-DD`, or `"MM-DD HH:MM"` for a specific time (default `00:00`). See `config/config.yml.template` for the full `led:` block, including `custom_themes` (your own static colour patterns) and `extensions` (dynamically resolved themes, e.g. match-day colours).
+
 ---
 
 ## Deployment
