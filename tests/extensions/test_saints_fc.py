@@ -51,7 +51,13 @@ async def test_poll_uses_the_default_api_key_and_team_id_when_omitted() -> None:
         return httpx.Response(200, json={"results": None})
 
     extension = SaintsFcExtension({})
-    extension._client._transport = httpx.MockTransport(_handler)
+    # Re-point the extension's own real client (built from its own defaults
+    # in __init__, base_url included) at the mock transport, rather than
+    # asserting against a test double's hardcoded base_url -- this is what
+    # actually proves __init__ built the URL from the default api_key.
+    extension._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(_handler), base_url=extension._client.base_url
+    )
 
     await extension._poll_once()
 
@@ -61,6 +67,40 @@ async def test_poll_uses_the_default_api_key_and_team_id_when_omitted() -> None:
         for url in _captured_urls
     )
     assert any("id=134778" in url for url in _captured_urls)
+
+
+async def test_poll_computes_today_in_europe_london_not_utc() -> None:
+    # dateEventLocal must be compared against London's calendar date, not
+    # UTC's -- a bare datetime.now() or datetime.now(timezone.utc) would
+    # silently compute the wrong "today" for part of every day.
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(_router(next_events=None, last_events=None))
+    _clock = _frozen_clock()
+
+    with patch("saints_fc.datetime", _clock):
+        await extension._poll_once()
+
+    _clock.now.assert_called_once_with(_LONDON)
+
+
+async def test_resolve_uses_londons_date_for_a_now_expressed_in_utc() -> None:
+    # BST is UTC+1 -- 2026-08-24T23:30 UTC is 2026-08-25 00:30 in London, a
+    # different calendar date. resolve() must convert `now` to London before
+    # comparing dates, not use the UTC date directly.
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(next_events=[{"dateEventLocal": "2026-08-25"}], last_events=None)
+    )
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+    _utc_just_before_london_midnight = datetime(
+        2026, 8, 24, 23, 30, tzinfo=ZoneInfo("UTC")
+    )
+
+    theme = await extension.resolve(_utc_just_before_london_midnight)
+
+    assert theme is not None
+    assert theme.effect_name == "saints_fc_matchday"
 
 
 async def test_resolve_returns_none_before_any_poll_has_happened() -> None:

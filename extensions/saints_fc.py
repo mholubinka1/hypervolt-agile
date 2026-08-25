@@ -81,21 +81,17 @@ class SaintsFcExtension:
                 pass
         await self._client.aclose()
 
+    async def _fetch_events(self, path: str, response_key: str) -> list[dict[str, Any]]:
+        _response = await self._client.get(path, params={"id": self._team_id})
+        _response.raise_for_status()
+        _events: list[dict[str, Any]] | None = _response.json().get(response_key)
+        return _events or []
+
     @retry()
     async def _fetch_has_match_today(self, today: date) -> bool:
         _today_iso = today.isoformat()
-        _next_response = await self._client.get(
-            "/eventsnext.php", params={"id": self._team_id}
-        )
-        _next_response.raise_for_status()
-        _next_events = _next_response.json().get("events") or []
-
-        _last_response = await self._client.get(
-            "/eventslast.php", params={"id": self._team_id}
-        )
-        _last_response.raise_for_status()
-        _last_events = _last_response.json().get("results") or []
-
+        _next_events = await self._fetch_events("/eventsnext.php", "events")
+        _last_events = await self._fetch_events("/eventslast.php", "results")
         return any(
             _event.get("dateEventLocal") == _today_iso
             for _event in _next_events + _last_events
