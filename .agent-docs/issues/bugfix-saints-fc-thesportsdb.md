@@ -1,5 +1,3 @@
-> Work complete — PR ready to merge.
-
 # Issues: bugfix-saints-fc-thesportsdb
 
 ## Switch saints_fc from football-data.org to TheSportsDB — [#89](https://github.com/mholubinka1/hypervolt-agile/issues/89)
@@ -47,5 +45,55 @@ found broken — and treats today as a match day if either response contains an 
       response shape and still passes
 - [x] `config.yml.template`'s `saints_fc` example documents the new default `team_id` (134778)
       and notes it is a TheSportsDB ID, not football-data.org's
+
+---
+
+## Switch saints_fc to fixed-time daily polling — [#91](https://github.com/mholubinka1/hypervolt-agile/issues/91)
+
+**Blocked by**: Switch saints_fc from football-data.org to TheSportsDB (#89)
+
+**User stories**: 1
+
+### What to build
+
+Replace the 5-minute "is there a match today" polling with a once-daily, fixed-local-time poll
+(default 23:00 Europe/London, configurable via a new `poll_time` "HH:MM" config key) that checks
+whether Southampton have a match *tomorrow*. Add a new `common.polling.daily_at(hour, minute, tz,
+task, on_tick=None)` scheduling primitive alongside the existing `every()` (unchanged, still used by
+`app/main.py`). `_fetch_has_match_today(today)` generalizes to `_fetch_has_match_on_date(target_date)`
+so the same two-endpoint (`eventsnext`+`eventslast`) logic works for any date. `start()` does one
+extra, directly-awaited bootstrap check for "today" before scheduling the recurring daily task, so a
+same-day deploy/restart doesn't miss a match already confirmed for that day — this bootstrap check
+happens exactly once and is not retried by later polls if it fails outright. `self._match_date: date
+| None` becomes `self._match_dates: set[date]` (a single field can't safely hold both a bootstrap
+"today" result and the first daily "tomorrow" result without one overwriting the other); once a date
+is confirmed, it is never re-verified before it arrives. `poll_interval_secs` is removed from the
+config schema entirely, replaced by `poll_time`.
+
+### Acceptance criteria
+
+- [ ] Given `poll_time` is omitted from `config:`, when the extension is constructed, then it
+      defaults to `"23:00"`
+- [ ] Given `poll_time` is not a string, or is a string that isn't a valid `"HH:MM"` 24-hour time,
+      when the extension is constructed, then a `ValueError` is raised
+- [ ] Given `start()` is called, when it runs, then it directly awaits one check for whether there is
+      a match *today* before scheduling the recurring daily task
+- [ ] Given the recurring daily task fires, when it runs, then it checks whether there is a match
+      *tomorrow* (not today) relative to that poll's local date
+- [ ] Given a checked date (today at bootstrap, or tomorrow on a later poll) has a confirmed match,
+      when `resolve(now)` is called with a `now` whose Europe/London date matches that recorded date,
+      then the matchday `LedTheme` is returned
+- [ ] Given both a bootstrap "today" match and a later "tomorrow" match have been confirmed at
+      different times, when `resolve(now)` is called for either date, then the matchday theme is
+      returned for both — confirming one recorded date cannot silently overwrite the other
+- [ ] `common.polling.daily_at` sleeps until the next occurrence of the given local `hour:minute`,
+      runs the task, then repeats; if "now" is already past that time today, the first run is
+      scheduled for tomorrow; an unhandled exception from the task does not kill the loop (matching
+      `every()`'s existing behaviour) — covered by new tests in `tests/common/test_polling.py`
+- [ ] `common.polling.every` and its existing consumer (`app/main.py`) are unchanged
+- [ ] `config.yml.template`'s `saints_fc` example documents `poll_time` (default `"23:00"`) and no
+      longer references `poll_interval_secs`
+- [ ] `tests/hypervolt/test_led_load_shipped_extensions.py`'s integration test still passes against
+      the real shipped extension
 
 ---

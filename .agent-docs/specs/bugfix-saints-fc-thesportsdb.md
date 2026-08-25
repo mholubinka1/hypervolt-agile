@@ -132,3 +132,94 @@ real shipped file is a valid, loadable `LedThemeProvider` — is unchanged.
   competitions, so the 403 was the only reliable signal.
 - `eventsday.php`'s broken team filter is worth remembering if a future extension author reaches
   for it — it looks like the right endpoint from its name but doesn't do what it appears to.
+
+## Update: Fixed-Time Daily Polling (added before merge)
+
+### Problem Statement
+
+The original slice above kept the previous 5-minute polling cadence, now checking "does Southampton
+have a match today". That's ~288 TheSportsDB requests/day for a value that only meaningfully changes
+once a day — fixture schedules don't move minute-to-minute. It also doesn't take advantage of the
+data actually being knowable a day ahead: by checking "today" instead of "tomorrow", the LEDs only
+ever light up on the day of the match itself, with no lead time.
+
+### Solution
+
+Poll once a day, at a fixed local time (default 23:00, operator-configurable), checking whether
+Southampton have a fixture *tomorrow*. If found, that date is recorded as a confirmed match day;
+`resolve()` lights the LEDs whenever `now`'s date matches any recorded date. On startup (and on each
+subsequent poll, until one such check has completed at least once), the extension *additionally*
+checks "today" specifically — covering the case that started this whole rewrite: a same-day deploy
+or restart on a day Southampton already have a fixture.
+
+### Implementation Decisions
+
+**New scheduling primitive — `common.polling.daily_at(hour, minute, tz, task, on_tick=None)`**: added
+alongside the existing `every()` (interval-based, still used elsewhere e.g. `app/main.py` — unchanged)
+rather than replacing it, since the two serve genuinely different scheduling models. `daily_at`
+computes the next occurrence of `hour:minute` in the given `ZoneInfo`, sleeps until then, runs `task`,
+then repeats — recomputing the target each iteration so DST transitions (Europe/London's GMT/BST
+switch) are handled correctly for free, since `ZoneInfo`-aware arithmetic reflects the actual UTC
+offset for whatever date the next occurrence falls on. Lives in `common/polling.py` since it's a
+generic scheduling primitive, not saints_fc-specific, matching the existing precedent of `every()` and
+`common.decorator.retry()` being shared utilities extensions consume.
+
+**`poll_time` config key replaces `poll_interval_secs`**: an interval no longer means anything once
+polling happens once a day at a fixed time. `poll_time` is a `"HH:MM"` 24-hour string (Europe/London,
+matching the extension's existing timezone handling), default `"23:00"`, validated at construction via
+`datetime.strptime(value, "%H:%M")` — non-string or malformed values raise `ValueError` at load time,
+consistent with the existing `api_key`/prior `poll_interval_secs` validation pattern.
+`poll_interval_secs` is removed from the schema entirely (not deprecated/aliased — no known operator
+config depends on it yet, since this whole feature hasn't shipped to production).
+
+**`_fetch_has_match_today(today: date)` generalizes to `_fetch_has_match_on_date(target_date: date)`**:
+identical two-endpoint (`eventsnext.php` + `eventslast.php`) logic, now callable for any date, not
+just literally "today" — reused for both the startup/bootstrap "today" check and the daily "tomorrow"
+check. `eventslast` is redundant for a future date (a fixture can't be "recently completed" before it
+happens) but reusing the combined check avoids a second near-duplicate method for one harmless extra
+HTTP request per day.
+
+**`self._match_date: date | None` becomes `self._match_dates: set[date]`**: a single field can't
+safely hold both "today confirmed" (from the bootstrap check) and "tomorrow confirmed" (from the
+first scheduled poll) without one overwriting the other. No pruning of past dates — `resolve()` never
+matches a stale date again regardless, and the memory cost (one `date` object per confirmed match day,
+for as long as the process runs between restarts) is negligible.
+
+**`start()` now does exactly one direct, awaited bootstrap check for "today" before scheduling the
+recurring task** — a single call, not repeated by any later poll: `load_extensions`
+(`app/hypervolt/led.py`) already awaits each extension's `start()` sequentially and already
+catches/logs exceptions from it without crashing the app, so a blocking bootstrap check on load is
+consistent with existing behaviour — no protocol or infra change needed (confirmed out of scope,
+unchanged). The bootstrap check reuses the same failure handling as every other poll (catch, log a
+warning, leave `_match_dates` unchanged) and relies solely on `common.decorator.retry`'s existing
+per-request budget — if it fails outright (not just a transient blip absorbed by that retry), it is
+never attempted again; every poll from then on only ever checks "tomorrow". Trade-off, accepted
+explicitly: once a date is confirmed as a match day it is **never re-verified** before that date
+arrives — a late postponement/reschedule discovered by TheSportsDB afterwards won't un-light the LEDs
+or move the trigger. This is the accepted cost of dropping from ~288 to ~1–2 API calls/day.
+
+### Testing Decisions
+
+Same seam as before (`httpx.MockTransport` at the network boundary). New/changed coverage:
+- `common/polling.py`'s new `daily_at()` gets its own direct tests (`tests/common/test_polling.py`,
+  new file — `every()` currently has no dedicated test file, tested only indirectly via consumers, but
+  new code added by this change is tested directly per this project's standards) covering: sleeps until
+  the next occurrence of the target time, runs the task, then repeats; unhandled task exceptions don't
+  kill the loop (matches `every()`'s own behaviour); the target time correctly skips to the next day
+  when "now" is already past it today.
+- `saints_fc.py`: `_fetch_has_match_on_date` behaves identically regardless of which calendar date is
+  passed (existing eventsnext/eventslast/null-handling tests already cover this structurally, just
+  re-target the date under test); a new startup-bootstrap test proves `start()` checks "today" once;
+  a new daily-poll test proves the scheduled task checks "tomorrow"; a `poll_time` validation test
+  (parametrized over non-string, malformed, and out-of-range values) mirrors the existing
+  `api_key`/`poll_interval_secs` validation test style.
+
+### Out of Scope
+
+- Re-verifying a previously-confirmed match date before it arrives (explicitly accepted trade-off
+  above).
+- Making the bootstrap "today" check itself independently retried beyond the normal per-request retry
+  budget — if it fails outright (not just a transient blip), the extension simply won't discover a
+  same-day match until the next `poll_time` and, from then on, will only ever check "tomorrow" again.
+- Any other extension besides `saints_fc`, and any change to `LedThemeProvider`, `ExtensionWrapper`, or
+  `load_extensions` (all still out of scope, per the original spec section above).
