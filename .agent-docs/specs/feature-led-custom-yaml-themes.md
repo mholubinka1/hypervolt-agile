@@ -46,43 +46,116 @@ A loader function converts hex colours to normalised RGB floats and constructs t
 
 **`app/hypervolt/led.py` additions**:
 - `load_custom_effect(path: Path) -> list[dict]` — parses one `led_effects/*.yaml` file into the
-  51-element `leds` array. Raises on missing file or malformed content (missing
-  `default_colour`, invalid hex, out-of-range index); the caller (config loading) is responsible
-  for catching this and applying the log-and-skip policy below — `load_custom_effect` itself
-  stays a pure, throwing parser.
+  51-element `leds` array. Raises on missing file or malformed content: missing `default_colour`,
+  a segment missing `colour`, invalid hex, out-of-range index (including negative indices, added
+  2026-08-24 after a review pass caught that a negative index silently wrapped to the last LED
+  via Python list semantics instead of raising), and a malformed `ranges` entry where the end
+  comes before the start (added the same pass — `range(51, 51)` for e.g. `[51, 50]` expands to
+  *empty*, so the per-index bounds check never even saw the out-of-range endpoint and silently
+  accepted it; now validated before expanding). The caller (config loading) is responsible for
+  catching this and applying the log-and-skip policy below — `load_custom_effect` itself stays a
+  pure, throwing parser.
 - `resolve_theme(now, extensions, custom_themes)` — the middle tier (previously an empty list)
-  is now populated: for each `CustomLedTheme` entry, in `config.yml` list order, check whether
-  `now` falls in its date window; return the first match as a `LedTheme` with `effect_name`
-  `"steady_array"` plus the loaded `leds` array. Falls through to built-ins if nothing in this
-  tier matches. Extension tier (still empty in this slice) remains checked first, per the
-  existing signature.
+  is now populated: `custom_themes` is `Sequence[tuple[LedTheme, Window, Window]]`, reusing the
+  exact same `(payload, start, end)` shape and `window_for_year`/boundary-check loop
+  `BUILT_IN_THEMES` already uses — for each entry, in `config.yml` list order, check whether `now`
+  falls in its date window; return the first match's `LedTheme` (already fully built with its
+  `leds` array — see below). Falls through to built-ins if nothing in this tier matches.
+  Extension tier (still empty in this slice) remains checked first, per the existing signature.
+  **Refactored 2026-08-24**: `BUILT_IN_THEMES` now stores `LedTheme` instances directly (was
+  raw `effect_name: str`), matching `custom_themes`' shape exactly — this let the two
+  previously-duplicated matching loops collapse into one shared `_resolve_from(now, entries)`
+  helper, called once for `custom_themes` and once for `BUILT_IN_THEMES`. Behaviour for built-in
+  themes is unchanged; this is a pure refactor.
+- `parse_window_date(s: str) -> Window` — parses `"MM-DD"` or `"MM-DD HH:MM"` into the same
+  `Window` tuple shape `BUILT_IN_THEMES` uses. Used both by `config.py`'s pydantic validator (to
+  fail fast on a malformed string) and by the startup loader that builds the runtime
+  `custom_themes` list passed to `resolve_theme` — one parser, not two. **Hardened 2026-08-24**:
+  `strptime` alone accepts non-zero-padded fields (`"2-3"`, `"10-31 6:0"`) even though the
+  documented grammar is strictly `MM-DD`/`HH:MM` — a round-trip through the same format (re-format
+  the parsed value and compare to the original) now catches that silent looseness.
 
-**`LedTheme` dataclass**: gains an optional `leds: list[dict] | None` field (only populated for
-`steady_array` effects; `None` for named built-ins).
+**`LedTheme` dataclass — corrected 2026-08-23**: gains `leds: list[dict] | None = None`, and is
+now `frozen=True` — the `BUILT_IN_THEMES` refactor below internally matches against the same
+singleton `LedTheme` instance by reference on every matching call, so it must stay immutable to
+avoid one caller's mutation corrupting state shared across scheduler cycles.
+**Hardened 2026-08-24**: `frozen=True` alone only stops *field reassignment* — the nested `leds`
+list (and its inner RGB dicts) stays mutable, so a caller could still do `theme.leds[0]["r"] =
+1.0` and corrupt the shared singleton despite the frozen guarantee. `resolve_theme` now returns a
+defensive copy (a new `LedTheme` with a deep-copied `leds` list) rather than the matched instance
+itself — the singleton storage optimisation is unchanged, only what's handed back to the caller.
+Separately, **`effect_name` changes meaning**: it's the theme's *semantic identity*, used for diffing in
+`apply_led_state` (see below) — not necessarily the literal wire value. For a built-in, identity
+and wire value are the same (`"halloween_mode"`). For a custom theme, `effect_name` is the
+theme's own name from its YAML (e.g. `"peace"`), not the wire effect `"steady_array"` — the
+original version of this spec set `effect_name="steady_array"` uniformly for every custom theme,
+which would make every custom theme diff as identical to every other one (switching from `peace`
+to `st_george` would look like "no change" and never get pushed). The wire-level distinction is
+handled entirely inside `apply_led_state`, described next.
+
+**`app/hypervolt/charger.py` — `apply_led_state` extended for `leds`**: gains a
+`leds: list[dict] | None = None` parameter. Diffing still compares `effect_name` against
+`_current_led_effect` (the semantic identity, unchanged from slice 1's design) — this alone now
+correctly distinguishes custom themes from each other and from built-ins/no-effect, since
+`effect_name` is always a unique identity per the `LedTheme` correction above. When a push is
+needed, the *wire* effect name differs from the semantic identity only for custom themes: send
+`"steady_array"` with the `leds` array if `leds is not None`, otherwise send `effect_name` (or
+`"none"`) directly as before. `_current_led_effect` is still set to the semantic `effect_name`
+(e.g. `"peace"`), never to the wire value.
 
 **`app/config.py`**: new `CustomLedTheme(BaseModel)` with `effect: str`, `start: str`, `end: str`.
-`start`/`end` are validated via a pydantic `field_validator` against the `MM-DD` or
+`start`/`end` are validated via a pydantic `field_validator` (reusing `led.py`'s
+`parse_window_date` so there's one date-format parser, not two) against the `MM-DD` or
 `MM-DD HH:MM` format at config-load time — a malformed date string is a config-authoring error in
 the file the operator just edited, and fails loudly the same way every other `AppConfig` field
 already does (see ADR 0007's contrast between core config's fail-fast validation and this
 feature's own runtime graceful-degradation). `LedConfig` gains
-`custom_themes: list[CustomLedTheme] = []`.
+`custom_themes: list[CustomLedTheme] = []`. **Two more validators added 2026-08-24** (review
+findings): `start`/`end` additionally reject `"02-29"` specifically — `parse_window_date` accepts
+it as valid `MM-DD` syntax, but `resolve_theme`'s window materialisation constructs a real
+`datetime` for whatever the actual current year is, which crashes on any non-leap year; and
+`effect` rejects any value matching a `BUILT_IN_THEMES` name (`halloween_mode`, `christmas_mode`,
+`party_mode`) — since `effect_name` is the diffing identity, a custom theme reusing a built-in's
+name would make `apply_led_state` unable to tell the two apart if their windows ever overlapped.
+**A third validator added 2026-08-24** (Copilot review finding): a `model_validator(mode="after")`
+(`end_must_be_after_start`) rejects a same-month or later-month `start`/`end` pair where `end` is
+chronologically before `start` (e.g. `start="03-16"`, `end="03-14"`) — such a window could never
+match any date and would silently never activate. A genuine year-wrap (`end_month < start_month`,
+e.g. `party_mode`'s New Year's Eve span) is still permitted; it's detected the same way
+`window_for_year` detects it for `BUILT_IN_THEMES` and `custom_themes` at match time.
 
-**Failure handling for the YAML file itself** (as opposed to the config entry referencing it):
-resolved at startup, once, when custom themes are loaded — for each `CustomLedTheme`, attempt
-`load_custom_effect(led_effects_dir / f"{effect}.yaml")`; on any exception, log an error naming
-the effect and the exception, and drop that entry from the in-memory list `resolve_theme` walks.
-The app starts regardless and every other configured theme, extension, and built-in continues to
-work (ADR 0007). This is deliberately different from the date-string case above: a bad *value the
-operator typed directly into config.yml* fails the config load outright (matches the rest of
-`AppConfig`), whereas a bad *external YAML file* — which might be a shipped file, might be edited
-independently of config.yml, and isn't itself part of the validated config schema — degrades
-gracefully instead.
+**Startup loading**: a new function — `load_custom_themes(entries: list[CustomLedTheme],
+led_effects_dir: Path) -> list[tuple[LedTheme, Window, Window]]` in `led.py` — runs once at
+startup (called from `main.py`, where `config_path` is already available to compute
+`led_effects_dir`). For each `CustomLedTheme`, attempt `load_custom_effect(led_effects_dir /
+f"{effect}.yaml")`; on any exception, log an error naming the effect and the exception, and drop
+that entry; on success, build `(LedTheme(effect_name=entry.effect, leds=leds),
+parse_window_date(entry.start), parse_window_date(entry.end))` and keep it. The resulting list
+is passed to `ScheduleCoordinator` (a new constructor parameter, stored and threaded through to
+every `resolve_theme(...)` call in `_apply_led_state()`) — resolved once, not re-loaded per
+cycle. The app starts regardless of any individual failure, and every other configured theme,
+extension, and built-in continues to work (ADR 0007). This is deliberately different from the
+date-string case above: a bad *value the operator typed directly into config.yml* fails the
+config load outright (matches the rest of `AppConfig`), whereas a bad *external YAML file* — which
+might be a shipped file, might be edited independently of config.yml, and isn't itself part of
+the validated config schema — degrades gracefully instead. **Extracted 2026-08-24** (review
+finding — this wiring had no test coverage of its own): `main.py`'s ternary
+(`load_custom_themes(...) if app_config.led is not None else []`) moved into a small, directly
+testable `load_custom_themes_for_config(led_config, led_effects_dir)` in `led.py`; `main.py` now
+just calls it.
 
 **`led_effects_dir` resolution**: `config_path.parent / "led_effects"` — no new CLI argument.
-This mirrors `config.yml`'s own location exactly (both are declarative data an operator edits),
-and in the deployed container resolves to `/config/led_effects` since `config.yml` already lives
-at `/config/config.yml`.
+This mirrors `config.yml`'s own location exactly (both are declarative data an operator edits).
+**Deployment gap found and fixed 2026-08-24** (review finding): the deployed container does
+**not** get this "for free" the way the comment previously implied — only `config.yml` itself is
+bind-mounted (`docker-compose.yml`: `/home/pi/.config/hypervolt-agile:/config`), and the
+Dockerfile never copies the repo's `config/led_effects/` into the image. An operator enabling any
+shipped example in the real deployed environment would silently get "file not found, dropped"
+(the graceful-degradation path above) rather than the theme actually working. `README.md`'s
+Docker deployment section and `config.yml.template`'s `custom_themes` comment now both say
+explicitly to copy `config/led_effects/*.yaml` into `/home/pi/.config/hypervolt-agile/led_effects/`
+alongside `config.yml` — matching the existing pattern where `config.yml` itself isn't baked into
+the image either, it's operator-provided via the same bind mount.
 
 **Shipped theme files** (`led_effects/`, five files): `peace.yaml`, `qe_ii.yaml`, `diana.yaml`,
 `st_george.yaml`, `st_patricks.yaml`. Each is referenced from `config.yml.template` as a
@@ -92,26 +165,41 @@ commented-out example `custom_themes:` entry, not enabled by default.
 
 ## Testing Decisions
 
-**Stale — the `[[no-tests]]` convention referenced below was reversed 2026-08-23 (see
-`tests-required`); this slice hasn't been re-planned for pytest yet. Re-derive real test seams
-(likely: pure-logic tests on the YAML-parsing/theme-resolution code, plus a `ScheduleCoordinator`
-test mocking `HypervoltChargerClient` at the boundary, matching
-`feature-led-brightness-and-builtin-themes.md`'s Testing Decisions) when this slice is actually
-picked up — don't implement it against the manual-verification list below.**
+**Re-planned 2026-08-23** for pytest, following the same seam split established in
+`feature-led-brightness-and-builtin-themes.md`:
 
-No automated tests, per project convention ([[no-tests]]) — verification through execution:
-- Add a `custom_themes` entry pointing at one shipped YAML (e.g. `peace`), set the system clock
-  inside its window, force `is_charging` True, and confirm `steady_array` is sent with the exact
-  `leds` array the YAML's colours produce.
-- Confirm a custom theme takes priority over a built-in preset when both match the same date (not
-  expected to occur with the shipped files' dates, but exercise it with a temporary overlapping
-  test entry).
-- Point a `custom_themes` entry at a non-existent or deliberately malformed YAML file and confirm:
-  the app still starts, an error is logged naming the effect, and other themes/built-ins still
-  resolve correctly.
-- Put a malformed date string (e.g. `"13-45"`) directly in a `custom_themes` entry and confirm
-  the app fails to start with a clear pydantic validation error, same as any other bad
-  `config.yml` value.
+- **`load_custom_effect(path)`** — pure, no I/O beyond reading the given file — tested directly
+  with real temp YAML files (`tmp_path`): a valid file produces the exact expected 51-element
+  `leds` array; missing `default_colour`, an invalid hex value, and an out-of-range segment index
+  each raise.
+- **`parse_window_date(s)`** — pure string parsing — tested directly for both `"MM-DD"` and
+  `"MM-DD HH:MM"` forms and for malformed input raising.
+- **`resolve_theme`'s custom tier** — extends the existing pure-logic tests in `test_led.py`: a
+  custom theme resolves during its window and falls through to built-ins outside it; a custom
+  theme takes priority over a built-in matching the same date; `config.yml` list order decides
+  the winner when two custom themes' windows overlap.
+- **The `effect_name`-as-identity fix** — its own dedicated test at the `HypervoltChargerClient`
+  seam (`test_charger.py`, mocking only `HypervoltWebSocketClient`): switching from one custom
+  theme to another (both via `steady_array` on the wire) is detected as a change and pushes the
+  new `leds` array, not silently skipped as "unchanged" the way the original `effect_name` design
+  would have.
+- **`load_custom_themes` failure handling** — tested directly: an entry pointing at a
+  non-existent or malformed YAML file is dropped from the returned list (not raised), and other
+  valid entries in the same call are still returned.
+- **`CustomLedTheme` date-string validation** — tested like `Schedule`'s field validators in
+  `test_config.py`: a malformed `start`/`end` string raises `ValidationError` at config-load time,
+  and so do the two 2026-08-24 additions (`"02-29"`, a reserved built-in name).
+- **`HypervoltWebSocketClient.set_led_effect`'s wire serialisation** — added 2026-08-24 (review
+  finding): the charger tests mock `set_led_effect` entirely, so a bug that dropped `leds` from
+  the wire payload would never be caught. `tests/hypervolt/test_websocket.py` constructs a real
+  `HypervoltWebSocketClient` and mocks only `_send_message` (the actual I/O boundary), asserting
+  the built message includes both `effect_name` and `leds`.
+- **`load_custom_themes_for_config`** — added 2026-08-24 alongside its extraction from `main.py`:
+  the `led_config is None` → `[]` branch and the normal loading branch are both tested directly.
+
+Manual verification remains worthwhile for the same reason as slice 1: physically observing the
+LEDs once, as a wire-format sanity check that `steady_array` + a real `leds` array actually
+produces the intended colours on hardware — not a substitute for the automated coverage above.
 
 ## Out of Scope
 

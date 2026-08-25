@@ -117,12 +117,17 @@ class HypervoltWebSocketClient:
             }
         )
 
-    async def set_led_effect(self, effect_name: str) -> None:
+    async def set_led_effect(
+        self, effect_name: str, leds: list[dict[str, float]] | None = None
+    ) -> None:
+        _params: dict[str, object] = {"effect_name": effect_name}
+        if leds is not None:
+            _params["leds"] = leds
         await self._send_message(
             {
                 "id": _generate_id(),
                 "method": "sync.apply",
-                "params": {"effect_name": effect_name},
+                "params": _params,
             }
         )
 

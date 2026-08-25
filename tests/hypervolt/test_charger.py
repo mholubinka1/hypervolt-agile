@@ -79,3 +79,35 @@ async def test_apply_led_state_sends_no_redundant_none_when_nothing_was_active()
     await client.apply_led_state(0.5, None)
 
     ws_client.set_led_effect.assert_not_awaited()
+
+
+async def test_apply_led_state_pushes_steady_array_with_leds_for_a_custom_theme() -> (
+    None
+):
+    client, ws_client = _charger_client(led_brightness=0.5, current_led_effect=None)
+    leds = [{"r": 0.0, "g": 0.34, "b": 0.72}]
+
+    await client.apply_led_state(0.5, "peace", leds=leds)
+
+    ws_client.set_led_effect.assert_awaited_once_with("steady_array", leds=leds)
+    assert client._current_led_effect == "peace"
+
+
+async def test_apply_led_state_detects_switch_between_two_custom_themes() -> None:
+    # Both wire as "steady_array" -- only effect_name (the semantic identity)
+    # distinguishes them, so this must not be treated as "unchanged".
+    client, ws_client = _charger_client(led_brightness=0.5, current_led_effect="peace")
+    new_leds = [{"r": 1.0, "g": 1.0, "b": 1.0}]
+
+    await client.apply_led_state(0.5, "st_george", leds=new_leds)
+
+    ws_client.set_led_effect.assert_awaited_once_with("steady_array", leds=new_leds)
+    assert client._current_led_effect == "st_george"
+
+
+async def test_apply_led_state_skips_redundant_push_for_same_custom_theme() -> None:
+    client, ws_client = _charger_client(led_brightness=0.5, current_led_effect="peace")
+
+    await client.apply_led_state(0.5, "peace", leds=[{"r": 0.0, "g": 0.34, "b": 0.72}])
+
+    ws_client.set_led_effect.assert_not_awaited()

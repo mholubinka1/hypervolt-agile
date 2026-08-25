@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from config import ConfigLoader, LedConfig, Octopus, Schedule
+from config import ConfigLoader, CustomLedTheme, LedConfig, Octopus, Schedule
 
 _VALID_CONFIG_YAML = """
 octopus:
@@ -97,3 +97,53 @@ def test_led_config_accepts_full_brightness() -> None:
 def test_led_config_rejects_out_of_range_brightness(brightness: float) -> None:
     with pytest.raises(ValidationError):
         LedConfig(brightness=brightness)
+
+
+def test_custom_led_theme_accepts_valid_date_strings() -> None:
+    theme = CustomLedTheme(effect="peace", start="03-14", end="03-16 06:00")
+
+    assert theme.effect == "peace"
+    assert theme.start == "03-14"
+    assert theme.end == "03-16 06:00"
+
+
+@pytest.mark.parametrize("field", ["start", "end"])
+def test_custom_led_theme_rejects_malformed_date_string(field: str) -> None:
+    values = {"effect": "peace", "start": "03-14", "end": "03-16", field: "not-a-date"}
+
+    with pytest.raises(ValidationError):
+        CustomLedTheme(**values)
+
+
+@pytest.mark.parametrize("effect", ["halloween_mode", "christmas_mode", "party_mode"])
+def test_custom_led_theme_rejects_built_in_theme_name(effect: str) -> None:
+    # A custom theme sharing a built-in's identity would make apply_led_state's
+    # diffing unable to tell them apart if their windows ever overlapped.
+    with pytest.raises(ValidationError):
+        CustomLedTheme(effect=effect, start="03-14", end="03-16")
+
+
+@pytest.mark.parametrize("field", ["start", "end"])
+def test_custom_led_theme_rejects_leap_day(field: str) -> None:
+    # Windows are materialised against arbitrary real years -- "02-29" would
+    # crash resolve_theme() on any non-leap year, so it's rejected up front.
+    values = {"effect": "peace", "start": "03-14", "end": "03-16", field: "02-29"}
+
+    with pytest.raises(ValidationError):
+        CustomLedTheme(**values)
+
+
+def test_custom_led_theme_rejects_same_month_end_before_start() -> None:
+    # end_month < start_month is a deliberate year-wrap (like party_mode); but
+    # a same-month reversed pair (16 before 14) isn't a wrap -- it produces a
+    # window whose end is chronologically before its start, which can never
+    # match any date and would silently never activate.
+    with pytest.raises(ValidationError):
+        CustomLedTheme(effect="peace", start="03-16", end="03-14")
+
+
+def test_custom_led_theme_accepts_a_genuine_year_wrap() -> None:
+    theme = CustomLedTheme(effect="peace", start="12-15", end="01-05")
+
+    assert theme.start == "12-15"
+    assert theme.end == "01-05"

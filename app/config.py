@@ -9,10 +9,18 @@ import yaml
 from common.constants import APP_NAME
 from common.logging import config
 from common.utils import is_null_or_empty
-from pydantic import BaseModel, Field, field_validator
+from hypervolt.led import (
+    BUILT_IN_THEMES,
+    REFERENCE_ANCHOR_YEAR,
+    parse_window_date,
+    window_for_year,
+)
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
+
+_RESERVED_LED_EFFECT_NAMES = {theme.effect_name for theme, _, _ in BUILT_IN_THEMES}
 
 
 class Octopus(BaseModel):
@@ -50,9 +58,58 @@ class Schedule(BaseModel):
     poll: int = Field(..., alias="poll_every_secs", ge=2, le=3600)
 
 
+class CustomLedTheme(BaseModel):
+    effect: str
+    start: str
+    end: str
+
+    @field_validator("effect")
+    def must_not_collide_with_a_built_in_theme(cls, v: str) -> str:
+        if v in _RESERVED_LED_EFFECT_NAMES:
+            raise ValueError(
+                f"{v!r} is a built-in theme name and can't be reused as a custom "
+                "theme's effect -- apply_led_state diffs on this name, so a "
+                "collision would make it unable to tell the two apart."
+            )
+        return v
+
+    @field_validator("start", "end")
+    def must_be_a_valid_window_date(cls, v: str) -> str:
+        _month, _day, _, _ = parse_window_date(v)
+        if (_month, _day) == (2, 29):
+            raise ValueError(
+                f"{v!r}: 29 February is not a valid window boundary -- windows are "
+                "materialised against real calendar years and this would crash on "
+                "any non-leap year."
+            )
+        return v
+
+    @model_validator(mode="after")
+    def end_must_be_after_start(self) -> CustomLedTheme:
+        # end_month < start_month is a deliberate year-wrap (e.g. party_mode
+        # spans New Year's Eve). But a same-month or later-month pair with the
+        # end chronologically before the start (e.g. start="03-16",
+        # end="03-14") isn't a wrap -- it produces a window whose end instant
+        # never comes after its start, so it can never match any date and
+        # would silently never activate.
+        _start_window = parse_window_date(self.start)
+        _end_window = parse_window_date(self.end)
+        _start, _end = window_for_year(
+            _start_window, _end_window, anchor_year=REFERENCE_ANCHOR_YEAR
+        )
+        if _end <= _start:
+            raise ValueError(
+                f"Custom LED theme {self.effect!r}: window end {self.end!r} is not "
+                f"after start {self.start!r} -- this window could never match any "
+                "date."
+            )
+        return self
+
+
 class LedConfig(BaseModel):
     enabled: bool = True
     brightness: float = Field(0.5, gt=0, le=1)
+    custom_themes: list[CustomLedTheme] = []
 
 
 class AppConfig(BaseModel):
