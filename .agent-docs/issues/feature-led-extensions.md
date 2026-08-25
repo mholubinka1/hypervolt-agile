@@ -1,5 +1,7 @@
 # Issues: feature-led-extensions
 
+> Work complete — PR ready to merge.
+
 ## Add the LED theme extension framework — [#86](https://github.com/mholubinka1/hypervolt-agile/issues/86)
 
 **Blocked by**: None
@@ -22,32 +24,32 @@ honestly await each extension's `resolve()` (ADR 0008). Wired into `ScheduleCoor
 
 ### Acceptance criteria
 
-- [ ] Given a registered extension returns a theme for the current datetime, and a custom theme
+- [x] Given a registered extension returns a theme for the current datetime, and a custom theme
       or built-in preset also matches, when the scheduler runs, then the extension's theme is
       applied (extensions win priority)
-- [ ] Given multiple registered extensions, when more than one would match, then the first in
+- [x] Given multiple registered extensions, when more than one would match, then the first in
       config list order wins (mirrors existing custom-theme/built-in "first match wins"
       semantics)
-- [ ] Given no extension matches, when the scheduler runs, then custom themes and built-ins are
+- [x] Given no extension matches, when the scheduler runs, then custom themes and built-ins are
       resolved exactly as before (no regression to slices 1/2 behaviour)
-- [ ] Given `saints_fc` (or any extension) is listed in `led.extensions` and its file is missing,
+- [x] Given `saints_fc` (or any extension) is listed in `led.extensions` and its file is missing,
       when the app starts, then an error is logged naming the missing extension, the app starts
       successfully, and every other configured extension/theme/built-in still resolves correctly
       (corrected from `FEATURES.md`'s original fail-loud text — see ADR 0007)
-- [ ] Given a registered extension's `resolve()` raises, when the scheduler runs, then a warning
+- [x] Given a registered extension's `resolve()` raises, when the scheduler runs, then a warning
       is logged naming the extension and the exception, the next priority tier is checked, and
       the rest of LED control proceeds normally
-- [ ] Given a registered extension's `resolve()` raises the same exception repeatedly, when the
+- [x] Given a registered extension's `resolve()` raises the same exception repeatedly, when the
       scheduler runs on subsequent cycles, then the warning is not repeated
-- [ ] Given a registered extension has been failing with a suppressed error, when `resolve()`
+- [x] Given a registered extension has been failing with a suppressed error, when `resolve()`
       succeeds on a subsequent cycle, then an info message is logged indicating recovery
-- [ ] Given an extension is registered with no `config:` field, when the app starts, then it is
+- [x] Given an extension is registered with no `config:` field, when the app starts, then it is
       instantiated with an empty dict `{}`
-- [ ] Given `led.extensions` is non-empty but `--extensions-dir` was not passed, when the app
+- [x] Given `led.extensions` is non-empty but `--extensions-dir` was not passed, when the app
       starts, then it fails with a clear error naming the missing flag
-- [ ] Given `led.extensions` is empty (or `led:` is absent), when the app starts, then
+- [x] Given `led.extensions` is empty (or `led:` is absent), when the app starts, then
       `--extensions-dir` is not required
-- [ ] An extension's `start()` is awaited once at load time; its `stop()` is awaited once at app
+- [x] An extension's `start()` is awaited once at load time; its `stop()` is awaited once at app
       shutdown (from `main.py`'s existing `finally` block), cancelling any task `start()` created
 
 ---
@@ -71,15 +73,15 @@ it. `config.yml.template` documents the `led.extensions` entry.
 
 ### Acceptance criteria
 
-- [ ] Given Southampton FC have a match scheduled today, when `resolve(now)` is called, then a
+- [x] Given Southampton FC have a match scheduled today, when `resolve(now)` is called, then a
       `LedTheme` with `effect_name="saints_fc_matchday"` and an alternating red/white 51-element
       `leds` array is returned
-- [ ] Given no match is scheduled today, when `resolve(now)` is called, then `None` is returned
-- [ ] Given a poll of football-data.org fails, when the poll runs, then a warning is logged and
+- [x] Given no match is scheduled today, when `resolve(now)` is called, then `None` is returned
+- [x] Given a poll of football-data.org fails, when the poll runs, then a warning is logged and
       the previously-cached match-day value is left unchanged (not cleared)
-- [ ] Given `resolve(now)` is called, then it performs no I/O itself — the cached value from the
+- [x] Given `resolve(now)` is called, then it performs no I/O itself — the cached value from the
       most recent background poll is read synchronously-in-effect
-- [ ] `config.yml.template` documents a `saints_fc` entry under `led.extensions` with all three
+- [x] `config.yml.template` documents a `saints_fc` entry under `led.extensions` with all three
       config keys and their defaults
 
 ---
