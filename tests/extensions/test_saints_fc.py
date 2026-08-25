@@ -219,6 +219,31 @@ async def test_start_bootstrap_check_finds_a_match_today_via_eventslast() -> Non
     await extension.stop()
 
 
+async def test_resolve_returns_the_theme_for_both_a_bootstrap_and_a_later_confirmed_date() -> (
+    None
+):
+    # The whole reason _match_date (a single date) became _match_dates (a
+    # set): a bootstrap "today" confirmation and a later daily "tomorrow"
+    # confirmation must coexist -- neither may silently overwrite the other.
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(next_events=[{"dateEventLocal": _TODAY_ISO}], last_events=None)
+    )
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension.start()  # confirms today
+
+        extension._client = _mock_client(
+            _router(next_events=[{"dateEventLocal": _TOMORROW_ISO}], last_events=None)
+        )
+        await extension._poll_once()  # confirms tomorrow, independently
+
+    _today_theme = await extension.resolve(_FIXED_NOW)
+    _tomorrow_theme = await extension.resolve(_FIXED_NOW + timedelta(days=1))
+    assert _today_theme is not None
+    assert _tomorrow_theme is not None
+    await extension.stop()
+
+
 async def test_start_schedules_the_daily_poll_at_the_default_time() -> None:
     extension = SaintsFcExtension({})
     extension._client = _mock_client(_router(next_events=None, last_events=None))

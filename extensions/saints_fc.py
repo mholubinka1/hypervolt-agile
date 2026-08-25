@@ -77,8 +77,9 @@ class SaintsFcExtension:
                 f"{type(self._api_key).__name__}."
             )
         self._team_id = config.get("team_id", _DEFAULT_TEAM_ID)
-        self._poll_time = config.get("poll_time", _DEFAULT_POLL_TIME)
-        self._poll_hour, self._poll_minute = _parse_poll_time(self._poll_time)
+        self._poll_hour, self._poll_minute = _parse_poll_time(
+            config.get("poll_time", _DEFAULT_POLL_TIME)
+        )
         self._client = httpx.AsyncClient(
             base_url=_API_BASE_URL_TEMPLATE.format(api_key=self._api_key)
         )

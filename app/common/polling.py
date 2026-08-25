@@ -2,7 +2,7 @@ import asyncio
 import logging.config
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from inspect import iscoroutinefunction
 from logging import Logger, getLogger
 from typing import Any
@@ -44,7 +44,16 @@ async def daily_at(hour: int, minute: int, tz: ZoneInfo, task: TaskType) -> None
         _target = _now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if _target <= _now:
             _target += timedelta(days=1)
-        await asyncio.sleep((_target - _now).total_seconds())
+        # _now and _target share the same tz object -- Python's datetime
+        # subtraction special-cases two aware datetimes with an identical
+        # tzinfo attribute by comparing their naive fields directly rather
+        # than each one's resolved UTC offset, so a bare `_target - _now`
+        # silently drops an hour (or gains one) across a DST transition.
+        # Normalizing to UTC first sidesteps that shortcut.
+        _sleep_seconds = (
+            _target.astimezone(timezone.utc) - _now.astimezone(timezone.utc)
+        ).total_seconds()
+        await asyncio.sleep(_sleep_seconds)
         try:
             if iscoroutinefunction(task):
                 await task()

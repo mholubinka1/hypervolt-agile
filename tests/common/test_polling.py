@@ -51,6 +51,31 @@ async def test_daily_at_sleeps_until_tomorrow_when_the_target_time_has_already_p
     assert _sleep.await_args.args[0] == pytest.approx(23.5 * 3600)
 
 
+async def test_daily_at_computes_the_correct_sleep_duration_across_a_spring_forward_transition() -> (
+    None
+):
+    # Europe/London clocks spring forward (GMT -> BST) at 01:00 on
+    # 2026-03-29. A naive wall-clock-hours calculation from the evening
+    # before would overcount the real elapsed time by exactly the 1 hour
+    # that gets skipped -- ZoneInfo-aware datetime subtraction accounts for
+    # this correctly since it reflects genuine elapsed time, not wall-clock
+    # arithmetic.
+    _now = datetime(2026, 3, 28, 23, 30, tzinfo=_LONDON)
+
+    async def _task() -> None:
+        raise asyncio.CancelledError
+
+    with (
+        patch("common.polling.datetime", _frozen_clock(_now)),
+        patch("common.polling.asyncio.sleep", AsyncMock()) as _sleep,
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await daily_at(23, 0, _LONDON, _task)
+
+    _sleep.assert_awaited_once()
+    assert _sleep.await_args.args[0] == pytest.approx(22.5 * 3600)
+
+
 async def test_daily_at_runs_the_task_after_sleeping() -> None:
     _calls = {"count": 0}
 

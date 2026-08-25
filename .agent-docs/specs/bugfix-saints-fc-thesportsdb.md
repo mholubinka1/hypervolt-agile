@@ -147,10 +147,11 @@ ever light up on the day of the match itself, with no lead time.
 
 Poll once a day, at a fixed local time (default 23:00, operator-configurable), checking whether
 Southampton have a fixture *tomorrow*. If found, that date is recorded as a confirmed match day;
-`resolve()` lights the LEDs whenever `now`'s date matches any recorded date. On startup (and on each
-subsequent poll, until one such check has completed at least once), the extension *additionally*
-checks "today" specifically — covering the case that started this whole rewrite: a same-day deploy
-or restart on a day Southampton already have a fixture.
+`resolve()` lights the LEDs whenever `now`'s date matches any recorded date. On startup, the
+extension *additionally* checks "today" specifically, exactly once — covering the case that started
+this whole rewrite: a same-day deploy or restart on a day Southampton already have a fixture. This
+bootstrap check is not repeated by any later poll, even if it fails outright — see Implementation
+Decisions below.
 
 ### Implementation Decisions
 
@@ -158,10 +159,17 @@ or restart on a day Southampton already have a fixture.
 alongside the existing `every()` (interval-based, still used elsewhere e.g. `app/main.py` — unchanged)
 rather than replacing it, since the two serve genuinely different scheduling models. `daily_at`
 computes the next occurrence of `hour:minute` in the given `ZoneInfo`, sleeps until then, runs `task`,
-then repeats — recomputing the target each iteration so DST transitions (Europe/London's GMT/BST
-switch) are handled correctly for free, since `ZoneInfo`-aware arithmetic reflects the actual UTC
-offset for whatever date the next occurrence falls on. Lives in `common/polling.py` since it's a
-generic scheduling primitive, not saints_fc-specific, matching the existing precedent of `every()` and
+then repeats — recomputing the target each iteration so each occurrence resolves against the correct
+UTC offset for whatever date it falls on. This is *not* automatic from `ZoneInfo`-aware arithmetic
+alone: Python's datetime subtraction special-cases two aware datetimes that share the identical
+`tzinfo` object (which `_now` and `_target` always do here, since both come from the same `tz`
+argument) by comparing naive field values directly rather than each side's resolved UTC offset — a
+documented but easy-to-miss behaviour that silently drops or gains an hour across a DST transition if
+not worked around. `daily_at` sidesteps it by normalizing both sides to UTC (`.astimezone(timezone.utc)`)
+before subtracting to compute the sleep duration, verified by a dedicated test
+(`test_daily_at_computes_the_correct_sleep_duration_across_a_spring_forward_transition`) that fails
+without the explicit UTC normalization. Lives in `common/polling.py` since it's a generic scheduling
+primitive, not saints_fc-specific, matching the existing precedent of `every()` and
 `common.decorator.retry()` being shared utilities extensions consume.
 
 **`poll_time` config key replaces `poll_interval_secs`**: an interval no longer means anything once
@@ -172,7 +180,7 @@ consistent with the existing `api_key`/prior `poll_interval_secs` validation pat
 `poll_interval_secs` is removed from the schema entirely (not deprecated/aliased — no known operator
 config depends on it yet, since this whole feature hasn't shipped to production).
 
-**`_fetch_has_match_today(today: date)` generalizes to `_fetch_has_match_on_date(target_date: date)`**:
+**`_fetch_has_match_today(today: date)` generalises to `_fetch_has_match_on_date(target_date: date)`**:
 identical two-endpoint (`eventsnext.php` + `eventslast.php`) logic, now callable for any date, not
 just literally "today" — reused for both the startup/bootstrap "today" check and the daily "tomorrow"
 check. `eventslast` is redundant for a future date (a fixture can't be "recently completed" before it
@@ -206,13 +214,18 @@ Same seam as before (`httpx.MockTransport` at the network boundary). New/changed
   new code added by this change is tested directly per this project's standards) covering: sleeps until
   the next occurrence of the target time, runs the task, then repeats; unhandled task exceptions don't
   kill the loop (matches `every()`'s own behaviour); the target time correctly skips to the next day
-  when "now" is already past it today.
+  when "now" is already past it today; a dedicated spring-forward DST test that caught a real bug
+  during review (see Implementation Decisions) — the initial implementation slept for the wrong
+  duration across a DST transition, and this test failed against it before the fix.
 - `saints_fc.py`: `_fetch_has_match_on_date` behaves identically regardless of which calendar date is
   passed (existing eventsnext/eventslast/null-handling tests already cover this structurally, just
   re-target the date under test); a new startup-bootstrap test proves `start()` checks "today" once;
   a new daily-poll test proves the scheduled task checks "tomorrow"; a `poll_time` validation test
   (parametrized over non-string, malformed, and out-of-range values) mirrors the existing
-  `api_key`/`poll_interval_secs` validation test style.
+  `api_key`/`poll_interval_secs` validation test style; a dedicated coexistence test proves a
+  bootstrap-confirmed date and a later poll-confirmed date both resolve correctly at once — the entire
+  reason `_match_date` became `_match_dates`, and a regression back to a single field would pass every
+  other test in the file without this one.
 
 ### Out of Scope
 
