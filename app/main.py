@@ -12,6 +12,7 @@ from common.logging import config, configure_file_logging
 from common.polling import every
 from hypervolt.led import (
     ExtensionWrapper,
+    load_built_in_themes_for_config,
     load_custom_themes_for_config,
     load_extensions,
 )
@@ -67,6 +68,7 @@ async def main() -> None:
     custom_themes = load_custom_themes_for_config(
         app_config.led, config_path.parent / "led_effects"
     )
+    built_in_themes = load_built_in_themes_for_config(app_config.led)
 
     extensions: list[ExtensionWrapper] = []
     if app_config.led and app_config.led.enabled and app_config.led.extensions:
@@ -81,7 +83,13 @@ async def main() -> None:
         )
 
     scheduler = Scheduler(agile_client, app_config)
-    coordinator = ScheduleCoordinator(scheduler, app_config, custom_themes, extensions)
+    coordinator = ScheduleCoordinator(
+        scheduler,
+        app_config,
+        custom_themes,
+        extensions,
+        built_in_themes=built_in_themes,
+    )
     _poll = app_config.schedule.poll
     _config_mtime = config_path.stat().st_mtime
 

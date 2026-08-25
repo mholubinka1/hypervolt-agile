@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from config import (
+    BuiltInLedTheme,
     ConfigLoader,
     CustomLedTheme,
     ExtensionEntry,
@@ -154,6 +155,61 @@ def test_custom_led_theme_accepts_a_genuine_year_wrap() -> None:
 
     assert theme.start == "12-15"
     assert theme.end == "01-05"
+
+
+@pytest.mark.parametrize("effect", ["halloween_mode", "christmas_mode", "party_mode"])
+def test_built_in_led_theme_accepts_a_known_built_in_name(effect: str) -> None:
+    theme = BuiltInLedTheme(effect=effect, start="10-31", end="11-01 06:00")
+
+    assert theme.effect == effect
+    assert theme.start == "10-31"
+    assert theme.end == "11-01 06:00"
+
+
+def test_built_in_led_theme_rejects_an_unknown_effect_name() -> None:
+    with pytest.raises(ValidationError):
+        BuiltInLedTheme(effect="peace", start="03-14", end="03-16")
+
+
+@pytest.mark.parametrize("field", ["start", "end"])
+def test_built_in_led_theme_rejects_malformed_date_string(field: str) -> None:
+    values = {
+        "effect": "christmas_mode",
+        "start": "12-24",
+        "end": "12-31",
+        field: "not-a-date",
+    }
+
+    with pytest.raises(ValidationError):
+        BuiltInLedTheme(**values)
+
+
+def test_built_in_led_theme_rejects_same_month_end_before_start() -> None:
+    with pytest.raises(ValidationError):
+        BuiltInLedTheme(effect="christmas_mode", start="12-31", end="12-24")
+
+
+def test_built_in_led_theme_accepts_a_genuine_year_wrap() -> None:
+    theme = BuiltInLedTheme(effect="party_mode", start="12-31 06:00", end="01-01 06:00")
+
+    assert theme.start == "12-31 06:00"
+    assert theme.end == "01-01 06:00"
+
+
+def test_led_config_defaults_built_in_themes_to_an_empty_list_when_omitted() -> None:
+    assert LedConfig().built_in_themes == []
+
+
+def test_led_config_accepts_built_in_themes() -> None:
+    config = LedConfig(
+        built_in_themes=[
+            {"effect": "christmas_mode", "start": "12-24", "end": "12-31 06:00"}
+        ]
+    )
+
+    assert config.built_in_themes == [
+        BuiltInLedTheme(effect="christmas_mode", start="12-24", end="12-31 06:00")
+    ]
 
 
 def test_extension_entry_defaults_config_to_an_empty_dict_when_omitted() -> None:

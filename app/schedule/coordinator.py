@@ -24,11 +24,13 @@ class ScheduleCoordinator:
         config: AppConfig,
         custom_themes: Sequence[tuple[LedTheme, Window, Window]] = (),
         extensions: Sequence[ExtensionWrapper] = (),
+        built_in_themes: Sequence[tuple[LedTheme, Window, Window]] = (),
     ) -> None:
         self._scheduler = scheduler
         self._config = config
         self._custom_themes = custom_themes
         self._extensions = extensions
+        self._built_in_themes = built_in_themes
         self._charger_client: HypervoltChargerClient | None = None
         self._car_was_plugged: bool | None = None
         self._was_connected: bool | None = None
@@ -93,6 +95,7 @@ class ScheduleCoordinator:
             datetime.now(ZoneInfo(TIMEZONE)),
             extensions=self._extensions,
             custom_themes=self._custom_themes,
+            built_in_themes=self._built_in_themes,
         )
         await self._charger_client.apply_led_state(
             _led_config.brightness,

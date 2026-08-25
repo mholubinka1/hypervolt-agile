@@ -1,5 +1,0 @@
-name: st_george
-default_colour: "#FFFFFF"  # white
-segments:
-  - colour: "#CE1124"  # England flag red
-    ranges: [[23, 27]]

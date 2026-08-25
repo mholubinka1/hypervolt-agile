@@ -1,7 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from hypervolt.led import LedTheme, resolve_theme
+from hypervolt.led import DEFAULT_BUILT_IN_THEMES, LedTheme, resolve_theme
 
 _LONDON = ZoneInfo("Europe/London")
 
@@ -22,7 +22,9 @@ async def test_resolve_theme_prefers_custom_theme_over_built_in_on_same_date() -
     now = datetime(2026, 10, 31, 12, 0, tzinfo=_LONDON)
     custom_themes = [(_PEACE, (10, 30, 0, 0), (11, 2, 0, 0))]
 
-    theme = await resolve_theme(now, custom_themes=custom_themes)
+    theme = await resolve_theme(
+        now, custom_themes=custom_themes, built_in_themes=DEFAULT_BUILT_IN_THEMES
+    )
 
     assert theme == _PEACE
 
@@ -33,7 +35,9 @@ async def test_resolve_theme_falls_through_to_built_in_when_no_custom_theme_matc
     now = datetime(2026, 10, 31, 12, 0, tzinfo=_LONDON)
     custom_themes = [(_PEACE, (3, 14, 0, 0), (3, 16, 0, 0))]
 
-    theme = await resolve_theme(now, custom_themes=custom_themes)
+    theme = await resolve_theme(
+        now, custom_themes=custom_themes, built_in_themes=DEFAULT_BUILT_IN_THEMES
+    )
 
     assert theme is not None
     assert theme.effect_name == "halloween_mode"

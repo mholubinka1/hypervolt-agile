@@ -99,6 +99,24 @@ async def test_passes_custom_themes_through_to_resolve_theme() -> None:
     assert kwargs["custom_themes"] == custom_themes
 
 
+async def test_passes_built_in_themes_through_to_resolve_theme() -> None:
+    built_in_themes = [
+        (LedTheme(effect_name="christmas_mode"), (12, 24, 0, 0), (12, 31, 6, 0))
+    ]
+    coordinator, _charger_client = _coordinator(
+        led=LedConfig(enabled=True), is_charging=True, led_brightness=0.0
+    )
+    coordinator._built_in_themes = built_in_themes
+
+    with patch(
+        "schedule.coordinator.resolve_theme", return_value=None
+    ) as mock_resolve_theme:
+        await coordinator._apply_led_state()
+
+    _, kwargs = mock_resolve_theme.call_args
+    assert kwargs["built_in_themes"] == built_in_themes
+
+
 async def test_passes_extensions_through_to_resolve_theme() -> None:
     extensions = [ExtensionWrapper(name="saints_fc", provider=Mock())]
     charger_client = Mock(spec=HypervoltChargerClient)

@@ -17,7 +17,7 @@ from common.constants import APP_NAME, TIMEZONE
 from common.logging import config
 
 if TYPE_CHECKING:
-    from config import CustomLedTheme, ExtensionEntry, LedConfig
+    from config import BuiltInLedTheme, CustomLedTheme, ExtensionEntry, LedConfig
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
@@ -34,7 +34,7 @@ REFERENCE_ANCHOR_YEAR = 2000
 
 @dataclass(frozen=True)
 class LedTheme:
-    # BUILT_IN_THEMES and load_custom_themes() both hold long-lived singleton
+    # DEFAULT_BUILT_IN_THEMES and load_custom_themes() both hold long-lived singleton
     # instances internally -- freezing this stops a caller from reassigning a
     # field on one of those singletons (resolve_theme()'s defensive copy is
     # what stops nested `leds` list mutation from reaching them, see below).
@@ -85,7 +85,7 @@ def load_custom_effect(path: Path) -> list[dict[str, float]]:
 # Year-agnostic, London local time. A window whose end month is earlier than its
 # start month wraps into the following year (e.g. party_mode spans New Year's Eve).
 Window = tuple[int, int, int, int]
-BUILT_IN_THEMES: list[tuple[LedTheme, Window, Window]] = [
+DEFAULT_BUILT_IN_THEMES: list[tuple[LedTheme, Window, Window]] = [
     (LedTheme(effect_name="halloween_mode"), (10, 31, 0, 0), (11, 1, 6, 0)),
     (LedTheme(effect_name="christmas_mode"), (12, 24, 0, 0), (12, 31, 6, 0)),
     (LedTheme(effect_name="party_mode"), (12, 31, 6, 0), (1, 1, 6, 0)),
@@ -148,6 +148,7 @@ async def resolve_theme(
     now: datetime,
     extensions: Sequence[ExtensionWrapper] = (),
     custom_themes: Sequence[tuple[LedTheme, Window, Window]] = (),
+    built_in_themes: Sequence[tuple[LedTheme, Window, Window]] = (),
 ) -> LedTheme | None:
     _match: LedTheme | None = None
     for _extension in extensions:
@@ -157,12 +158,12 @@ async def resolve_theme(
     if _match is None:
         _match = _resolve_from(now, custom_themes)
     if _match is None:
-        _match = _resolve_from(now, BUILT_IN_THEMES)
+        _match = _resolve_from(now, built_in_themes)
     if _match is None:
         return None
-    # _match above is the stored/cached LedTheme itself -- from BUILT_IN_THEMES,
-    # the caller's custom_themes, or an extension's own internal cache -- not a
-    # copy -- freezing the dataclass only stops field reassignment, not
+    # _match above is the stored/cached LedTheme itself -- from the caller's
+    # custom_themes, built_in_themes, or an extension's own internal cache --
+    # not a copy -- freezing the dataclass only stops field reassignment, not
     # mutation of the nested `leds` list, so building a fresh LedTheme with a
     # deep-copied `leds` below is the only real protection against a caller
     # corrupting what a later cycle resolves to.
@@ -318,3 +319,24 @@ def load_custom_themes_for_config(
     if led_config is None:
         return []
     return load_custom_themes(led_config.custom_themes, led_effects_dir)
+
+
+def load_built_in_themes(
+    entries: Sequence[BuiltInLedTheme],
+) -> list[tuple[LedTheme, Window, Window]]:
+    return [
+        (
+            LedTheme(effect_name=entry.effect),
+            parse_window_date(entry.start),
+            parse_window_date(entry.end),
+        )
+        for entry in entries
+    ]
+
+
+def load_built_in_themes_for_config(
+    led_config: LedConfig | None,
+) -> list[tuple[LedTheme, Window, Window]]:
+    if led_config is None:
+        return []
+    return load_built_in_themes(led_config.built_in_themes)
