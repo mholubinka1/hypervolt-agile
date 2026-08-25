@@ -38,7 +38,7 @@ shipped and out of scope here.
 
 ```python
 class LedThemeProvider(Protocol):
-    def __init__(self, config: dict) -> None: ...
+    def __init__(self, config: dict[str, Any]) -> None: ...
     async def start(self) -> None: ...   # optional
     async def resolve(self, now: datetime) -> LedTheme | None: ...
     async def stop(self) -> None: ...    # optional
@@ -87,7 +87,7 @@ site. Every existing direct test of `resolve_theme` becomes an `async def test_.
 ### `ExtensionWrapper` — error isolation
 
 Wraps a `LedThemeProvider` instance. Fields: `name: str`, `_provider: LedThemeProvider`,
-`_last_exception: BaseException | None`.
+`_last_exception: Exception | None`.
 
 `resolve(now)` calls `_provider.resolve(now)`, catching all exceptions:
 - **On failure**: if `type(e) is not type(_last_exception) or str(e) != str(_last_exception)`,
