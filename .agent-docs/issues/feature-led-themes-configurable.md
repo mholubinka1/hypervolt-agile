@@ -1,5 +1,7 @@
 # Issues: feature-led-themes-configurable
 
+> Work complete — PR ready to merge.
+
 ## Built-in themes become config-driven (#92)
 
 **Blocked by**: None
@@ -20,11 +22,11 @@ flows.
 
 ### Acceptance criteria
 
-- [ ] Given `led.built_in_themes` lists `christmas_mode` with a start/end window, when the LED theme is resolved during that window (car plugged in), then `christmas_mode` is applied
-- [ ] Given `led.built_in_themes` is empty or absent, when the LED theme is resolved during what would have been `halloween_mode`'s old hardcoded window, then no built-in theme is applied
-- [ ] Given `led.built_in_themes` lists an effect name that isn't one of the three known built-ins, when `config.yml` is loaded, then startup fails with a validation error naming the invalid effect
-- [ ] Given a `built_in_themes` entry has an invalid date (`"02-29"`, malformed format, or end-before-start with no year-wrap), when `config.yml` is loaded, then startup fails the same way an equivalent `custom_themes` mistake already does
-- [ ] Given the existing `custom_themes` validators (date format, 29 Feb, end-before-start, year-wrap), when run against the refactored shared base, then all existing `CustomLedTheme` test cases still pass unchanged
+- [x] Given `led.built_in_themes` lists `christmas_mode` with a start/end window, when the LED theme is resolved during that window (car plugged in), then `christmas_mode` is applied
+- [x] Given `led.built_in_themes` is empty or absent, when the LED theme is resolved during what would have been `halloween_mode`'s old hardcoded window, then no built-in theme is applied
+- [x] Given `led.built_in_themes` lists an effect name that isn't one of the three known built-ins, when `config.yml` is loaded, then startup fails with a validation error naming the invalid effect
+- [x] Given a `built_in_themes` entry has an invalid date (`"02-29"`, malformed format, or end-before-start with no year-wrap), when `config.yml` is loaded, then startup fails the same way an equivalent `custom_themes` mistake already does
+- [x] Given the existing `custom_themes` validators (date format, 29 Feb, end-before-start, year-wrap), when run against the refactored shared base, then all existing `CustomLedTheme` test cases still pass unchanged
 
 ---
 
@@ -45,10 +47,10 @@ this slice.
 
 ### Acceptance criteria
 
-- [ ] Given a theme resolves and the car is plugged in but not currently charging, when LED state is applied, then the theme's effect is shown at the configured brightness
-- [ ] Given a theme resolves but the car is not plugged in, when LED state is applied, then the theme is not shown and the existing charging-gated fallback applies instead
-- [ ] Given no theme resolves and the car is charging, when LED state is applied, then brightness is set with no effect, exactly as before this change
-- [ ] Given no theme resolves and the car is not charging, when LED state is applied, then LEDs are turned off, exactly as before this change
+- [x] Given a theme resolves and the car is plugged in but not currently charging, when LED state is applied, then the theme's effect is shown at the configured brightness
+- [x] Given a theme resolves but the car is not plugged in, when LED state is applied, then the theme is not shown and the existing charging-gated fallback applies instead
+- [x] Given no theme resolves and the car is charging, when LED state is applied, then brightness is set with no effect, exactly as before this change
+- [x] Given no theme resolves and the car is not charging, when LED state is applied, then LEDs are turned off, exactly as before this change
 
 ---
 
@@ -68,7 +70,7 @@ with a runnable `led:` example.
 
 ### Acceptance criteria
 
-- [ ] Given a new operator reads `config/config.yml.template`, when they look at the commented `led:` block, then they see a worked `built_in_themes` example for all three effects with their default windows
-- [ ] Given a new operator reads `README.md`'s Configuration section, when they look for LED theme setup, then they find a runnable example `led:` block enabling the three built-in themes
+- [x] Given a new operator reads `config/config.yml.template`, when they look at the commented `led:` block, then they see a worked `built_in_themes` example for all three effects with their default windows
+- [x] Given a new operator reads `README.md`'s Configuration section, when they look for LED theme setup, then they find a runnable example `led:` block enabling the three built-in themes
 
 ---
