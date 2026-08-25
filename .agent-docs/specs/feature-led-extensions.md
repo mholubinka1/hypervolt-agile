@@ -113,6 +113,12 @@ For each entry in `led.extensions`:
 4. Call `await instance.start()` if the extension defines it.
 5. Wrap in `ExtensionWrapper` and append to the result.
 
+**Hardened 2026-08-25 round 2** (code review): if `__init__` succeeds but `start()` raises, the
+partially-constructed instance may still hold an open resource (e.g. `saints_fc`'s
+`httpx.AsyncClient`, opened in `__init__`). `load_extensions` now calls `stop()` on it via a
+throwaway `ExtensionWrapper` before discarding it, reusing the same isolated stop-path a
+fully-loaded extension gets rather than leaking the resource.
+
 **Corrected from `FEATURES.md`'s original text** (agreed in this session's grill, aligning with
 ADR 0007's later correction from PR #81's Copilot review): any failure in this sequence — file
 missing, no valid provider class found, `__init__` or `start()` raising — is logged (naming the

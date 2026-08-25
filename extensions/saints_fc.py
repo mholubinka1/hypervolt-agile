@@ -2,6 +2,7 @@ import asyncio
 import logging.config
 from datetime import date, datetime
 from logging import Logger, getLogger
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -28,7 +29,7 @@ def _matchday_leds() -> list[dict[str, float]]:
 
 
 class SaintsFcExtension:
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         self._api_key = config["api_key"]
         self._team_id = config.get("team_id", _DEFAULT_TEAM_ID)
         self._poll_interval_secs = config.get(

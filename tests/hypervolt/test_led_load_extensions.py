@@ -55,6 +55,27 @@ class BrokenInitExtension:
         return LedTheme(effect_name="broken")
 """
 
+_START_RAISES_AFTER_OPENING_A_RESOURCE_SOURCE = """
+from datetime import datetime
+from pathlib import Path
+
+from hypervolt.led import LedTheme
+
+
+class BrokenStartAfterOpenExtension:
+    def __init__(self, config: dict) -> None:
+        self._stop_sentinel = Path(config["stop_sentinel"])
+
+    async def start(self) -> None:
+        raise RuntimeError("could not connect")
+
+    async def stop(self) -> None:
+        self._stop_sentinel.write_text("stopped")
+
+    async def resolve(self, now: datetime) -> LedTheme | None:
+        return LedTheme(effect_name="broken")
+"""
+
 
 def _write_extension(extensions_dir: Path, name: str, source: str) -> None:
     extensions_dir.mkdir(parents=True, exist_ok=True)
@@ -148,3 +169,24 @@ async def test_load_extensions_drops_entry_whose_init_raises(
     assert len(caplog.records) == 1
     assert "broken_ext" in caplog.records[0].message
     assert "KeyError" in caplog.records[0].message
+
+
+async def test_load_extensions_stops_a_partially_constructed_provider_whose_start_raises(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # __init__ succeeding but start() raising can still leave a resource open
+    # (e.g. an httpx.AsyncClient) -- the partially-constructed provider must
+    # still get stop() called on it so that resource doesn't leak.
+    _write_extension(
+        tmp_path, "broken_ext", _START_RAISES_AFTER_OPENING_A_RESOURCE_SOURCE
+    )
+    _stop_sentinel = tmp_path / "stopped.marker"
+    entries = [
+        ExtensionEntry(name="broken_ext", config={"stop_sentinel": str(_stop_sentinel)})
+    ]
+
+    with caplog.at_level(logging.ERROR):
+        result = await load_extensions(entries, tmp_path)
+
+    assert len(result) == 0
+    assert _stop_sentinel.exists()

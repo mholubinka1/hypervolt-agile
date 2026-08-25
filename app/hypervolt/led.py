@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from logging import Logger, getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -172,7 +172,7 @@ async def resolve_theme(
 
 
 class LedThemeProvider(Protocol):
-    def __init__(self, config: dict) -> None: ...
+    def __init__(self, config: dict[str, Any]) -> None: ...
 
     async def resolve(self, now: datetime) -> LedTheme | None: ...
 
@@ -185,7 +185,7 @@ class ExtensionWrapper:
     def __init__(self, name: str, provider: LedThemeProvider) -> None:
         self.name = name
         self._provider = provider
-        self._last_exception: BaseException | None = None
+        self._last_exception: Exception | None = None
 
     async def resolve(self, now: datetime) -> LedTheme | None:
         try:
@@ -240,6 +240,7 @@ async def load_extensions(
 ) -> list[ExtensionWrapper]:
     _loaded: list[ExtensionWrapper] = []
     for entry in entries:
+        _provider: LedThemeProvider | None = None
         try:
             _provider_class = _load_provider_class(extensions_dir / f"{entry.name}.py")
             _provider = _provider_class(entry.config)
@@ -249,6 +250,12 @@ async def load_extensions(
             logger.error(
                 f"Failed to load LED theme extension {entry.name!r}: {type(e).__name__}: {e}."
             )
+            # __init__ succeeding but start() raising can still leave a
+            # resource open (e.g. an httpx.AsyncClient) -- best-effort clean
+            # it up via the same isolated stop() path a fully-loaded
+            # extension gets, so a failed load never leaks.
+            if _provider is not None:
+                await ExtensionWrapper(name=entry.name, provider=_provider).stop()
             continue
         _loaded.append(ExtensionWrapper(name=entry.name, provider=_provider))
     return _loaded
