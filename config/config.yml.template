@@ -28,5 +28,11 @@ schedule:
 #     - effect: st_patricks           # led_effects/st_patricks.yaml -- St Patrick's Day
 #       start: "03-17"
 #       end: "03-18"
+#   extensions:                     # Dynamic themes resolved by a Python module you register, priority over custom_themes and built-ins. A saints_fc reference implementation ships in this repo's extensions/ -- to use it, copy extensions/saints_fc.py into a SEPARATE directory from config.yml (in Docker: /home/pi/.config/hypervolt-agile-extensions/, mounted to /extensions -- see --extensions-dir) and uncomment the entry below.
+#     - name: saints_fc                # extensions/saints_fc.py -- lights up red/white on any Southampton FC match day
+#       config:
+#         api_key:                      # Required: your football-data.org API token
+#         team_id: 340                  # Optional, default 340 (Southampton FC)
+#         poll_interval_secs: 300       # Optional, default 300
 # log_file: /logs/hypervolt-agile-scheduler.log   # Omit to log to console only. In Docker, /logs is bind-mounted from /home/pi/.log/hypervolt-agile.
 # log_level: INFO                # Console log level (default: INFO). File log level is always INFO.
