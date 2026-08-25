@@ -88,20 +88,23 @@ class ScheduleCoordinator:
         _state = self._charger_client.charger_state
         if _state.is_charging is None:
             return
-        if not _state.is_charging:
-            await self._charger_client.apply_led_state(0.0, None)
-            return
         _target = await resolve_theme(
             datetime.now(ZoneInfo(TIMEZONE)),
             extensions=self._extensions,
             custom_themes=self._custom_themes,
             built_in_themes=self._built_in_themes,
         )
-        await self._charger_client.apply_led_state(
-            _led_config.brightness,
-            _target.effect_name if _target is not None else None,
-            leds=_target.leds if _target is not None else None,
-        )
+        if _target is not None and _state.car_plugged is True:
+            await self._charger_client.apply_led_state(
+                _led_config.brightness, _target.effect_name, leds=_target.leds
+            )
+            return
+        if _state.is_charging:
+            await self._charger_client.apply_led_state(
+                _led_config.brightness, None, leds=None
+            )
+        else:
+            await self._charger_client.apply_led_state(0.0, None)
 
     def _can_push(self) -> bool:
         if self._charger_client is None:

@@ -24,12 +24,15 @@ def _config(led: LedConfig | None) -> AppConfig:
 
 
 def _coordinator(
-    led: LedConfig | None, is_charging: bool | None, led_brightness: float | None
+    led: LedConfig | None,
+    is_charging: bool | None,
+    led_brightness: float | None,
+    car_plugged: bool | None = True,
 ) -> tuple[ScheduleCoordinator, HypervoltChargerClient]:
     charger_client = Mock(spec=HypervoltChargerClient)
     charger_client.apply_led_state = AsyncMock()
     charger_client.charger_state = Mock(
-        is_charging=is_charging, led_brightness=led_brightness
+        is_charging=is_charging, led_brightness=led_brightness, car_plugged=car_plugged
     )
 
     coordinator = ScheduleCoordinator(scheduler=Mock(), config=_config(led))
@@ -167,6 +170,44 @@ async def test_pushes_resolved_theme_effect_while_charging() -> None:
     charger_client.apply_led_state.assert_awaited_once_with(
         0.5, "halloween_mode", leds=None
     )
+
+
+async def test_pushes_resolved_theme_while_plugged_in_but_not_charging() -> None:
+    coordinator, charger_client = _coordinator(
+        led=LedConfig(enabled=True),
+        is_charging=False,
+        led_brightness=0.0,
+        car_plugged=True,
+    )
+
+    with patch(
+        "schedule.coordinator.resolve_theme",
+        return_value=LedTheme(effect_name="halloween_mode"),
+    ):
+        await coordinator._apply_led_state()
+
+    charger_client.apply_led_state.assert_awaited_once_with(
+        0.5, "halloween_mode", leds=None
+    )
+
+
+async def test_falls_back_to_charging_gated_state_when_theme_resolves_but_not_plugged_in() -> (
+    None
+):
+    coordinator, charger_client = _coordinator(
+        led=LedConfig(enabled=True),
+        is_charging=True,
+        led_brightness=0.0,
+        car_plugged=False,
+    )
+
+    with patch(
+        "schedule.coordinator.resolve_theme",
+        return_value=LedTheme(effect_name="halloween_mode"),
+    ):
+        await coordinator._apply_led_state()
+
+    charger_client.apply_led_state.assert_awaited_once_with(0.5, None, leds=None)
 
 
 async def test_sends_no_led_messages_when_no_led_block_in_config() -> None:
