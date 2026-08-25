@@ -184,6 +184,19 @@ def test_built_in_led_theme_rejects_malformed_date_string(field: str) -> None:
         BuiltInLedTheme(**values)
 
 
+@pytest.mark.parametrize("field", ["start", "end"])
+def test_built_in_led_theme_rejects_leap_day(field: str) -> None:
+    values = {
+        "effect": "christmas_mode",
+        "start": "12-24",
+        "end": "12-31",
+        field: "02-29",
+    }
+
+    with pytest.raises(ValidationError):
+        BuiltInLedTheme(**values)
+
+
 def test_built_in_led_theme_rejects_same_month_end_before_start() -> None:
     with pytest.raises(ValidationError):
         BuiltInLedTheme(effect="christmas_mode", start="12-31", end="12-24")

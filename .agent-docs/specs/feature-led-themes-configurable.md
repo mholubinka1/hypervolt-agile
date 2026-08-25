@@ -168,6 +168,16 @@ sent, not the wire payload itself.
 
 ## Further Notes
 
+- **Deletion of the five shipped `custom_themes` examples** (`config/led_effects/{diana,peace,
+  qe_ii,st_george,st_patricks}.yaml` and their `test_led_shipped_themes.py` coverage) is included
+  in this branch's diff but was not requested by this spec — it was an explicit, separate user
+  instruction ("remove all current themes") given at the very start of this branch's design
+  session, before any of the built-in-themes work was scoped. The rationale (documented in
+  `FEATURES.md` Feature 22) is that those five examples were designed against interpolated,
+  unconfirmed LED positions, not a real hardware map, and are deferred for a from-scratch redesign
+  once Feature 22's calibration tool exists — recreating them as-is was explicitly not wanted.
+  Recorded here so a reviewer without that conversation's context can see the removal was
+  deliberate and authorized, not accidental scope creep.
 - `extensions/saints_fc.py` was substantially changed on `main` since this branch's design
   discussion started (switched from football-data.org to TheSportsDB, fixed-time daily polling
   instead of interval polling — see commits `83cf390`, `96c0d3c` and their review follow-ups).
