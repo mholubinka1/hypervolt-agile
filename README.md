@@ -59,6 +59,7 @@ Create the required host directories on your Pi:
 ```bash
 mkdir -p /home/pi/.config/hypervolt-agile
 mkdir -p /home/pi/.log/hypervolt-agile
+mkdir -p /home/pi/.config/hypervolt-agile-extensions
 ```
 
 Place your `config.yml` in `/home/pi/.config/hypervolt-agile/`, then run:
@@ -71,6 +72,12 @@ If you're using custom LED themes (`led.custom_themes` in `config.yml`), the `*.
 files are **not** baked into the Docker image — only `config.yml` itself is bind-mounted. Copy
 the effect files (this repo's `config/led_effects/*.yaml`, or your own) into
 `/home/pi/.config/hypervolt-agile/led_effects/` alongside `config.yml` too.
+
+If you're using LED theme extensions (`led.extensions` in `config.yml`), place each extension's
+`*.py` file in `/home/pi/.config/hypervolt-agile-extensions/` — this is a separate mount from
+`/config` (extensions are executable code, not declarative data). A `saints_fc` reference
+extension ships with the app; copy `extensions/saints_fc.py` there to use it. This directory can
+stay empty if you're not using extensions.
 
 The container pulls `mholubinka1/hypervolt-agile:latest` from Docker Hub, restarts automatically on failure, and writes rotating log files to `/home/pi/.log/hypervolt-agile/`.
 

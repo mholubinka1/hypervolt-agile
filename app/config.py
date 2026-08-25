@@ -106,10 +106,16 @@ class CustomLedTheme(BaseModel):
         return self
 
 
+class ExtensionEntry(BaseModel):
+    name: str
+    config: dict = {}
+
+
 class LedConfig(BaseModel):
     enabled: bool = True
     brightness: float = Field(0.5, gt=0, le=1)
     custom_themes: list[CustomLedTheme] = []
+    extensions: list[ExtensionEntry] = []
 
 
 class AppConfig(BaseModel):

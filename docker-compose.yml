@@ -8,4 +8,5 @@ services:
     volumes:
       - /home/pi/.config/hypervolt-agile:/config
       - /home/pi/.log/hypervolt-agile:/logs
+      - /home/pi/.config/hypervolt-agile-extensions:/extensions
     restart: unless-stopped

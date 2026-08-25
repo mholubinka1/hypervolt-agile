@@ -125,9 +125,11 @@ external-resource failure). If `led.extensions` is empty, the flag is simply unu
 Per ADR 0006, this is a directory separate from `--config-file`'s directory (which is where
 `led_effects/` lives) — extensions are executable code, not data, and get their own mount so
 `/config` stays app configuration only. The Docker image's `CMD` is updated to always pass
-`--extensions-dir /extensions`, and `docker-compose.yml` gains a new volume line mounting an
-operator-supplied host directory to `/extensions` (documented as optional/empty by default,
-matching the existing `led_effects` mount note added for slice 2 in `README.md`).
+`--extensions-dir /extensions`, and `docker-compose.yml` gains a new volume line —
+`/home/pi/.config/hypervolt-agile-extensions:/extensions` (matching the existing
+`/home/pi/.config/hypervolt-agile:/config` and `/home/pi/.log/hypervolt-agile:/logs` host-path
+convention) — documented as optional/empty by default, matching the existing `led_effects` mount
+note added for slice 2 in `README.md`.
 
 ### `saints_fc` reference implementation
 

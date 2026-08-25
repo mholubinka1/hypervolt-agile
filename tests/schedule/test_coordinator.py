@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, Mock, patch
 
 from hypervolt.charger import HypervoltChargerClient
-from hypervolt.led import LedTheme
+from hypervolt.led import ExtensionWrapper, LedTheme
 from octopus.client import AgileClient
 from schedule import Scheduler
 from schedule.coordinator import ScheduleCoordinator
@@ -97,6 +97,27 @@ async def test_passes_custom_themes_through_to_resolve_theme() -> None:
 
     _, kwargs = mock_resolve_theme.call_args
     assert kwargs["custom_themes"] == custom_themes
+
+
+async def test_passes_extensions_through_to_resolve_theme() -> None:
+    extensions = [ExtensionWrapper(name="saints_fc", provider=Mock())]
+    charger_client = Mock(spec=HypervoltChargerClient)
+    charger_client.apply_led_state = AsyncMock()
+    charger_client.charger_state = Mock(is_charging=True, led_brightness=0.0)
+    coordinator = ScheduleCoordinator(
+        scheduler=Mock(),
+        config=_config(LedConfig(enabled=True)),
+        extensions=extensions,
+    )
+    coordinator._charger_client = charger_client
+
+    with patch(
+        "schedule.coordinator.resolve_theme", return_value=None
+    ) as mock_resolve_theme:
+        await coordinator._apply_led_state()
+
+    _, kwargs = mock_resolve_theme.call_args
+    assert kwargs["extensions"] == extensions
 
 
 async def test_pushes_custom_theme_leds_while_charging() -> None:

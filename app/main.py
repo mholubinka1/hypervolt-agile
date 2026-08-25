@@ -10,7 +10,11 @@ from pathlib import Path
 from common.constants import APP_NAME
 from common.logging import config, configure_file_logging
 from common.polling import every
-from hypervolt.led import load_custom_themes_for_config
+from hypervolt.led import (
+    ExtensionWrapper,
+    load_custom_themes_for_config,
+    load_extensions,
+)
 from octopus.client import AgileClient
 from octopus.postcode import is_valid_postcode
 from schedule import Scheduler
@@ -29,6 +33,7 @@ logger.info(f"Starting {APP_NAME}.")
 def parse_args() -> Namespace:
     _parser = ArgumentParser()
     _parser.add_argument("--config-file", type=str, required=True)
+    _parser.add_argument("--extensions-dir", type=str, default=None)
     _args = _parser.parse_args()
     return _args
 
@@ -63,8 +68,19 @@ async def main() -> None:
         app_config.led, config_path.parent / "led_effects"
     )
 
+    extensions: list[ExtensionWrapper] = []
+    if app_config.led and app_config.led.extensions:
+        if args.extensions_dir is None:
+            logger.critical(
+                "led.extensions is configured in config.yml but --extensions-dir was not provided."
+            )
+            sys.exit(1)
+        extensions = await load_extensions(
+            app_config.led.extensions, Path(args.extensions_dir)
+        )
+
     scheduler = Scheduler(agile_client, app_config)
-    coordinator = ScheduleCoordinator(scheduler, app_config, custom_themes)
+    coordinator = ScheduleCoordinator(scheduler, app_config, custom_themes, extensions)
     _poll = app_config.schedule.poll
     _config_mtime = config_path.stat().st_mtime
 
@@ -87,6 +103,8 @@ async def main() -> None:
     finally:
         await agile_client.close()
         await coordinator.close()
+        for extension in extensions:
+            await extension.stop()
 
 
 if __name__ == "__main__":
