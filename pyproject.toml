@@ -61,12 +61,12 @@ warn_unused_ignores = true
 exclude_dirs = [".deprecated", ".reference"]
 
 [tool.pytest.ini_options]
-pythonpath = ["app"]
+pythonpath = ["app", "extensions"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.coverage.run]
-source = ["app"]
+source = ["app", "extensions"]
 branch = true
 
 [tool.coverage.report]

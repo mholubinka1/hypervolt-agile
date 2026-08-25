@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import importlib.util
+import inspect
 import logging.config
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from logging import Logger, getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -14,7 +17,7 @@ from common.constants import APP_NAME, TIMEZONE
 from common.logging import config
 
 if TYPE_CHECKING:
-    from config import CustomLedTheme, LedConfig
+    from config import CustomLedTheme, ExtensionEntry, LedConfig
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
@@ -141,25 +144,153 @@ def _resolve_from(
     return None
 
 
-def resolve_theme(
+async def resolve_theme(
     now: datetime,
-    extensions: Sequence[object] = (),
+    extensions: Sequence[ExtensionWrapper] = (),
     custom_themes: Sequence[tuple[LedTheme, Window, Window]] = (),
 ) -> LedTheme | None:
-    _match = _resolve_from(now, custom_themes)
+    _match: LedTheme | None = None
+    for _extension in extensions:
+        _match = await _extension.resolve(now)
+        if _match is not None:
+            break
+    if _match is None:
+        _match = _resolve_from(now, custom_themes)
     if _match is None:
         _match = _resolve_from(now, BUILT_IN_THEMES)
     if _match is None:
         return None
-    # _match above is the stored LedTheme itself (from BUILT_IN_THEMES or the
-    # caller's custom_themes), not a copy -- freezing the dataclass only stops
-    # field reassignment, not mutation of the nested `leds` list, so building
-    # a fresh LedTheme with a deep-copied `leds` below is the only real
-    # protection against a caller corrupting what a later cycle resolves to.
+    # _match above is the stored/cached LedTheme itself -- from BUILT_IN_THEMES,
+    # the caller's custom_themes, or an extension's own internal cache -- not a
+    # copy -- freezing the dataclass only stops field reassignment, not
+    # mutation of the nested `leds` list, so building a fresh LedTheme with a
+    # deep-copied `leds` below is the only real protection against a caller
+    # corrupting what a later cycle resolves to.
     return LedTheme(
         effect_name=_match.effect_name,
         leds=[dict(led) for led in _match.leds] if _match.leds is not None else None,
     )
+
+
+class LedThemeProvider(Protocol):
+    def __init__(self, config: dict[str, Any]) -> None: ...
+
+    async def resolve(self, now: datetime) -> LedTheme | None: ...
+
+    # start() and stop() are optional lifecycle hooks (ADR 0005) -- deliberately
+    # not declared here, since a Protocol member would make them structurally
+    # required. Callers check `hasattr` instead of relying on isinstance.
+
+
+class ExtensionWrapper:
+    def __init__(self, name: str, provider: LedThemeProvider) -> None:
+        self.name = name
+        self._provider = provider
+        self._last_exception: Exception | None = None
+
+    async def resolve(self, now: datetime) -> LedTheme | None:
+        try:
+            _result = await self._provider.resolve(now)
+            # Raised inside this try so a misbehaving extension's bad return
+            # value is funnelled through the same isolation/dedup handling
+            # below as any other resolve() failure, rather than propagating
+            # to crash resolve_theme's own .effect_name access.
+            if _result is not None and not isinstance(_result, LedTheme):
+                raise TypeError(
+                    f"resolve() returned {type(_result).__name__}, expected "
+                    "LedTheme or None"
+                )
+        except Exception as e:
+            if type(e) is not type(self._last_exception) or str(e) != str(
+                self._last_exception
+            ):
+                logger.warning(
+                    f"LED theme extension {self.name!r} failed: {type(e).__name__}: {e}."
+                )
+            self._last_exception = e
+            return None
+        if self._last_exception is not None:
+            logger.info(f"LED theme extension {self.name!r} recovered.")
+            self._last_exception = None
+        return _result
+
+    async def stop(self) -> None:
+        if not hasattr(self._provider, "stop"):
+            return
+        try:
+            await self._provider.stop()
+        except Exception as e:
+            logger.warning(
+                f"LED theme extension {self.name!r} failed to stop cleanly: "
+                f"{type(e).__name__}: {e}."
+            )
+
+
+def _load_provider_class(module_path: Path) -> type[LedThemeProvider]:
+    _spec = importlib.util.spec_from_file_location(
+        f"_hypervolt_extension.{module_path.stem}", module_path
+    )
+    if _spec is None or _spec.loader is None:
+        raise ImportError(f"Could not load module spec for {module_path}.")
+    _module = importlib.util.module_from_spec(_spec)
+    # module_from_spec() alone does not register the module in sys.modules --
+    # unlike a normal import, so anything the module's own top-level code
+    # relies on sys.modules for (e.g. @dataclass, via dataclasses._is_type,
+    # looks up sys.modules[cls.__module__] directly with no default) would
+    # otherwise crash during exec_module below. Matches importlib's own
+    # documented recipe for loading a module from a file path. The name is
+    # namespaced under "_hypervolt_extension." so an extension file that
+    # happens to share a name with a real module (e.g. "config.py") can
+    # never clobber -- or be clobbered by -- that module's sys.modules entry.
+    sys.modules[_spec.name] = _module
+    try:
+        _spec.loader.exec_module(_module)
+        _candidates = [
+            _cls
+            for _, _cls in inspect.getmembers(_module, inspect.isclass)
+            if _cls.__module__ == _module.__name__ and hasattr(_cls, "resolve")
+        ]
+        if len(_candidates) != 1:
+            raise ValueError(
+                f"{module_path}: expected exactly one class implementing "
+                f"LedThemeProvider, found {len(_candidates)}."
+            )
+    except Exception:
+        del sys.modules[_spec.name]
+        raise
+    return _candidates[0]
+
+
+async def load_extensions(
+    entries: Sequence[ExtensionEntry], extensions_dir: Path
+) -> list[ExtensionWrapper]:
+    _loaded: list[ExtensionWrapper] = []
+    _extensions_dir = extensions_dir.resolve()
+    for entry in entries:
+        _provider: LedThemeProvider | None = None
+        try:
+            _module_path = (extensions_dir / f"{entry.name}.py").resolve()
+            if not _module_path.is_relative_to(_extensions_dir):
+                raise ValueError(
+                    f"{entry.name!r} resolves outside extensions_dir {extensions_dir}."
+                )
+            _provider_class = _load_provider_class(_module_path)
+            _provider = _provider_class(entry.config)
+            if hasattr(_provider, "start"):
+                await _provider.start()
+        except Exception as e:
+            logger.error(
+                f"Failed to load LED theme extension {entry.name!r}: {type(e).__name__}: {e}."
+            )
+            # __init__ succeeding but start() raising can still leave a
+            # resource open (e.g. an httpx.AsyncClient) -- best-effort clean
+            # it up via the same isolated stop() path a fully-loaded
+            # extension gets, so a failed load never leaks.
+            if _provider is not None:
+                await ExtensionWrapper(name=entry.name, provider=_provider).stop()
+            continue
+        _loaded.append(ExtensionWrapper(name=entry.name, provider=_provider))
+    return _loaded
 
 
 def load_custom_themes(

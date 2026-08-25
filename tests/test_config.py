@@ -3,7 +3,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from config import ConfigLoader, CustomLedTheme, LedConfig, Octopus, Schedule
+from config import (
+    ConfigLoader,
+    CustomLedTheme,
+    ExtensionEntry,
+    LedConfig,
+    Octopus,
+    Schedule,
+)
 
 _VALID_CONFIG_YAML = """
 octopus:
@@ -147,3 +154,9 @@ def test_custom_led_theme_accepts_a_genuine_year_wrap() -> None:
 
     assert theme.start == "12-15"
     assert theme.end == "01-05"
+
+
+def test_extension_entry_defaults_config_to_an_empty_dict_when_omitted() -> None:
+    entry = ExtensionEntry(name="saints_fc")
+
+    assert entry.config == {}

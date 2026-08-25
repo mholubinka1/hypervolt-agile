@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from common.constants import APP_NAME, SESSION_CLOCK_OFFSET_MINS, TIMEZONE
 from common.logging import config
 from hypervolt.charger import HypervoltChargerClient
-from hypervolt.led import LedTheme, Window, resolve_theme
+from hypervolt.led import ExtensionWrapper, LedTheme, Window, resolve_theme
 from hypervolt.model import HypervoltSession, LockStatus, ReleaseState
 from schedule import Scheduler
 
@@ -23,10 +23,12 @@ class ScheduleCoordinator:
         scheduler: Scheduler,
         config: AppConfig,
         custom_themes: Sequence[tuple[LedTheme, Window, Window]] = (),
+        extensions: Sequence[ExtensionWrapper] = (),
     ) -> None:
         self._scheduler = scheduler
         self._config = config
         self._custom_themes = custom_themes
+        self._extensions = extensions
         self._charger_client: HypervoltChargerClient | None = None
         self._car_was_plugged: bool | None = None
         self._was_connected: bool | None = None
@@ -87,8 +89,10 @@ class ScheduleCoordinator:
         if not _state.is_charging:
             await self._charger_client.apply_led_state(0.0, None)
             return
-        _target = resolve_theme(
-            datetime.now(ZoneInfo(TIMEZONE)), custom_themes=self._custom_themes
+        _target = await resolve_theme(
+            datetime.now(ZoneInfo(TIMEZONE)),
+            extensions=self._extensions,
+            custom_themes=self._custom_themes,
         )
         await self._charger_client.apply_led_state(
             _led_config.brightness,

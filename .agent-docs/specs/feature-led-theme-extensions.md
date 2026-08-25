@@ -1,5 +1,14 @@
 # LED Theme Extensions
 
+> **Superseded 2026-08-25.** This was the original all-three-slices master plan, written before
+> slice 1 or 2 existed. Each slice ended up with its own dedicated spec instead:
+> `feature-led-brightness-and-builtin-themes.md`, `feature-led-custom-yaml-themes.md`, and this
+> slice's actual spec, `feature-led-extensions.md`. That spec's decisions take precedence over
+> this file wherever they differ — notably, a missing `--extensions-dir` when `led.extensions` is
+> non-empty is **fail-fast** (a deployment-wiring mistake), not graceful-degrade as this file's
+> "Deployment" section still says; that paragraph was never revisited when the ADR 0007
+> fail-fast/graceful-degradation boundary was corrected below. Kept for historical context only.
+
 ## Problem Statement
 
 Calendar-based themes (built-in and custom YAML) only cover dates known in advance. An operator

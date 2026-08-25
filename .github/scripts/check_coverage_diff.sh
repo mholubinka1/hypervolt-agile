@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Fails the pipeline if total test coverage on this branch is lower than on `main`.
 #
-# Assumes `poetry run pytest --cov=app --cov-report=json:coverage.json` has already
-# run in the current checkout (that JSON is read as "current" coverage below), and
-# that the checkout has full history (`fetch-depth: 0`) so `origin/main` is available.
+# Assumes `poetry run pytest --cov=app --cov=extensions --cov-report=json:coverage.json`
+# has already run in the current checkout (that JSON is read as "current" coverage
+# below), and that the checkout has full history (`fetch-depth: 0`) so `origin/main`
+# is available. `--cov=extensions` is harmless against a checkout that predates the
+# extensions/ directory -- coverage.py silently contributes nothing for a source path
+# that doesn't exist, rather than erroring.
 set -euo pipefail
 
 main_worktree=""
@@ -35,7 +38,7 @@ if [ -d "${main_worktree}/tests" ]; then
     (
         cd "${main_worktree}"
         poetry install --quiet
-        poetry run pytest --cov=app --cov-report=json:coverage.json --quiet
+        poetry run pytest --cov=app --cov=extensions --cov-report=json:coverage.json --quiet
     )
     main_coverage=$(read_percent_covered "${main_worktree}/coverage.json")
 else

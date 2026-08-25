@@ -27,7 +27,7 @@ jobs:
         run: poetry install
 
       - name: Run tests with coverage
-        run: poetry run pytest --cov=app --cov-report=term-missing --cov-report=json:coverage.json
+        run: poetry run pytest --cov=app --cov=extensions --cov-report=term-missing --cov-report=json:coverage.json
 
       - name: Check coverage has not decreased vs main
         run: bash .github/scripts/check_coverage_diff.sh

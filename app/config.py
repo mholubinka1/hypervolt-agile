@@ -4,6 +4,7 @@ import logging.config
 import sys
 from logging import Logger, getLogger
 from pathlib import Path
+from typing import Any
 
 import yaml
 from common.constants import APP_NAME
@@ -106,10 +107,16 @@ class CustomLedTheme(BaseModel):
         return self
 
 
+class ExtensionEntry(BaseModel):
+    name: str
+    config: dict[str, Any] = {}
+
+
 class LedConfig(BaseModel):
     enabled: bool = True
     brightness: float = Field(0.5, gt=0, le=1)
     custom_themes: list[CustomLedTheme] = []
+    extensions: list[ExtensionEntry] = []
 
 
 class AppConfig(BaseModel):
