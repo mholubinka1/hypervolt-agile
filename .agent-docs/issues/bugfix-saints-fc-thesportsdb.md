@@ -59,7 +59,7 @@ found broken — and treats today as a match day if either response contains an 
 Replace the 5-minute "is there a match today" polling with a once-daily, fixed-local-time poll
 (default 23:00 Europe/London, configurable via a new `poll_time` "HH:MM" config key) that checks
 whether Southampton have a match *tomorrow*. Add a new `common.polling.daily_at(hour, minute, tz,
-task, on_tick=None)` scheduling primitive alongside the existing `every()` (unchanged, still used by
+task)` scheduling primitive alongside the existing `every()` (unchanged, still used by
 `app/main.py`). `_fetch_has_match_today(today)` generalizes to `_fetch_has_match_on_date(target_date)`
 so the same two-endpoint (`eventsnext`+`eventslast`) logic works for any date. `start()` does one
 extra, directly-awaited bootstrap check for "today" before scheduling the recurring daily task, so a

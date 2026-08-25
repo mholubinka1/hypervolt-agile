@@ -154,7 +154,7 @@ or restart on a day Southampton already have a fixture.
 
 ### Implementation Decisions
 
-**New scheduling primitive — `common.polling.daily_at(hour, minute, tz, task, on_tick=None)`**: added
+**New scheduling primitive — `common.polling.daily_at(hour, minute, tz, task)`**: added
 alongside the existing `every()` (interval-based, still used elsewhere e.g. `app/main.py` — unchanged)
 rather than replacing it, since the two serve genuinely different scheduling models. `daily_at`
 computes the next occurrence of `hour:minute` in the given `ZoneInfo`, sleeps until then, runs `task`,

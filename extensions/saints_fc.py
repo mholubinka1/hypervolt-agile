@@ -1,6 +1,5 @@
 import asyncio
-import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from logging import Logger, getLogger
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -8,7 +7,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from common.constants import APP_NAME, TIMEZONE
 from common.decorator import retry
-from common.polling import every
+from common.polling import daily_at
 from common.utils import is_null_or_empty
 from hypervolt.led import LedTheme
 
@@ -26,7 +25,10 @@ _LOCAL_TZ = ZoneInfo(TIMEZONE)
 # TheSportsDB's ID space, not football-data.org's -- Southampton FC is 340 on
 # football-data.org but 134778 on TheSportsDB.
 _DEFAULT_TEAM_ID = 134778
-_DEFAULT_POLL_INTERVAL_SECS = 300
+# Fixture schedules don't change minute-to-minute, so a once-a-day check is
+# enough -- 23:00 is late enough that same-day fixture updates are unlikely,
+# while still leaving a full day's notice before kickoff.
+_DEFAULT_POLL_TIME = "23:00"
 # TheSportsDB's free tier needs no registration: "3" is a public, shared test
 # key documented by TheSportsDB itself, embedded directly in the URL path
 # rather than sent as a header. Kept as a config default (not hardcoded) so
@@ -42,6 +44,28 @@ def _matchday_leds() -> list[dict[str, float]]:
     return [dict(_RED if i % 2 == 0 else _WHITE) for i in range(_LED_COUNT)]
 
 
+def _parse_poll_time(value: object) -> tuple[int, int]:
+    # ValueError, not TypeError, to match every other config validation
+    # error in this extension (api_key, formerly poll_interval_secs) -- all
+    # are caught identically by load_extensions() regardless of type, so a
+    # single consistent exception type is one less thing for an operator
+    # reading logs to have to remember.
+    if not isinstance(value, str):
+        raise ValueError(  # noqa: TRY004
+            f"poll_time must be a string in HH:MM format, got type "
+            f"{type(value).__name__}."
+        )
+    try:
+        # Naive is fine here -- only the hour/minute fields are used, the
+        # result is never compared as an actual instant.
+        _parsed = datetime.strptime(value, "%H:%M")  # noqa: DTZ007
+    except ValueError:
+        raise ValueError(
+            f"poll_time must be in HH:MM 24-hour format, got {value!r}."
+        ) from None
+    return _parsed.hour, _parsed.minute
+
+
 class SaintsFcExtension:
     def __init__(self, config: dict[str, Any]) -> None:
         self._api_key = config.get("api_key", _DEFAULT_API_KEY)
@@ -53,23 +77,12 @@ class SaintsFcExtension:
                 f"{type(self._api_key).__name__}."
             )
         self._team_id = config.get("team_id", _DEFAULT_TEAM_ID)
-        self._poll_interval_secs = config.get(
-            "poll_interval_secs", _DEFAULT_POLL_INTERVAL_SECS
-        )
-        if (
-            isinstance(self._poll_interval_secs, bool)
-            or not isinstance(self._poll_interval_secs, (int, float))
-            or not math.isfinite(self._poll_interval_secs)
-            or self._poll_interval_secs <= 0
-        ):
-            raise ValueError(
-                f"poll_interval_secs must be a positive number, got "
-                f"{self._poll_interval_secs!r}."
-            )
+        self._poll_time = config.get("poll_time", _DEFAULT_POLL_TIME)
+        self._poll_hour, self._poll_minute = _parse_poll_time(self._poll_time)
         self._client = httpx.AsyncClient(
             base_url=_API_BASE_URL_TEMPLATE.format(api_key=self._api_key)
         )
-        self._match_date: date | None = None
+        self._match_dates: set[date] = set()
         self._task: asyncio.Task | None = None
         # team_id's default changed meaning between providers (340 on
         # football-data.org's ID space, 134778 on TheSportsDB's) -- there's
@@ -81,8 +94,16 @@ class SaintsFcExtension:
         )
 
     async def start(self) -> None:
+        # A bootstrap check for *today* specifically, awaited directly before
+        # the recurring daily task is scheduled -- without this, a same-day
+        # deploy or restart wouldn't discover a match happening that same
+        # day, since every recurring poll from here on only ever checks
+        # tomorrow. load_extensions() already awaits start() and already
+        # catches/logs any exception from it, so this blocking check doesn't
+        # need its own error handling beyond what _check_and_record does.
+        await self._check_and_record(datetime.now(_LOCAL_TZ).date())
         self._task = asyncio.create_task(
-            every(self._poll_interval_secs, self._poll_once)
+            daily_at(self._poll_hour, self._poll_minute, _LOCAL_TZ, self._poll_once)
         )
 
     async def stop(self) -> None:
@@ -118,30 +139,31 @@ class SaintsFcExtension:
         return _events or []
 
     @retry()
-    async def _fetch_has_match_today(self, today: date) -> bool:
-        _today_iso = today.isoformat()
+    async def _fetch_has_match_on_date(self, target_date: date) -> bool:
+        _target_iso = target_date.isoformat()
         _next_events = await self._fetch_events("/eventsnext.php", "events")
         _last_events = await self._fetch_events("/eventslast.php", "results")
         return any(
-            _event.get("dateEventLocal") == _today_iso
+            _event.get("dateEventLocal") == _target_iso
             for _event in _next_events + _last_events
         )
 
-    async def _poll_once(self) -> None:
-        _today = datetime.now(_LOCAL_TZ).date()
+    async def _check_and_record(self, target_date: date) -> None:
         try:
-            _has_match = await self._fetch_has_match_today(_today)
+            _has_match = await self._fetch_has_match_on_date(target_date)
         except Exception as e:
             logger.warning(
                 f"LED theme extension 'saints_fc' poll failed: {type(e).__name__}: {e}."
             )
             return
-        self._match_date = _today if _has_match else None
+        if _has_match:
+            self._match_dates.add(target_date)
+
+    async def _poll_once(self) -> None:
+        _tomorrow = datetime.now(_LOCAL_TZ).date() + timedelta(days=1)
+        await self._check_and_record(_tomorrow)
 
     async def resolve(self, now: datetime) -> LedTheme | None:
-        if (
-            self._match_date is None
-            or now.astimezone(_LOCAL_TZ).date() != self._match_date
-        ):
+        if now.astimezone(_LOCAL_TZ).date() not in self._match_dates:
             return None
         return LedTheme(effect_name="saints_fc_matchday", leds=_matchday_leds())
