@@ -263,6 +263,35 @@ async def test_a_poll_failure_logs_a_warning_and_keeps_the_cached_value(
     assert len(_own_records) == 1
 
 
+async def test_a_poll_failure_does_not_leak_the_api_key_into_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # httpx.HTTPStatusError's default message embeds the full request URL,
+    # and TheSportsDB's URL embeds api_key in its path -- a poll failure must
+    # not let that raw URL reach the logs, or an operator's personal key
+    # (not just the public "3") would end up written to the log file.
+    def _failing_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    extension = SaintsFcExtension({"api_key": "MY-SECRET-KEY"})
+    extension._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(_failing_handler),
+        base_url=extension._client.base_url,
+    )
+
+    with (
+        patch("saints_fc.datetime", _frozen_clock()),
+        patch("common.decorator.asyncio.sleep", AsyncMock()),
+        caplog.at_level(logging.WARNING),
+    ):
+        await extension._poll_once()
+
+    assert not any("MY-SECRET-KEY" in r.message for r in caplog.records)
+    # The status code itself isn't secret and remains useful for triage --
+    # only the URL (and the key embedded in it) needed to be stripped.
+    assert any("500" in r.message for r in caplog.records)
+
+
 async def test_a_single_transient_failure_is_retried_and_does_not_log_a_saints_fc_warning(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

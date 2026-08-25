@@ -95,8 +95,25 @@ class SaintsFcExtension:
         await self._client.aclose()
 
     async def _fetch_events(self, path: str, response_key: str) -> list[dict[str, Any]]:
-        _response = await self._client.get(path, params={"id": self._team_id})
-        _response.raise_for_status()
+        # httpx's own exception messages embed the full request URL, and
+        # TheSportsDB embeds api_key in that URL's path -- both branches
+        # below re-raise with a sanitized message (no URL) so a personal key
+        # never reaches common.decorator.retry's or _poll_once's logs. `from
+        # e` is safe here (not a further leak risk): neither log site prints
+        # a traceback or the exception chain, only str(e) of the exception
+        # actually logged.
+        try:
+            _response = await self._client.get(path, params={"id": self._team_id})
+            _response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise httpx.HTTPError(
+                f"Request to {path} failed: "
+                f"{e.response.status_code} {e.response.reason_phrase}."
+            ) from e
+        except httpx.HTTPError as e:
+            raise httpx.HTTPError(
+                f"Request to {path} failed: {type(e).__name__}."
+            ) from e
         _events: list[dict[str, Any]] | None = _response.json().get(response_key)
         return _events or []
 
