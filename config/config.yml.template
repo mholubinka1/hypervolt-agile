@@ -22,7 +22,7 @@ schedule:
 #     - effect: party_mode
 #       start: "12-31 06:00"
 #       end: "01-01 06:00"
-#   custom_themes:                 # Static colour patterns for dates that matter to you, priority over built-in seasonal effects. Add your own led_effects/*.yaml (in Docker: /home/pi/.config/hypervolt-agile/led_effects/, since only config.yml itself is bind-mounted) and a matching entry here, e.g.:
+#   custom_themes:                 # Static colour patterns for dates that matter to you, priority over built-in seasonal effects. Add your own led_effects/*.yaml (in Docker: /home/pi/.config/hypervolt-agile/led_effects/ -- the whole directory is bind-mounted to /config, so files placed there are picked up without rebuilding the image) and a matching entry here, e.g.:
 #     - effect: my_theme              # led_effects/my_theme.yaml
 #       start: "MM-DD"
 #       end: "MM-DD"

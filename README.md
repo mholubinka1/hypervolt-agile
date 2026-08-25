@@ -91,9 +91,10 @@ docker-compose up -d
 ```
 
 If you're using custom LED themes (`led.custom_themes` in `config.yml`), the `*.yaml` effect
-files are **not** baked into the Docker image — only `config.yml` itself is bind-mounted. Copy
-the effect files (this repo's `config/led_effects/*.yaml`, or your own) into
-`/home/pi/.config/hypervolt-agile/led_effects/` alongside `config.yml` too.
+files are **not** baked into the Docker image. The whole `/home/pi/.config/hypervolt-agile`
+directory is bind-mounted to `/config`, so copy the effect files (this repo's
+`config/led_effects/*.yaml`, or your own) into `/home/pi/.config/hypervolt-agile/led_effects/`
+alongside `config.yml` and they'll be picked up without rebuilding the image.
 
 If you're using LED theme extensions (`led.extensions` in `config.yml`), place each extension's
 `*.py` file in `/home/pi/.config/hypervolt-agile-extensions/` — this is a separate mount from
