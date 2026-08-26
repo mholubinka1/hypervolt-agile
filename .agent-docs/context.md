@@ -54,7 +54,7 @@ Whether a vehicle is currently connected to the charger; combined with release s
 ## LED Theme Control
 
 **LED Theme**:
-The resolved outcome for "what should the LEDs show right now" — a brightness plus an optional LED Effect — chosen once per poll cycle by walking the priority stack while charging.
+The resolved outcome for "what should the LEDs show right now" — a brightness plus an optional LED Effect — chosen once per poll cycle by walking the priority stack whenever the car is plugged in, independent of whether it's actively charging.
 _Avoid_: LED state, lighting mode
 
 **LED Effect**:

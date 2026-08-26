@@ -11,7 +11,7 @@ from common.constants import APP_NAME
 from common.logging import config
 from common.utils import is_null_or_empty
 from hypervolt.led import (
-    BUILT_IN_THEMES,
+    DEFAULT_BUILT_IN_THEMES,
     REFERENCE_ANCHOR_YEAR,
     parse_window_date,
     window_for_year,
@@ -21,7 +21,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
-_RESERVED_LED_EFFECT_NAMES = {theme.effect_name for theme, _, _ in BUILT_IN_THEMES}
+_RESERVED_LED_EFFECT_NAMES = {
+    theme.effect_name for theme, _, _ in DEFAULT_BUILT_IN_THEMES
+}
 
 
 class Octopus(BaseModel):
@@ -59,20 +61,10 @@ class Schedule(BaseModel):
     poll: int = Field(..., alias="poll_every_secs", ge=2, le=3600)
 
 
-class CustomLedTheme(BaseModel):
+class _WindowedLedTheme(BaseModel):
     effect: str
     start: str
     end: str
-
-    @field_validator("effect")
-    def must_not_collide_with_a_built_in_theme(cls, v: str) -> str:
-        if v in _RESERVED_LED_EFFECT_NAMES:
-            raise ValueError(
-                f"{v!r} is a built-in theme name and can't be reused as a custom "
-                "theme's effect -- apply_led_state diffs on this name, so a "
-                "collision would make it unable to tell the two apart."
-            )
-        return v
 
     @field_validator("start", "end")
     def must_be_a_valid_window_date(cls, v: str) -> str:
@@ -86,7 +78,7 @@ class CustomLedTheme(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def end_must_be_after_start(self) -> CustomLedTheme:
+    def end_must_be_after_start(self) -> _WindowedLedTheme:
         # end_month < start_month is a deliberate year-wrap (e.g. party_mode
         # spans New Year's Eve). But a same-month or later-month pair with the
         # end chronologically before the start (e.g. start="03-16",
@@ -100,11 +92,33 @@ class CustomLedTheme(BaseModel):
         )
         if _end <= _start:
             raise ValueError(
-                f"Custom LED theme {self.effect!r}: window end {self.end!r} is not "
-                f"after start {self.start!r} -- this window could never match any "
-                "date."
+                f"LED theme {self.effect!r}: window end {self.end!r} is not after "
+                f"start {self.start!r} -- this window could never match any date."
             )
         return self
+
+
+class CustomLedTheme(_WindowedLedTheme):
+    @field_validator("effect")
+    def must_not_collide_with_a_built_in_theme(cls, v: str) -> str:
+        if v in _RESERVED_LED_EFFECT_NAMES:
+            raise ValueError(
+                f"{v!r} is a built-in theme name and is reserved -- a custom theme "
+                "can't reuse it as its own effect name."
+            )
+        return v
+
+
+class BuiltInLedTheme(_WindowedLedTheme):
+    @field_validator("effect")
+    def must_be_a_known_built_in_theme(cls, v: str) -> str:
+        if v not in _RESERVED_LED_EFFECT_NAMES:
+            raise ValueError(
+                f"{v!r} is not a built-in theme -- built_in_themes can only "
+                f"configure one of {sorted(_RESERVED_LED_EFFECT_NAMES)}, use "
+                "custom_themes for anything else."
+            )
+        return v
 
 
 class ExtensionEntry(BaseModel):
@@ -115,6 +129,7 @@ class ExtensionEntry(BaseModel):
 class LedConfig(BaseModel):
     enabled: bool = True
     brightness: float = Field(0.5, gt=0, le=1)
+    built_in_themes: list[BuiltInLedTheme] = []
     custom_themes: list[CustomLedTheme] = []
     extensions: list[ExtensionEntry] = []
 

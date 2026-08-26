@@ -48,6 +48,28 @@ schedule:
 
 Your Octopus account postcode is used to determine the charger's timezone automatically — no timezone configuration is needed.
 
+### LED Themes
+
+The charger's LEDs can show one of three built-in seasonal effects whenever the car is plugged in (not just while actively charging). Each is opt-in — listing an effect in `built_in_themes` is what enables it; leave one out and it never runs:
+
+```yaml
+led:
+  enabled: true
+  brightness: 0.5
+  built_in_themes:
+    - effect: halloween_mode
+      start: "10-31"
+      end: "11-01 06:00"
+    - effect: christmas_mode
+      start: "12-24"
+      end: "12-31 06:00"
+    - effect: party_mode
+      start: "12-31 06:00"
+      end: "01-01 06:00"
+```
+
+Dates use `MM-DD`, or `"MM-DD HH:MM"` for a specific time (default `00:00`). See `config/config.yml.template` for the full `led:` block, including `custom_themes` (your own static colour patterns) and `extensions` (dynamically resolved themes, e.g. match-day colours).
+
 ---
 
 ## Deployment
@@ -69,9 +91,10 @@ docker-compose up -d
 ```
 
 If you're using custom LED themes (`led.custom_themes` in `config.yml`), the `*.yaml` effect
-files are **not** baked into the Docker image — only `config.yml` itself is bind-mounted. Copy
-the effect files (this repo's `config/led_effects/*.yaml`, or your own) into
-`/home/pi/.config/hypervolt-agile/led_effects/` alongside `config.yml` too.
+files are **not** baked into the Docker image. The whole `/home/pi/.config/hypervolt-agile`
+directory is bind-mounted to `/config`, so copy the effect files (this repo's
+`config/led_effects/*.yaml`, or your own) into `/home/pi/.config/hypervolt-agile/led_effects/`
+alongside `config.yml` and they'll be picked up without rebuilding the image.
 
 If you're using LED theme extensions (`led.extensions` in `config.yml`), place each extension's
 `*.py` file in `/home/pi/.config/hypervolt-agile-extensions/` — this is a separate mount from
