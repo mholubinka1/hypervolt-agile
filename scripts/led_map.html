@@ -307,20 +307,27 @@
 
   var svgNS = "http://www.w3.org/2000/svg";
 
-  function samplePath(path, count) {
+  function samplePath(path, count, closed) {
+    // Open paths (the bolt) have `count` distinct endpoints, so spacing
+    // divides by count - 1 to include both ends. Closed paths (the ring,
+    // whose `d` ends in Z) have getPointAtLength(total) === getPointAtLength(0)
+    // -- dividing by count - 1 there would land the first and last dots on
+    // the exact same point, so closed paths divide by count instead, which
+    // never samples the seam twice.
     var total = path.getTotalLength();
     var points = [];
+    var divisor = closed ? count : count - 1;
     for (var i = 0; i < count; i++) {
-      var len = count === 1 ? 0 : (total * i) / (count - 1);
+      var len = divisor === 0 ? 0 : (total * i) / divisor;
       points.push(path.getPointAtLength(len));
     }
     return points;
   }
 
-  function buildDots(groupId, guideId, count, indexOffset) {
+  function buildDots(groupId, guideId, count, indexOffset, closed) {
     var group = document.getElementById(groupId);
     var guide = document.getElementById(guideId);
-    var points = samplePath(guide, count);
+    var points = samplePath(guide, count, closed);
 
     points.forEach(function (pt, i) {
       var index = indexOffset + i;
@@ -401,8 +408,8 @@
 
   function init() {
     var labels = loadLabels();
-    buildDots("ring-group", "ring-guide", RING_COUNT, 0);
-    buildDots("bolt-group", "bolt-guide", BOLT_COUNT, RING_COUNT);
+    buildDots("ring-group", "ring-guide", RING_COUNT, 0, true);
+    buildDots("bolt-group", "bolt-guide", BOLT_COUNT, RING_COUNT, false);
     buildRows(labels);
 
     document.getElementById("export-btn").addEventListener("click", function () {

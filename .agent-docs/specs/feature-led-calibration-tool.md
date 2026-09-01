@@ -75,10 +75,17 @@ against.
   from top-right, bolt 39–50 bottom to top), since that structural split (which indices belong to
   the ring vs the bolt) is not what's in doubt; only the exact position of each index within its
   region is.
-- Each of the 51 dots gets an adjacent `<input type="text">` (built dynamically in JS alongside
-  the dot placement, positioned near its dot) where the operator types what they observed (e.g.
-  "12 o'clock", "3rd from bolt tip").
-- Every input's `change`/`input` event writes the full 51-entry label set to `localStorage` (keyed
+- **Revised during implementation**: an adjacent `<input>` directly on each of the 51 dots turned
+  out to be unreadable in practice — a Playwright screenshot during manual verification showed
+  inputs overlapping along the ring's straight edges and badly crowding the bolt's tight zigzag,
+  since 51 labelled positions don't have room to breathe on a diagram sized for reading, not data
+  entry. Replaced with a two-panel layout: the diagram (dots and index numbers only, read-only)
+  stays on the left as a spatial reference; a separate scrollable list of 51 rows (index + input)
+  sits alongside it, matching the actual workflow better anyway (the script announces "Index N"
+  one at a time — the operator finds row N, types, moves on). Clicking a dot scrolls to and
+  focuses its row, keeping the two views connected without cramming input widgets onto the image
+  itself.
+- Every input's `input` event writes the full 51-entry label set to `localStorage` (keyed
   distinctly from any other page's storage) so a browser refresh never loses progress.
 - On page load, any existing `localStorage` values are read back in and pre-fill the inputs.
 - An "Export JSON" button serialises `{index: label}` for all 51 entries and triggers a real
