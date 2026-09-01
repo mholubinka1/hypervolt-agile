@@ -139,6 +139,11 @@
     fill: var(--dot-active);
   }
 
+  .led-dot:focus-visible {
+    outline: 2px solid var(--input-focus);
+    outline-offset: 2px;
+  }
+
   .index-label {
     font-family: ui-monospace, "Cascadia Code", monospace;
     font-size: 10px;
@@ -338,8 +343,19 @@
       dot.setAttribute("r", 6.5);
       dot.setAttribute("class", "led-dot");
       dot.setAttribute("data-index", String(index));
+      // SVG <circle> isn't focusable by default -- tabindex/role/aria-label
+      // make it a real keyboard-operable control, not just a mouse target.
+      dot.setAttribute("tabindex", "0");
+      dot.setAttribute("role", "button");
+      dot.setAttribute("aria-label", "Jump to label for LED index " + index);
       dot.addEventListener("click", function () {
         focusRow(index);
+      });
+      dot.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          focusRow(index);
+        }
       });
       group.appendChild(dot);
 

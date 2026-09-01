@@ -69,7 +69,24 @@ async def _connect(
     # Mirrors HypervoltChargerClient.create()'s own connection start-up, minus
     # its clear_schedule() call -- see module docstring.
     ws_client._connect_task = asyncio.create_task(ws_client.connect())
-    await ws_client.wait_until_connected(timeout=30)
+    try:
+        await ws_client.wait_until_connected(timeout=30)
+    except Exception:
+        # A failed handshake still leaves the background connect task and the
+        # REST client's own session open -- clean both up before propagating,
+        # mirroring HypervoltChargerClient.create()'s own failure-path
+        # cleanup in charger.py. Each step is independently guarded so one
+        # raising (e.g. the websocket never actually opened) doesn't skip
+        # the other and mask the original handshake failure with a new one.
+        try:
+            await ws_client.disconnect()
+        except Exception as e:
+            print(f"Failed to disconnect websocket: {type(e).__name__}: {e}")
+        try:
+            await rest_client.close()
+        except Exception as e:
+            print(f"Failed to close REST client: {type(e).__name__}: {e}")
+        raise
     return rest_client, ws_client
 
 
@@ -94,9 +111,22 @@ async def run(config_file: Path) -> None:
         # actually arrives.
         print("\nStopping -- clearing LEDs.")
     finally:
-        await ws_client.set_led_effect("none")
-        await ws_client.disconnect()
-        await rest_client.close()
+        # Each step runs even if an earlier one raises (e.g. the websocket
+        # already dropped) -- a best-effort shutdown that doesn't leave the
+        # REST client's session open just because clearing the display
+        # failed first.
+        try:
+            await ws_client.set_led_effect("none")
+        except Exception as e:
+            print(f"Failed to clear LED display: {type(e).__name__}: {e}")
+        try:
+            await ws_client.disconnect()
+        except Exception as e:
+            print(f"Failed to disconnect websocket: {type(e).__name__}: {e}")
+        try:
+            await rest_client.close()
+        except Exception as e:
+            print(f"Failed to close REST client: {type(e).__name__}: {e}")
 
 
 def main() -> None:
