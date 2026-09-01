@@ -1,5 +1,7 @@
 # Issues: chore-poetry-to-uv-migration
 
+> Work complete — PR ready to merge.
+
 ## Migrate Poetry to uv, versions unchanged (#102)
 
 **Blocked by**: None
@@ -21,12 +23,12 @@ Update README's install/run instructions from `poetry install`/`poetry run` to `
 
 ### Acceptance criteria
 
-- [ ] Given the converted `pyproject.toml`, when `uv lock` is run, then it succeeds and `uv.lock` resolves the same effective dependency versions `poetry.lock` had
-- [ ] Given the converted config, when `uv run pytest tests/` is run, then all 197 existing tests pass unchanged
-- [ ] Given the new `uv-lock`/`uv-export` pre-commit hooks, when `uv run pre-commit run --all-files` is run, then every hook passes
-- [ ] Given the updated Dockerfile, when `docker build .` is run locally, then it succeeds and the resulting image's `.venv/bin/python` still runs the app entrypoint correctly
-- [ ] Given the updated `ci-checks.yml`, when the branch is pushed, then the workflow goes green on GitHub Actions
-- [ ] Given README's updated commands, when followed from a clean checkout, then `uv sync` then `uv run python app/main.py --config-file config/config.yml` behaves the same as the old Poetry commands did
+- [x] Given the converted `pyproject.toml`, when `uv lock` is run, then it succeeds and `uv.lock` resolves the same effective dependency versions `poetry.lock` had
+- [x] Given the converted config, when `uv run pytest tests/` is run, then all 197 existing tests pass unchanged
+- [x] Given the new `uv-lock`/`uv-export` pre-commit hooks, when `uv run pre-commit run --all-files` is run, then every hook passes
+- [x] Given the updated Dockerfile, when `docker build .` is run locally, then it succeeds and the resulting image's `.venv/bin/python` still runs the app entrypoint correctly
+- [x] Given the updated `ci-checks.yml`, when the branch is pushed, then the workflow goes green on GitHub Actions
+- [x] Given README's updated commands, when followed from a clean checkout, then `uv sync` then `uv run python app/main.py --config-file config/config.yml` behaves the same as the old Poetry commands did
 
 ---
 
@@ -48,9 +50,9 @@ existing constraint in `pyproject.toml` allows (a genuine major bump).
 
 ### Acceptance criteria
 
-- [ ] Given the migration slice is complete, when `uv lock --upgrade` is run, then it succeeds and `uv.lock` reflects the latest version satisfying each constraint
-- [ ] Given the upgraded lock, when `uv run pytest tests/` is run, then all tests still pass, or any failure is triaged and reported rather than ignored
-- [ ] Given each pinned pre-commit hook, when checked against its repo's latest tag, then `.pre-commit-config.yaml` is updated to match
-- [ ] Given a dependency whose latest release exceeds its current `pyproject.toml` constraint, when found, then it is reported to the user rather than silently forced past the declared constraint
+- [x] Given the migration slice is complete, when `uv lock --upgrade` is run, then it succeeds and `uv.lock` reflects the latest version satisfying each constraint
+- [x] Given the upgraded lock, when `uv run pytest tests/` is run, then all tests still pass, or any failure is triaged and reported rather than ignored
+- [x] Given each pinned pre-commit hook, when checked against its repo's latest tag, then `.pre-commit-config.yaml` is updated to match
+- [x] Given a dependency whose latest release exceeds its current `pyproject.toml` constraint, when found, then it is reported to the user rather than silently forced past the declared constraint
 
 ---
