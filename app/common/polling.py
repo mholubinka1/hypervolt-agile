@@ -2,7 +2,7 @@ import asyncio
 import logging.config
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from inspect import iscoroutinefunction
 from logging import Logger, getLogger
 from typing import Any
@@ -51,7 +51,7 @@ async def daily_at(hour: int, minute: int, tz: ZoneInfo, task: TaskType) -> None
         # silently drops an hour (or gains one) across a DST transition.
         # Normalising to UTC first sidesteps that shortcut.
         _sleep_seconds = (
-            _target.astimezone(timezone.utc) - _now.astimezone(timezone.utc)
+            _target.astimezone(UTC) - _now.astimezone(UTC)
         ).total_seconds()
         await asyncio.sleep(_sleep_seconds)
         try:

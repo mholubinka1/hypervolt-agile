@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fails the pipeline if total test coverage on this branch is lower than on `main`.
 #
-# Assumes `poetry run pytest --cov=app --cov=extensions --cov-report=json:coverage.json`
+# Assumes `uv run pytest --cov=app --cov=extensions --cov-report=json:coverage.json`
 # has already run in the current checkout (that JSON is read as "current" coverage
 # below), and that the checkout has full history (`fetch-depth: 0`) so `origin/main`
 # is available. `--cov=extensions` is harmless against a checkout that predates the
@@ -34,13 +34,21 @@ main_worktree="$(mktemp -d)"
 git fetch origin main --quiet
 git worktree add --quiet --detach "${main_worktree}" origin/main
 
-if [ -d "${main_worktree}/tests" ]; then
+if [ -d "${main_worktree}/tests" ] && [ -f "${main_worktree}/uv.lock" ]; then
     (
         cd "${main_worktree}"
-        poetry install --quiet
-        poetry run pytest --cov=app --cov=extensions --cov-report=json:coverage.json --quiet
+        uv sync --quiet
+        uv run pytest --cov=app --cov=extensions --cov-report=json:coverage.json --quiet
     )
     main_coverage=$(read_percent_covered "${main_worktree}/coverage.json")
+elif [ -d "${main_worktree}/tests" ]; then
+    # One-time transition case: main still predates the Poetry-to-uv migration
+    # (no uv.lock yet), and this job no longer installs Poetry on the runner
+    # to run main's suite with the old tooling. Same graceful degradation as
+    # the "no tests directory" case below -- self-resolving, since main will
+    # have uv.lock as soon as this PR merges.
+    echo "main predates the Poetry-to-uv migration (no uv.lock yet) — treating baseline coverage as 0% for this one-time transition."
+    main_coverage=0
 else
     echo "main has no tests directory yet — treating baseline coverage as 0%."
     main_coverage=0

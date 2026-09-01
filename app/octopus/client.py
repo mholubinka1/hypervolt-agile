@@ -145,10 +145,8 @@ class AgileClient:
         _prices = [
             Price(
                 value_exc_vat=r["value_exc_vat"],
-                valid_from=datetime.fromisoformat(
-                    r["valid_from"].replace("Z", "+00:00")
-                ),
-                valid_to=datetime.fromisoformat(r["valid_to"].replace("Z", "+00:00")),
+                valid_from=datetime.fromisoformat(r["valid_from"]),
+                valid_to=datetime.fromisoformat(r["valid_to"]),
             )
             for r in results
         ]
