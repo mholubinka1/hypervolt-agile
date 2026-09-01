@@ -375,13 +375,19 @@
       row.className = "row " + (index < RING_COUNT ? "region-ring" : "region-bolt");
       row.id = "row-" + index;
 
-      var idxLabel = document.createElement("span");
+      // A real <label for> gives the input an accessible name -- the
+      // visible index alone doesn't label it for assistive tech, and a
+      // placeholder isn't a reliable substitute (some screen readers don't
+      // announce it, and it disappears once there's a value).
+      var idxLabel = document.createElement("label");
       idxLabel.className = "row-index";
       idxLabel.textContent = String(index);
+      idxLabel.setAttribute("for", "led-label-" + index);
       row.appendChild(idxLabel);
 
       var input = document.createElement("input");
       input.type = "text";
+      input.id = "led-label-" + index;
       input.setAttribute("data-index", String(index));
       input.placeholder = index < RING_COUNT ? "e.g. 12 o'clock" : "e.g. 3rd from bolt tip";
       input.value = labels[index] || "";
