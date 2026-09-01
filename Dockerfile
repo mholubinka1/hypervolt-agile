@@ -1,22 +1,16 @@
 FROM python:3.13.13-alpine3.23 AS builder
 
-ENV POETRY_VENV=/opt/poetry-venv
-ENV POETRY_CACHE_DIR=/opt/.cache
-ENV POETRY_VIRTUALENVS_IN_PROJECT=true
-ENV PATH="/opt/poetry-venv/bin:${PATH}"
+COPY --from=ghcr.io/astral-sh/uv:0.12.8 /uv /uvx /bin/
 
-RUN python3 -m venv ${POETRY_VENV} \
-    && pip install --upgrade pip setuptools wheel \
-    && pip install poetry
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 
 WORKDIR /app
 
-COPY pyproject.toml poetry.lock ./
+COPY pyproject.toml uv.lock ./
 
 RUN apk add --no-cache --virtual .deps gcc musl-dev postgresql-dev openssl-dev libffi-dev g++ \
-    && poetry install --no-root --only main \
-    && apk del .deps \
-    && rm -rf ${POETRY_CACHE_DIR}
+    && uv sync --frozen --no-dev \
+    && apk del .deps
 
 
 FROM python:3.13.13-alpine3.23

@@ -15,19 +15,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.13
         uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
-      - name: Install Poetry
-        run: pip install poetry
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
 
       - name: Install project dependencies
-        run: poetry install
+        run: uv sync --frozen
 
       - name: Run tests with coverage
-        run: poetry run pytest --cov=app --cov=extensions --cov-report=term-missing --cov-report=json:coverage.json
+        run: uv run pytest --cov=app --cov=extensions --cov-report=term-missing --cov-report=json:coverage.json
 
       - name: Check coverage has not decreased vs main
         run: bash .github/scripts/check_coverage_diff.sh
@@ -42,23 +42,20 @@ jobs:
       - name: Install markdown-link-check
         run: npm install -g markdown-link-check
 
-      - name: Validate pyproject.toml
-        run: poetry check
-
       - name: Verify lock file is consistent with pyproject.toml
-        run: poetry check --lock
+        run: uv lock --check
 
       - name: Type check with mypy
-        run: poetry run mypy app
+        run: uv run mypy app
 
       - name: Check import ordering with isort
-        run: poetry run isort --check-only --profile black app
+        run: uv run isort --check-only --profile black app
 
       - name: Check code formatting with black
-        run: poetry run black --check app
+        run: uv run black --check app
 
       - name: Check linting with ruff
-        run: poetry run ruff check --no-fix app
+        run: uv run ruff check --no-fix app
 
       - name: Check markdown links
         run: find . -name "*.md" -not -path "./.git/*" -print0 | xargs -0 -r markdown-link-check --config .markdown-link-check.json
@@ -69,4 +66,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Security analysis with bandit
-        run: poetry run bandit -r -c pyproject.toml app
+        run: uv run bandit -r -c pyproject.toml app

@@ -22,7 +22,7 @@ Prices and schedules are maintained in UTC internally and converted to the charg
 
 - A [Hypervolt](https://hypervolt.co.uk/) v3 home EV charger
 - An [Octopus Energy](https://octopus.energy/) account on the **Agile** tariff
-- Docker (for deployment) or Python 3.13+ with [Poetry](https://python-poetry.org/) (for local development)
+- Docker (for deployment) or Python 3.13+ with [uv](https://docs.astral.sh/uv/) (for local development)
 
 ---
 
@@ -109,13 +109,13 @@ The container pulls `mholubinka1/hypervolt-agile:latest` from Docker Hub, restar
 Install dependencies:
 
 ```bash
-poetry install --with dev
+uv sync --frozen
 ```
 
 Run the app:
 
 ```bash
-poetry run python app/main.py --config-file config/config.yml
+uv run python app/main.py --config-file config/config.yml
 ```
 
 ---

@@ -1,36 +1,35 @@
-[tool.poetry]
+[project]
 name = "hypervolt-agile"
 version = "0.1.0"
 description = ""
-authors = ["Matt Holubinka <meholubinka@gmail.com>"]
+authors = [{ name = "Matt Holubinka", email = "meholubinka@gmail.com" }]
 readme = "README.md"
-package-mode = false
+requires-python = ">=3.13,<4.0"
+dependencies = [
+    "httpx>=0.28,<0.29",
+    "tzdata>=2025.2,<2027.0",
+    "aiohttp>=3.12.15,<4.0.0",
+    "websockets>=16,<18",
+    "pyyaml>=6.0.3,<7.0.0",
+    "pydantic>=2.12.5,<3.0.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-httpx = "^0.28"
-tzdata = ">=2025.2,<2027.0"
-aiohttp = "^3.12.15"
-websockets = ">=16,<18"
-pyyaml = "^6.0.3"
-pydantic = "^2.12.5"
+[dependency-groups]
+dev = [
+    "isort>=8.0.1,<10.0.0",
+    "black>=26.3.1,<27.0.0",
+    "mypy>=1.8,<3.0",
+    "ruff>=0.16.0,<0.17.0",
+    "pre-commit>=4.3.0,<5.0.0",
+    "types-pyyaml>=6.0.12.20250915,<7.0.0.0",
+    "bandit[toml]>=1.9.4,<2.0.0",
+    "pytest>=9.1.1,<10.0.0",
+    "pytest-asyncio>=1.4.0,<2.0.0",
+    "pytest-cov>=7.1.0,<8.0.0",
+]
 
-
-[tool.poetry.group.dev.dependencies]
-isort = ">=8.0.1,<10.0.0"
-black = "^26.3.1"
-mypy = ">=1.8,<3.0"
-ruff = "^0.16.0"
-pre-commit = "^4.3.0"
-types-pyyaml = "^6.0.12.20250915"
-bandit = {version = "^1.9.4", extras = ["toml"]}
-pytest = "^9.1.1"
-pytest-asyncio = "^1.4.0"
-pytest-cov = "^7.1.0"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[tool.uv]
+package = false
 
 [tool.ruff.lint]
 # BLE001 (blind except Exception) is disabled repo-wide: every hit is a caller-supplied
@@ -43,7 +42,7 @@ ignore = ["BLE001", "I001"]
 
 [tool.mypy]
 plugins = ["pydantic.mypy"]
-python_version = "3.11"
+python_version = "3.13"
 exclude=["tests", ".reference"]
 mypy_path = ["app", "extensions"]
 disallow_untyped_defs = true

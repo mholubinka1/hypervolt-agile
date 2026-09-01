@@ -4,7 +4,7 @@ replacing the interpolated best-guess layout every custom LED theme has been
 designed against so far (see FEATURES.md Feature 22).
 
 Usage:
-    poetry run python scripts/calibrate_leds.py [--config-file config/config.yml]
+    uv run python scripts/calibrate_leds.py [--config-file config/config.yml]
 
 Loops continuously -- index 0 through 50, wrapping back to 0 -- until stopped
 with Ctrl+C, which clears the LED display and disconnects cleanly before
