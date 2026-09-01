@@ -58,8 +58,26 @@ own constraint syntax.
 
 **`.pre-commit-config.yaml`** — `poetry-check`/`poetry-lock` (python-poetry/poetry repo) and
 `poetry-export` (python-poetry/poetry-plugin-export repo) are replaced by `astral-sh/uv-pre-commit`'s
-`uv-lock` and `uv-export` hooks respectively (`uv-export` keeps the same
-`args: ["-f", "requirements.txt", "-o", "requirements.txt"]` shape). No other hook changes.
+`uv-lock` and `uv-export` hooks respectively.
+
+**Corrected during code review**: the first implementation carried over `poetry-export`'s
+`args: ["-f", "requirements.txt", "-o", "requirements.txt"]` verbatim onto `uv-export` — wrong,
+since `-f` means `--find-links` under `uv export`, not `--format` as it did under Poetry's export
+plugin (only `-o`/`--output-file` happens to mean the same thing in both, which is why
+`requirements.txt` was still being regenerated and the bug went unnoticed until review). Fixed by
+dropping the args override entirely — the hook's own baked-in defaults
+(`--frozen --output-file=requirements.txt --quiet`) are already correct, verified by diffing the
+regenerated `requirements.txt` byte-for-byte against the (accidentally-correct) prior output.
+
+Also corrected: this originally said "no other hook changes," but neither `uv-lock` (triggers on
+`uv.lock`/`pyproject.toml`/`uv.toml` changes) nor `uv-export` (triggers on `uv.lock` changes)
+carries the `always_run: true` the old Poetry hooks had — confirmed against
+`astral-sh/uv-pre-commit`'s own `.pre-commit-hooks.yaml` at the pinned rev, not assumed. This is a
+real behavioural difference, but not a regression: `always_run` re-validated lock/pyproject
+consistency on every commit regardless of what changed, which is unnecessary — if neither file is
+touched in a commit, there's no new way for them to have drifted out of sync since the previous
+(already-validated) commit. The file-triggered pattern only runs the check exactly when it could
+possibly matter.
 
 **`Dockerfile`** — the builder stage's `pip install poetry` + `poetry install --no-root --only
 main` sequence becomes an official `uv` install (e.g. the static binary via the documented
@@ -74,8 +92,16 @@ lands the interpreter at the same `.venv/bin/python` path.
 **`.github/workflows/ci-checks.yml`** — `actions/setup-python@v7` (pinned to `'3.11'`) becomes
 `'3.13'` to match the new floor; `pip install poetry` + `poetry install` becomes
 `astral-sh/setup-uv` + `uv sync`; every `poetry run <cmd>` becomes `uv run <cmd>`; `poetry check`
-/ `poetry check --lock` become `uv lock --check` (uv's own lockfile-consistency check covers both
-concerns Poetry split across two commands). `ci-arm64.yml` needs no change — it only invokes
+/ `poetry check --lock` become `uv lock --check`.
+
+**Corrected during code review**: `uv lock --check` only asserts `uv.lock` is up to date with
+`pyproject.toml` — it is not a replacement for `poetry check`'s independent structural/schema
+validation of `pyproject.toml` itself, contrary to what this originally claimed. No direct `uv`
+equivalent of that standalone check exists. The practical gap is small, not zero: the preceding
+`uv sync` step in the same job already fails loudly on a structurally malformed `pyproject.toml`
+(uv parses and validates it as an inherent part of that command), so the failure mode Poetry's
+separate check caught is still caught — just one step earlier in the job, as a side effect of
+`uv sync` rather than a dedicated check. `ci-arm64.yml` needs no change — it only invokes
 `docker buildx build`, and Poetry/uv both live entirely inside the Dockerfile it builds from.
 
 **`.github/dependabot.yml`** — `package-ecosystem: pip` becomes `package-ecosystem: uv` (GitHub
@@ -133,3 +159,10 @@ than assumed from documentation:
 - `uv` is already installed locally (`uv 0.11.28`), so every claim in this spec about command
   behaviour gets verified by running the real command during implementation, not left as an
   assumption carried over from research.
+- Slice 2's "report any dependency blocked from a newer version by its current constraint" check:
+  `uv lock --upgrade` produced a byte-identical `uv.lock` (slice 1's fresh `uv lock` had already
+  resolved every one of the 57 packages to latest-within-constraint), and a manual spot-check of
+  the dependencies most likely to have an unreachable newer major (`pydantic`, `httpx`,
+  `websockets`, `ruff`) against actual PyPI latest releases found none blocked. Recorded here,
+  not just in the commit message, since a negative finding ("nothing needed reporting") isn't
+  otherwise discoverable from the diff.

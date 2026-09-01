@@ -4,7 +4,14 @@ repos:
     hooks:
       - id: uv-lock
       - id: uv-export
-        args: ["-f", "requirements.txt", "-o", "requirements.txt"]
+        # No args override -- the hook's own defaults (--frozen
+        # --output-file=requirements.txt --quiet) are already correct. The
+        # old Poetry-era args here ("-f", "requirements.txt", "-o", "requirements.txt")
+        # were carried over from poetry-export's flag names without checking
+        # uv export's: -f there means --find-links, not --format, so
+        # "requirements.txt" was silently being passed as a bogus package
+        # index search path. Only -o (--output-file, coincidentally the same
+        # short flag in both tools) was doing anything -- masking the bug.
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v2.3.1
     hooks:
