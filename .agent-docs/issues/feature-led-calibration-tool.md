@@ -1,5 +1,7 @@
 # Issues: feature-led-calibration-tool
 
+> Work complete — PR ready to merge.
+
 ## Terminal calibration script (#98)
 
 **Blocked by**: None
@@ -16,10 +18,10 @@ white with all others off, prints the index to the terminal, holds for 10 second
 
 ### Acceptance criteria
 
-- [ ] Given the script starts, when it connects, then it does not call `clear_schedule()` or otherwise touch the charger's active charging schedule
-- [ ] Given the script is running, when an LED index is lit, then it is full white (`{"r": 1.0, "g": 1.0, "b": 1.0}`) at full brightness, all other 50 indices are off, and the index number is printed to the terminal
-- [ ] Given an index has been lit for 10 seconds, when the hold expires, then the script advances to the next index, wrapping from 50 back to 0
-- [ ] Given the operator presses Ctrl+C, when the script catches the interrupt, then it sends `effect_name="none"` to clear the display, disconnects the websocket, and closes the REST client before exiting
+- [x] Given the script starts, when it connects, then it does not call `clear_schedule()` or otherwise touch the charger's active charging schedule
+- [x] Given the script is running, when an LED index is lit, then it is full white (`{"r": 1.0, "g": 1.0, "b": 1.0}`) at full brightness, all other 50 indices are off, and the index number is printed to the terminal
+- [x] Given an index has been lit for 10 seconds, when the hold expires, then the script advances to the next index, wrapping from 50 back to 0
+- [x] Given the operator presses Ctrl+C, when the script catches the interrupt, then it sends `effect_name="none"` to clear the display, disconnects the websocket, and closes the REST client before exiting
 
 ---
 
@@ -38,10 +40,10 @@ downloads the full `{index: label}` mapping as JSON.
 
 ### Acceptance criteria
 
-- [ ] Given the page is opened in a browser, when it loads, then it renders 51 labelled positions across the ring and bolt shapes, each with an editable text input
-- [ ] Given the operator types into an input, when the value changes, then it is written to `localStorage`
-- [ ] Given the page is reloaded after labels were entered, when it loads, then the previously entered labels are restored into their inputs
-- [ ] Given the operator clicks Export, when triggered, then a JSON file downloads containing all 51 index-to-label entries
-- [ ] Given `localStorage` is unavailable or throws, when the page loads or a label changes, then the page still renders and functions with empty/unsaved labels rather than erroring
+- [x] Given the page is opened in a browser, when it loads, then it renders 51 labelled positions across the ring and bolt shapes, each with an editable text input
+- [x] Given the operator types into an input, when the value changes, then it is written to `localStorage`
+- [x] Given the page is reloaded after labels were entered, when it loads, then the previously entered labels are restored into their inputs
+- [x] Given the operator clicks Export, when triggered, then a JSON file downloads containing all 51 index-to-label entries
+- [x] Given `localStorage` is unavailable or throws, when the page loads or a label changes, then the page still renders and functions with empty/unsaved labels rather than erroring
 
 ---
