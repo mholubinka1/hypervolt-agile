@@ -109,7 +109,7 @@ The container pulls `mholubinka1/hypervolt-agile:latest` from Docker Hub, restar
 Install dependencies:
 
 ```bash
-uv sync
+uv sync --frozen
 ```
 
 Run the app:

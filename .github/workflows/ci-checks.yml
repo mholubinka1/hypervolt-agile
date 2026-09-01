@@ -24,7 +24,7 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.1
 
       - name: Install project dependencies
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Run tests with coverage
         run: uv run pytest --cov=app --cov=extensions --cov-report=term-missing --cov-report=json:coverage.json

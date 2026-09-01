@@ -37,7 +37,7 @@ git worktree add --quiet --detach "${main_worktree}" origin/main
 if [ -d "${main_worktree}/tests" ] && [ -f "${main_worktree}/uv.lock" ]; then
     (
         cd "${main_worktree}"
-        uv sync --quiet
+        uv sync --frozen --quiet
         uv run pytest --cov=app --cov=extensions --cov-report=json:coverage.json --quiet
     )
     main_coverage=$(read_percent_covered "${main_worktree}/coverage.json")
