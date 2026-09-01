@@ -85,7 +85,13 @@ async def run(config_file: Path) -> None:
             print(f"Index {index}")
             await asyncio.sleep(_HOLD_SECS)
             index = (index + 1) % _LED_COUNT
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        # Ctrl+C during asyncio.run() typically raises KeyboardInterrupt in
+        # the event loop's own driving code, not inside this suspended
+        # coroutine -- asyncio.run()'s cleanup then cancels this task,
+        # delivering CancelledError here instead. Catching both means the
+        # friendly message and the cleanup below run regardless of which one
+        # actually arrives.
         print("\nStopping -- clearing LEDs.")
     finally:
         await ws_client.set_led_effect("none")
@@ -102,7 +108,14 @@ def main() -> None:
         help="Path to config.yml (default: config/config.yml)",
     )
     args = parser.parse_args()
-    asyncio.run(run(Path(args.config_file)))
+    try:
+        asyncio.run(run(Path(args.config_file)))
+    except KeyboardInterrupt:
+        # Guards the rare case where the interrupt lands outside any
+        # suspended await in run() -- the coroutine's own except/finally
+        # above already did the real cleanup either way, so this only stops
+        # a raw traceback from reaching the terminal on a normal Ctrl+C exit.
+        pass
 
 
 if __name__ == "__main__":
