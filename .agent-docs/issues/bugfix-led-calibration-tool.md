@@ -62,14 +62,14 @@ removed entirely.
 
 ### Acceptance criteria
 
-- [ ] SVG viewBox and body outline reflect the Hypervolt Home 3's real 243×328mm dimensions.
-- [ ] All 51 LED positions render as a circle with an embedded, accessibly-labelled number input,
+- [x] SVG viewBox and body outline reflect the Hypervolt Home 3's real 243×328mm dimensions.
+- [x] All 51 LED positions render as a circle with an embedded, accessibly-labelled number input,
       directly on the diagram — no separate rows panel.
-- [ ] A duplicate or out-of-range (outside 0–50) typed value is visually flagged without blocking
+- [x] A duplicate or out-of-range (outside 0–50) typed value is visually flagged without blocking
       input or clearing the value.
-- [ ] Typed values persist to `localStorage` under a new position-keyed schema and repopulate on
+- [x] Typed values persist to `localStorage` under a new position-keyed schema and repopulate on
       page refresh.
-- [ ] Export produces a JSON file with one entry per position, each including its typed index and
+- [x] Export produces a JSON file with one entry per position, each including its typed index and
       x/y coordinates in millimetres.
 - [ ] Manual smoke check performed: type into a few circles, refresh and confirm persistence,
       trigger a duplicate/out-of-range flag, export and confirm valid JSON in the new shape.

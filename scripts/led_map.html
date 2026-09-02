@@ -10,17 +10,17 @@
     --panel-border: #2a2d33;
     --text: #eceae6;
     --text-dim: #8b8e96;
-    --text-faint: #5a5d64;
     --accent: #ff2f2f;
     --body-fill: #17181c;
     --body-stroke: #4a4d56;
-    --dot-fill: #c9cbd1;
-    --dot-active: #ff2f2f;
-    --input-bg: #101114;
-    --input-border: #3a3d44;
+    --circle-fill: #23262c;
+    --circle-stroke: #6b6e77;
+    --circle-active: #ff2f2f;
+    --input-bg: #141519;
+    --input-border: #6b6e77;
     --input-focus: #ff2f2f;
-    --row-bg: #16181c;
-    --row-border: #26282e;
+    --danger: #ff9a3c;
+    --danger-ink: #2a1400;
   }
 
   * { box-sizing: border-box; }
@@ -34,22 +34,16 @@
     padding: 2rem 1.5rem 4rem;
   }
 
-  .page {
-    max-width: 76rem;
-    margin: 0 auto;
-  }
+  .page { max-width: 56rem; margin: 0 auto; }
 
-  h1 {
-    font-size: 1.5rem;
-    margin: 0 0 0.4rem;
-  }
+  h1 { font-size: 1.5rem; margin: 0 0 0.4rem; }
 
   .sub {
     color: var(--text-dim);
     font-size: 0.95rem;
     line-height: 1.55;
     max-width: 46rem;
-    margin: 0 0 1.75rem;
+    margin: 0 0 1.5rem;
   }
 
   code {
@@ -64,7 +58,6 @@
     display: flex;
     gap: 0.75rem;
     align-items: center;
-    margin-bottom: 1.5rem;
     flex-wrap: wrap;
   }
 
@@ -88,29 +81,15 @@
 
   button:hover { filter: brightness(1.15); }
 
-  #status {
-    font-size: 0.82rem;
-    color: var(--text-dim);
-  }
+  #status { font-size: 0.82rem; color: var(--text-dim); }
 
-  .layout {
-    display: grid;
-    grid-template-columns: minmax(260px, 340px) 1fr;
-    gap: 1.5rem;
-    align-items: start;
-  }
-
-  @media (max-width: 780px) {
-    .layout { grid-template-columns: 1fr; }
-  }
-
-  .diagram-card {
-    position: sticky;
-    top: 1.5rem;
+  .diagram {
+    max-width: 52rem;
+    margin: 1.5rem auto 0;
     background: var(--panel);
     border: 1px solid var(--panel-border);
     border-radius: 12px;
-    padding: 1.25rem;
+    padding: 1.5rem;
   }
 
   svg { display: block; width: 100%; height: auto; }
@@ -118,38 +97,61 @@
   .body-shell {
     fill: var(--body-fill);
     stroke: var(--body-stroke);
-    stroke-width: 2;
+    stroke-width: 1.5;
   }
 
   .guide-path {
     fill: none;
     stroke: var(--body-stroke);
-    stroke-width: 3;
-    opacity: 0.55;
+    stroke-width: 1.5;
+    opacity: 0.4;
   }
 
-  .led-dot {
-    fill: var(--dot-fill);
-    stroke: #000;
-    stroke-width: 0.75;
-    cursor: pointer;
+  .led-circle {
+    fill: var(--circle-fill);
+    stroke: var(--circle-stroke);
+    stroke-width: 1;
   }
 
-  .led-dot.has-label {
-    fill: var(--dot-active);
+  .led-circle.has-index {
+    fill: var(--circle-active);
+    stroke: var(--circle-active);
   }
 
-  .led-dot:focus-visible {
-    outline: 2px solid var(--input-focus);
-    outline-offset: 2px;
-  }
-
-  .index-label {
+  .led-slot input {
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 1px 0 0;
+    border: 0.7px solid var(--input-border);
+    border-radius: 3px;
+    background: var(--input-bg);
+    color: var(--text);
     font-family: ui-monospace, "Cascadia Code", monospace;
-    font-size: 10px;
-    fill: var(--text-faint);
-    text-anchor: middle;
-    pointer-events: none;
+    font-size: 8.5px;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  .led-slot input::-webkit-outer-spin-button,
+  .led-slot input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .led-slot input:focus {
+    outline: none;
+    border-color: var(--input-focus);
+  }
+
+  .led-slot input.invalid {
+    border-color: #fff;
+    background: var(--danger);
+    color: var(--danger-ink);
   }
 
   .diagram-legend {
@@ -157,56 +159,6 @@
     font-size: 0.78rem;
     color: var(--text-dim);
     line-height: 1.6;
-  }
-
-  .rows {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 0.6rem;
-  }
-
-  .row {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    background: var(--row-bg);
-    border: 1px solid var(--row-border);
-    border-radius: 8px;
-    padding: 0.45rem 0.6rem;
-  }
-
-  .row.region-bolt { border-left: 3px solid var(--accent); }
-  .row.region-ring { border-left: 3px solid var(--body-stroke); }
-
-  .row-index {
-    font-family: ui-monospace, "Cascadia Code", monospace;
-    font-size: 0.8rem;
-    color: var(--text-dim);
-    width: 2.2rem;
-    flex: 0 0 auto;
-    text-align: right;
-  }
-
-  .row input {
-    flex: 1 1 auto;
-    min-width: 0;
-    font: inherit;
-    font-size: 0.85rem;
-    padding: 0.35rem 0.5rem;
-    background: var(--input-bg);
-    border: 1px solid var(--input-border);
-    border-radius: 6px;
-    color: var(--text);
-  }
-
-  .row input:focus {
-    outline: none;
-    border-color: var(--input-focus);
-  }
-
-  .row.flash input {
-    border-color: var(--input-focus);
-    box-shadow: 0 0 0 2px rgba(255, 47, 47, 0.25);
   }
 
   footer {
@@ -223,43 +175,43 @@
 <div class="page">
   <h1>Hypervolt LED Map</h1>
   <p class="sub">
-    Run <code>scripts/calibrate_leds.py</code> against the real charger, watch which physical
-    position lights up for each printed index, and type what you observed into the matching row
-    below (or click its dot on the diagram to jump there). Labels save to this browser
-    automatically as you type. When you're done, click Export and commit the downloaded JSON
-    alongside this file as the permanent record.
+    Run <code>scripts/calibrate_leds.py</code> against the real charger. Each time it prints
+    <code>Index N</code>, find the dot on the diagram at the physical position that just lit up and
+    type <code>N</code> into it. The diagram is drawn to the Hypervolt Home 3's real body size
+    (243&nbsp;&times;&nbsp;328&nbsp;mm), so every dot's exported coordinates are true millimetres.
+    Entries save to this browser as you type. When you're done, click Export and commit the
+    downloaded JSON alongside this file as the permanent record.
   </p>
 
   <div class="toolbar">
     <button class="primary" id="export-btn" type="button">Export JSON</button>
-    <button id="clear-btn" type="button">Clear all labels</button>
+    <button id="clear-btn" type="button">Clear all</button>
     <span id="status"></span>
   </div>
 
-  <div class="layout">
-    <div class="diagram-card">
-      <svg id="diagram" viewBox="0 0 440 640" role="img" aria-label="Diagram of the charger's outer ring and lightning bolt shape, with a dot for each of the 51 LEDs -- click a dot to fill in its label in the list">
-        <rect class="body-shell" x="90" y="60" width="260" height="460" rx="36"></rect>
-        <path id="ring-guide" class="guide-path" d="M314,60 L126,60 A36,36 0 0 0 90,96 L90,484 A36,36 0 0 0 126,520 L314,520 A36,36 0 0 0 350,484 L350,96 A36,36 0 0 0 314,60 Z"></path>
-        <path id="bolt-guide" class="guide-path" d="M190,475 L260,330 L205,330 L285,125"></path>
-        <g id="ring-group"></g>
-        <g id="bolt-group"></g>
-      </svg>
-      <p class="diagram-legend">
-        Outer ring: indices 0&ndash;38 (39 LEDs), anticlockwise from top-right.<br>
-        Lightning bolt: indices 39&ndash;50 (12 LEDs), bottom to top.<br>
-        Filled-in labels turn their dot red.
-      </p>
-    </div>
-
-    <div class="rows" id="rows"></div>
+  <div class="diagram">
+    <svg id="diagram" viewBox="0 0 275 360" role="img"
+      aria-label="Scale diagram of the Hypervolt Home 3 charger body, 243 by 328 millimetres, showing the outer LED ring and the lightning-bolt LED strip. Each of the 51 LEDs is a circle with a number input for the index observed lighting up at that position.">
+      <rect class="body-shell" x="16" y="16" width="243" height="328" rx="30"></rect>
+      <path id="ring-guide" class="guide-path"
+        d="M221,30 L54,30 A24,24 0 0 0 30,54 L30,306 A24,24 0 0 0 54,330 L221,330 A24,24 0 0 0 245,306 L245,54 A24,24 0 0 0 221,30 Z"></path>
+      <path id="bolt-guide" class="guide-path" d="M110,300 L170,205 L134,168 L196,58"></path>
+      <g id="ring-group"></g>
+      <g id="bolt-group"></g>
+    </svg>
+    <p class="diagram-legend">
+      Ring: positions <code>ring-0</code>&ndash;<code>ring-38</code>, anticlockwise from top-right.<br>
+      Bolt: positions <code>bolt-0</code>&ndash;<code>bolt-11</code>, bottom to top.<br>
+      A dot fills red once it holds a value. An orange box means that value is out of range
+      (0&ndash;50) or a duplicate &mdash; it's flagged, not blocked.<br>
+      Exported <code>x</code>/<code>y</code> are millimetres from the charger body's top-left corner.
+    </p>
   </div>
 
   <footer>
-    Labels persist to this browser's local storage only &mdash; they are not shared between
-    devices or browsers, and clearing site data removes them. Export regularly once you start
-    filling labels in, and commit the result to the repo so the map survives independently of any
-    one browser's storage.
+    Entries persist to this browser's local storage only &mdash; they are not shared between
+    devices or browsers, and clearing site data removes them. Export regularly, and commit the
+    result to the repo so the map survives independently of any one browser's storage.
   </footer>
 </div>
 
@@ -267,12 +219,24 @@
 (function () {
   "use strict";
 
-  var LED_COUNT = 51;
   var RING_COUNT = 39;
   var BOLT_COUNT = 12;
-  var STORAGE_KEY = "hypervolt-led-map-labels-v1";
+  var LED_COUNT = RING_COUNT + BOLT_COUNT;
+  var MIN_INDEX = 0;
+  var MAX_INDEX = LED_COUNT - 1;
+  var STORAGE_KEY = "hypervolt-led-map-positions-v1";
+  // Top-left corner of the <rect class="body-shell"> in viewBox units (== mm).
+  // Exported coordinates are measured from here so they read as real charger
+  // measurements rather than diagram-canvas offsets.
+  var BODY_ORIGIN = { x: 16, y: 16 };
 
-  function loadLabels() {
+  var svgNS = "http://www.w3.org/2000/svg";
+  var xhtmlNS = "http://www.w3.org/1999/xhtml";
+
+  // positionId -> { input, circle, x, y }; x/y in mm from BODY_ORIGIN.
+  var positions = {};
+
+  function loadStore() {
     try {
       var raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return {};
@@ -283,18 +247,12 @@
     }
   }
 
-  function saveLabel(index, value) {
+  function saveStore(store) {
     try {
-      var labels = loadLabels();
-      if (value) {
-        labels[index] = value;
-      } else {
-        delete labels[index];
-      }
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(labels));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
       setStatus("Saved.");
     } catch (e) {
-      setStatus("Could not save to local storage -- labels won't survive a refresh.");
+      setStatus("Could not save to local storage -- entries won't survive a refresh.");
     }
   }
 
@@ -303,22 +261,23 @@
     if (el) el.textContent = text;
   }
 
-  function updateDotState(index) {
-    var dot = document.querySelector('circle[data-index="' + index + '"]');
-    var input = document.querySelector('input[data-index="' + index + '"]');
-    if (!dot || !input) return;
-    dot.classList.toggle("has-label", input.value.trim().length > 0);
+  function round1(n) {
+    return Math.round(n * 10) / 10;
   }
 
-  var svgNS = "http://www.w3.org/2000/svg";
+  function orderedIds() {
+    var ids = [];
+    for (var i = 0; i < RING_COUNT; i++) ids.push("ring-" + i);
+    for (var j = 0; j < BOLT_COUNT; j++) ids.push("bolt-" + j);
+    return ids;
+  }
 
   function samplePath(path, count, closed) {
     // Open paths (the bolt) have `count` distinct endpoints, so spacing
     // divides by count - 1 to include both ends. Closed paths (the ring,
     // whose `d` ends in Z) have getPointAtLength(total) === getPointAtLength(0)
-    // -- dividing by count - 1 there would land the first and last dots on
-    // the exact same point, so closed paths divide by count instead, which
-    // never samples the seam twice.
+    // -- dividing by count - 1 there would land the first and last dots on the
+    // exact same point, so closed paths divide by count instead.
     var total = path.getTotalLength();
     var points = [];
     var divisor = closed ? count : count - 1;
@@ -329,130 +288,152 @@
     return points;
   }
 
-  function buildDots(groupId, guideId, count, indexOffset, closed) {
+  function revalidate() {
+    // A value is valid when it's an integer 0-50 that no other circle also
+    // holds. Invalid values are flagged (orange box) but never cleared or
+    // rejected -- the operator fixes them when convenient.
+    var counts = {};
+    orderedIds().forEach(function (id) {
+      var raw = positions[id].input.value.trim();
+      if (raw === "") return;
+      var v = Number(raw);
+      counts[v] = (counts[v] || 0) + 1;
+    });
+
+    orderedIds().forEach(function (id) {
+      var pos = positions[id];
+      var raw = pos.input.value.trim();
+      var filled = raw !== "";
+      var v = Number(raw);
+      var valid =
+        filled &&
+        Number.isInteger(v) &&
+        v >= MIN_INDEX &&
+        v <= MAX_INDEX &&
+        counts[v] === 1;
+      pos.circle.classList.toggle("has-index", filled);
+      pos.input.classList.toggle("invalid", filled && !valid);
+    });
+  }
+
+  function persist(id) {
+    var store = loadStore();
+    var raw = positions[id].input.value.trim();
+    if (raw === "") {
+      delete store[id];
+    } else {
+      store[id] = Number(raw);
+    }
+    saveStore(store);
+  }
+
+  function regionLabel(prefix) {
+    return prefix === "ring" ? "outer ring" : "lightning bolt";
+  }
+
+  function buildRegion(groupId, guideId, count, prefix, closed) {
     var group = document.getElementById(groupId);
     var guide = document.getElementById(guideId);
     var points = samplePath(guide, count, closed);
 
     points.forEach(function (pt, i) {
-      var index = indexOffset + i;
+      var id = prefix + "-" + i;
 
-      var dot = document.createElementNS(svgNS, "circle");
-      dot.setAttribute("cx", pt.x);
-      dot.setAttribute("cy", pt.y);
-      dot.setAttribute("r", 6.5);
-      dot.setAttribute("class", "led-dot");
-      dot.setAttribute("data-index", String(index));
-      // SVG <circle> isn't focusable by default -- tabindex/role/aria-label
-      // make it a real keyboard-operable control, not just a mouse target.
-      dot.setAttribute("tabindex", "0");
-      dot.setAttribute("role", "button");
-      dot.setAttribute("aria-label", "Jump to label for LED index " + index);
-      dot.addEventListener("click", function () {
-        focusRow(index);
-      });
-      dot.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          focusRow(index);
-        }
-      });
-      group.appendChild(dot);
+      var slot = document.createElementNS(svgNS, "g");
+      slot.setAttribute("class", "led-slot");
 
-      var label = document.createElementNS(svgNS, "text");
-      label.setAttribute("x", pt.x);
-      label.setAttribute("y", pt.y <= 320 ? pt.y - 11 : pt.y + 18);
-      label.setAttribute("class", "index-label");
-      label.textContent = String(index);
-      group.appendChild(label);
+      var circle = document.createElementNS(svgNS, "circle");
+      circle.setAttribute("cx", pt.x);
+      circle.setAttribute("cy", pt.y);
+      circle.setAttribute("r", 9);
+      circle.setAttribute("class", "led-circle");
+      slot.appendChild(circle);
+
+      var fo = document.createElementNS(svgNS, "foreignObject");
+      fo.setAttribute("x", pt.x - 7.5);
+      fo.setAttribute("y", pt.y - 6);
+      fo.setAttribute("width", 15);
+      fo.setAttribute("height", 12);
+
+      var input = document.createElementNS(xhtmlNS, "input");
+      input.setAttribute("type", "number");
+      input.setAttribute("min", String(MIN_INDEX));
+      input.setAttribute("max", String(MAX_INDEX));
+      input.setAttribute("step", "1");
+      input.setAttribute("inputmode", "numeric");
+      input.setAttribute(
+        "aria-label",
+        "Observed LED index at " + regionLabel(prefix) + " position " + i
+      );
+      input.addEventListener("input", function () {
+        persist(id);
+        revalidate();
+      });
+      fo.appendChild(input);
+      slot.appendChild(fo);
+      group.appendChild(slot);
+
+      positions[id] = {
+        input: input,
+        circle: circle,
+        x: round1(pt.x - BODY_ORIGIN.x),
+        y: round1(pt.y - BODY_ORIGIN.y),
+      };
     });
   }
 
-  function buildRows(labels) {
-    var container = document.getElementById("rows");
-    for (var index = 0; index < LED_COUNT; index++) {
-      var row = document.createElement("div");
-      row.className = "row " + (index < RING_COUNT ? "region-ring" : "region-bolt");
-      row.id = "row-" + index;
-
-      // A real <label for> gives the input an accessible name -- the
-      // visible index alone doesn't label it for assistive tech, and a
-      // placeholder isn't a reliable substitute (some screen readers don't
-      // announce it, and it disappears once there's a value).
-      var idxLabel = document.createElement("label");
-      idxLabel.className = "row-index";
-      idxLabel.textContent = String(index);
-      idxLabel.setAttribute("for", "led-label-" + index);
-      row.appendChild(idxLabel);
-
-      var input = document.createElement("input");
-      input.type = "text";
-      input.id = "led-label-" + index;
-      input.setAttribute("data-index", String(index));
-      input.placeholder = index < RING_COUNT ? "e.g. 12 o'clock" : "e.g. 3rd from bolt tip";
-      input.value = labels[index] || "";
-      input.addEventListener("input", function (e) {
-        var i = e.target.getAttribute("data-index");
-        saveLabel(i, e.target.value.trim());
-        updateDotState(i);
-      });
-      row.appendChild(input);
-
-      container.appendChild(row);
-      updateDotState(index);
-    }
+  function prefill() {
+    var store = loadStore();
+    orderedIds().forEach(function (id) {
+      if (Object.prototype.hasOwnProperty.call(store, id)) {
+        positions[id].input.value = store[id];
+      }
+    });
   }
 
-  function focusRow(index) {
-    var row = document.getElementById("row-" + index);
-    if (!row) return;
-    row.scrollIntoView({ behavior: "smooth", block: "center" });
-    row.classList.add("flash");
-    var input = row.querySelector("input");
-    if (input) input.focus();
-    setTimeout(function () {
-      row.classList.remove("flash");
-    }, 1200);
+  function exportJson() {
+    var out = {};
+    orderedIds().forEach(function (id) {
+      var raw = positions[id].input.value.trim();
+      out[id] = {
+        index: raw === "" ? null : Number(raw),
+        x: positions[id].x,
+        y: positions[id].y,
+      };
+    });
+    var blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "led-map.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus("Exported led-map.json.");
   }
 
-  function clearAllLabels() {
+  function clearAll() {
     try {
       window.localStorage.removeItem(STORAGE_KEY);
     } catch (e) {
       // Nothing to clear if storage was never writable.
     }
-    document.querySelectorAll("input[data-index]").forEach(function (input) {
-      input.value = "";
-      updateDotState(input.getAttribute("data-index"));
+    orderedIds().forEach(function (id) {
+      positions[id].input.value = "";
     });
+    revalidate();
     setStatus("Cleared.");
   }
 
   function init() {
-    var labels = loadLabels();
-    buildDots("ring-group", "ring-guide", RING_COUNT, 0, true);
-    buildDots("bolt-group", "bolt-guide", BOLT_COUNT, RING_COUNT, false);
-    buildRows(labels);
+    buildRegion("ring-group", "ring-guide", RING_COUNT, "ring", true);
+    buildRegion("bolt-group", "bolt-guide", BOLT_COUNT, "bolt", false);
+    prefill();
+    revalidate();
 
-    document.getElementById("export-btn").addEventListener("click", function () {
-      var current = loadLabels();
-      var full = {};
-      for (var i = 0; i < LED_COUNT; i++) {
-        full[i] = current[i] || "";
-      }
-      var blob = new Blob([JSON.stringify(full, null, 2)], { type: "application/json" });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement("a");
-      a.href = url;
-      a.download = "led-map.json";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setStatus("Exported led-map.json.");
-    });
-
-    document.getElementById("clear-btn").addEventListener("click", clearAllLabels);
+    document.getElementById("export-btn").addEventListener("click", exportJson);
+    document.getElementById("clear-btn").addEventListener("click", clearAll);
   }
 
   init();
