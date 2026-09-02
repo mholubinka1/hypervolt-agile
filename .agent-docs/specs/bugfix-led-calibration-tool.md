@@ -64,17 +64,19 @@ the typed index and that position's true-scale x/y coordinates.
   a value arrives (the delta carries `led_brightness` only when the charger's `sync.snapshot`
   response included a `brightness` key — see `HypervoltProtocol._on_sync_response`).
 - After the first `set_led_brightness(1.0)` and first `set_led_effect("steady_array", ...)` push,
-  **reset the tracker** (discard any reading), pause briefly to let the brightness write land,
-  then call `ws_client.sync_charger_state()` (issues `sync.snapshot`) and wait briefly (a few
-  seconds, bounded by a timeout) for the confirmation event. The reset matters: the websocket
-  volunteers a `sync.snapshot` on connect, *before* this script has pushed anything, and without
-  discarding it the check reads that stale pre-push brightness (observed as a false-positive
-  warning on a genuinely-clean run). If the reported brightness isn't `1.0` once the wait
-  resolves (or times out with nothing reported), print one warning identifying that the charger
-  didn't confirm full brightness and that the main scheduler running against the same charger is
-  the likely cause — then continue into the loop regardless. This check runs once, at startup,
-  not on every iteration — the resend below is the actual mitigation, and repeating the read-back
-  check every 10s would just spam the terminal without adding information.
+  pause briefly (`_BRIGHTNESS_SETTLE_SECS`) to let two things land as ordinary state updates: the
+  `sync.snapshot` the websocket volunteers on connect (taken *before* this script pushed
+  anything), and the charger's echo of this script's own brightness `sync.apply` (which routes
+  through the same `_on_sync_response` handler). **Then** reset the tracker, call
+  `ws_client.sync_charger_state()` (issues a fresh `sync.snapshot`), and wait — bounded by a
+  timeout — for the next reported brightness. Resetting only after the settle means that value is
+  the fresh snapshot's, not the connect-time one (a false-positive warning on a genuinely-clean
+  run) and not the script's own echo (which would mask a scheduler holding brightness down). If
+  the reported brightness is absent (timeout) or more than `_BRIGHTNESS_TOLERANCE` off `1.0`,
+  print one warning identifying that the charger didn't confirm full brightness and that the main
+  scheduler running against the same charger is the likely cause — then continue into the loop
+  regardless. This check runs once, at startup, not on every iteration — the resend below is the
+  actual mitigation, and repeating the read-back check every 10s would just spam the terminal.
 - Inside the existing `0..50` loop, resend `set_led_brightness(1.0)` immediately before each
   `set_led_effect("steady_array", ...)` call, every iteration — not just once before the loop
   starts. Cheap (one extra small message per 10s hold), and guarantees full brightness for every
@@ -101,8 +103,10 @@ the typed index and that position's true-scale x/y coordinates.
   body aren't in the datasheet, so those stay schematic best-guesses, same as the rest of the
   layout has always been — only the outer body dimensions are now sourced, not invented.
 - Rendered large enough (diagram now has the full page width, no more 340px sidebar constraint)
-  that true-scale spacing between the 51 points is enough on its own to fit 28px circles without
-  overlap — no artificial exaggeration of spacing needed.
+  that true-scale spacing between the 51 points is enough on its own to fit a number-input circle
+  at each without overlap — no artificial exaggeration of spacing needed. (The bolt guide path is
+  a plain zigzag rather than a folded-back one so its inner elbow doesn't crowd two circles
+  together.)
 - Each of the 51 points becomes a `<circle>` (fills red once it holds a value) with a
   `<foreignObject>` positioned over it containing a real `<input type="number" min="0" max="50"
   step="1">`. Each input carries an `aria-label` naming its region and ordinal (e.g. "Observed
@@ -113,9 +117,9 @@ the typed index and that position's true-scale x/y coordinates.
   `aria-labelledby` pointing at a `<title>` for its own name — **not** `role="img"`, which would
   make the 51 inner inputs presentational.
 - Out-of-range (outside 0–50) or duplicate (same index typed into more than one circle) values
-  flag the input with an orange fill (`--danger`) — chosen over a red border because the circle
-  is already red once filled, so a red border would not read. Validation never blocks typing or
-  clears a value.
+  flag the input with an orange fill (`--danger`) plus a white keyline — chosen over a red border
+  because the circle is already red once filled, so a red border would not read. Validation never
+  blocks typing or clears a value.
 - The rows panel, `.layout` two-column grid, `buildRows`, `focusRow`, `.row*` CSS, and the
   `.diagram-card` sticky-sidebar styling are removed entirely — the diagram is the only panel.
 - `localStorage` key bumps to a new name (schema is now position-keyed, not index-keyed, so the
@@ -123,11 +127,12 @@ the typed index and that position's true-scale x/y coordinates.
   `{index: "freeform text"}` to `{positionId: index}` internally, matching what's now typed
   directly into each circle. Position IDs follow the same traced order as today's indices:
   `ring-0`…`ring-38`, `bolt-0`…`bolt-11`.
-- Export JSON changes shape to one entry per position: `{ "ring-0": {"index": 7, "x": 12.3, "y":
-  4.1}, ..., "bolt-11": {"index": 44, "x": ..., "y": ...} }`, `x`/`y` in millimetres relative to
-  the diagram's true-scale coordinate system. This supersedes the current `{index: label}` export
-  shape — nothing downstream consumes the old file yet (theme design work is still blocked,
-  follow-on work per the original spec), so no migration path is needed.
+- Export JSON changes shape to one entry per position — all 51 always present: `{ "ring-0":
+  {"index": 7, "x": 12.3, "y": 4.1}, ..., "bolt-11": {"index": 44, "x": ..., "y": ...} }`, with
+  `index` set to `null` for any position left blank, and `x`/`y` in millimetres from the charger
+  body's top-left corner. This supersedes the current `{index: label}` export shape — nothing
+  downstream consumes the old file yet (theme design work is still blocked, follow-on work per
+  the original spec), so no migration path is needed.
 
 ## Testing Decisions
 

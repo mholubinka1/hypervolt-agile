@@ -282,6 +282,13 @@
     return Math.round(n * 10) / 10;
   }
 
+  // The number a circle currently holds: null when blank, otherwise
+  // Number(...) of the trimmed text (NaN for garbage, which revalidate flags).
+  function indexAt(id) {
+    var raw = positions[id].input.value.trim();
+    return raw === "" ? null : Number(raw);
+  }
+
   function samplePath(path, count, closed) {
     // Open paths (the bolt) have `count` distinct endpoints, so spacing
     // divides by count - 1 to include both ends. Closed paths (the ring,
@@ -304,17 +311,15 @@
     // rejected -- the operator fixes them when convenient.
     var counts = {};
     ORDERED_IDS.forEach(function (id) {
-      var raw = positions[id].input.value.trim();
-      if (raw === "") return;
-      var v = Number(raw);
+      var v = indexAt(id);
+      if (v === null) return;
       counts[v] = (counts[v] || 0) + 1;
     });
 
     ORDERED_IDS.forEach(function (id) {
       var pos = positions[id];
-      var raw = pos.input.value.trim();
-      var filled = raw !== "";
-      var v = Number(raw);
+      var v = indexAt(id);
+      var filled = v !== null;
       var valid =
         filled &&
         Number.isInteger(v) &&
@@ -328,11 +333,11 @@
 
   function persist(id) {
     var store = loadStore();
-    var raw = positions[id].input.value.trim();
-    if (raw === "") {
+    var v = indexAt(id);
+    if (v === null) {
       delete store[id];
     } else {
-      store[id] = Number(raw);
+      store[id] = v;
     }
     saveStore(store);
   }
@@ -404,9 +409,8 @@
   function exportJson() {
     var out = {};
     ORDERED_IDS.forEach(function (id) {
-      var raw = positions[id].input.value.trim();
       out[id] = {
-        index: raw === "" ? null : Number(raw),
+        index: indexAt(id),
         x: positions[id].x,
         y: positions[id].y,
       };

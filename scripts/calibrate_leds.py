@@ -42,6 +42,7 @@ from config import AppConfig, ConfigLoader
 _LED_COUNT = 51
 _HOLD_SECS = 10
 _TARGET_BRIGHTNESS = 1.0
+_BRIGHTNESS_TOLERANCE = 0.02
 _BRIGHTNESS_SETTLE_SECS = 2
 _BRIGHTNESS_CONFIRM_TIMEOUT_SECS = 5
 _WHITE = {"r": 1.0, "g": 1.0, "b": 1.0}
@@ -162,13 +163,19 @@ async def run(config_file: Path) -> None:
 
         # Read the charger's own confirmation of the brightness just pushed
         # -- a fire-and-forget push doesn't prove anything actually applied.
-        # Discard the connect-time snapshot first, then let the write land
-        # before asking for a fresh one.
-        brightness.reset()
+        # The settle sleep lets the connect-time snapshot AND the echo of our
+        # own brightness `sync.apply` (both arrive as ordinary state updates)
+        # land first; resetting only after that means the value we then wait
+        # for is the fresh `sync.snapshot` we explicitly request, not our own
+        # echo -- so a scheduler holding brightness down is still caught.
         await asyncio.sleep(_BRIGHTNESS_SETTLE_SECS)
+        brightness.reset()
         await ws_client.sync_charger_state()
         await brightness.wait_for_confirmation(_BRIGHTNESS_CONFIRM_TIMEOUT_SECS)
-        if brightness.reported != _TARGET_BRIGHTNESS:
+        if (
+            brightness.reported is None
+            or abs(brightness.reported - _TARGET_BRIGHTNESS) > _BRIGHTNESS_TOLERANCE
+        ):
             print(
                 f"Warning: charger reports LED brightness "
                 f"{brightness.reported!r}, not {_TARGET_BRIGHTNESS}. If the "
