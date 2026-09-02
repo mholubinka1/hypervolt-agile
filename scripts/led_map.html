@@ -287,9 +287,15 @@
 
   // The number a circle currently holds: null when blank, otherwise
   // Number(...) of the trimmed text (NaN for garbage, which revalidate flags).
+  // persist() and exportJson() collapse that NaN back to null via
+  // isRealIndex() so a garbage entry is never confused with a blank one.
   function indexAt(id) {
     var raw = positions[id].input.value.trim();
     return raw === "" ? null : Number(raw);
+  }
+
+  function isRealIndex(v) {
+    return typeof v === "number" && Number.isFinite(v);
   }
 
   function samplePath(path, count, closed) {
@@ -337,10 +343,11 @@
   function persist(id) {
     var store = loadStore();
     var v = indexAt(id);
-    if (v === null) {
-      delete store[id];
-    } else {
+    if (isRealIndex(v)) {
       store[id] = v;
+    } else {
+      // blank, or a transient non-numeric state -- don't persist garbage
+      delete store[id];
     }
     saveStore(store);
   }
@@ -403,7 +410,7 @@
   function prefill() {
     var store = loadStore();
     ORDERED_IDS.forEach(function (id) {
-      if (Object.prototype.hasOwnProperty.call(store, id)) {
+      if (isRealIndex(store[id])) {
         positions[id].input.value = store[id];
       }
     });
@@ -412,8 +419,9 @@
   function exportJson() {
     var out = {};
     ORDERED_IDS.forEach(function (id) {
+      var v = indexAt(id);
       out[id] = {
-        index: indexAt(id),
+        index: isRealIndex(v) ? v : null,
         x: positions[id].x,
         y: positions[id].y,
       };
