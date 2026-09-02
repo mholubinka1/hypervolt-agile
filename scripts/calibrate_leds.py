@@ -1,14 +1,16 @@
-"""One-off diagnostic tool: lights each of the charger's 51 LEDs in turn so an
-operator can read off the true physical position of each index by eye,
-replacing the interpolated best-guess layout every custom LED theme has been
-designed against so far (see FEATURES.md Feature 22).
+"""One-off diagnostic tool: lights the charger's LEDs cumulatively -- index 0,
+then 0-1, then 0-2, and so on -- so an operator can read off the true physical
+position of each index by eye as it joins the lit run, replacing the
+interpolated best-guess layout every custom LED theme has been designed
+against so far (see FEATURES.md Feature 22).
 
 Usage:
     uv run python scripts/calibrate_leds.py [--config-file config/config.yml]
 
-Loops continuously -- index 0 through 50, wrapping back to 0 -- until stopped
-with Ctrl+C, which clears the LED display and disconnects cleanly before
-exiting.
+Loops continuously -- growing the lit run one LED at a time from index 0 to 50,
+then wrapping back to a single lit LED at index 0 and building up again --
+until stopped with Ctrl+C, which clears the LED display and disconnects
+cleanly before exiting.
 
 Deliberately does NOT use HypervoltChargerClient.create(): that call clears
 the charger's active charging schedule as a side effect (correct for the main
@@ -40,6 +42,7 @@ from config import AppConfig, ConfigLoader
 _LED_COUNT = 51
 _HOLD_SECS = 10
 _TARGET_BRIGHTNESS = 1.0
+_BRIGHTNESS_SETTLE_SECS = 2
 _BRIGHTNESS_CONFIRM_TIMEOUT_SECS = 5
 _WHITE = {"r": 1.0, "g": 1.0, "b": 1.0}
 _BLACK = {"r": 0.0, "g": 0.0, "b": 0.0}
@@ -61,6 +64,14 @@ class _BrightnessTracker:
         self.reported: float | None = None
         self._confirmed = asyncio.Event()
 
+    def reset(self) -> None:
+        # The websocket volunteers a state snapshot on connect, carrying the
+        # brightness from *before* this script pushed anything. Call this
+        # after the push and before asking for a fresh snapshot, so the
+        # confirmation check only considers a reading taken afterwards.
+        self.reported = None
+        self._confirmed.clear()
+
     async def on_state_update(self, delta: HypervoltChargerStateDelta) -> None:
         if delta.led_brightness is not None:
             self.reported = delta.led_brightness
@@ -76,7 +87,11 @@ class _BrightnessTracker:
 
 
 def _frame_for(index: int) -> list[dict[str, float]]:
-    return [dict(_WHITE) if i == index else dict(_BLACK) for i in range(_LED_COUNT)]
+    # Cumulative: every LED from 0 up to and including the current index is
+    # lit, so the operator watches the lit run grow one LED at a time rather
+    # than chase a single moving dot. Wrapping back to index 0 lights only
+    # LED 0 again, resetting the run so it builds up from scratch.
+    return [dict(_WHITE) if i <= index else dict(_BLACK) for i in range(_LED_COUNT)]
 
 
 async def _connect(
@@ -107,11 +122,13 @@ async def _connect(
         try:
             await ws_client.disconnect()
         except Exception as e:
-            print(f"Failed to disconnect websocket: {type(e).__name__}: {e}")
+            print(
+                f"Failed to disconnect websocket: {type(e).__name__}: {e}", flush=True
+            )
         try:
             await rest_client.close()
         except Exception as e:
-            print(f"Failed to close REST client: {type(e).__name__}: {e}")
+            print(f"Failed to close REST client: {type(e).__name__}: {e}", flush=True)
         raise
     return rest_client, ws_client
 
@@ -125,20 +142,30 @@ async def _push_frame(ws_client: HypervoltWebSocketClient, index: int) -> None:
     # is actively overriding it.
     await ws_client.set_led_brightness(_TARGET_BRIGHTNESS)
     await ws_client.set_led_effect("steady_array", leds=_frame_for(index))
-    print(f"Index {index}")
+    # flush: an operator watches these scroll past live, but Python
+    # block-buffers stdout whenever it isn't a TTY (piped to `tee`, redirected
+    # to a log), which would hide every line until the script exits.
+    print(f"Index {index}", flush=True)
 
 
 async def run(config_file: Path) -> None:
     app_config = ConfigLoader(config_file).get_config()
     brightness = _BrightnessTracker()
     rest_client, ws_client = await _connect(app_config, brightness.on_state_update)
-    print(f"Connected to charger {rest_client.charger.id}. Press Ctrl+C to stop.")
+    print(
+        f"Connected to charger {rest_client.charger.id}. Press Ctrl+C to stop.",
+        flush=True,
+    )
     try:
         index = 0
         await _push_frame(ws_client, index)
 
         # Read the charger's own confirmation of the brightness just pushed
         # -- a fire-and-forget push doesn't prove anything actually applied.
+        # Discard the connect-time snapshot first, then let the write land
+        # before asking for a fresh one.
+        brightness.reset()
+        await asyncio.sleep(_BRIGHTNESS_SETTLE_SECS)
         await ws_client.sync_charger_state()
         await brightness.wait_for_confirmation(_BRIGHTNESS_CONFIRM_TIMEOUT_SECS)
         if brightness.reported != _TARGET_BRIGHTNESS:
@@ -147,7 +174,8 @@ async def run(config_file: Path) -> None:
                 f"{brightness.reported!r}, not {_TARGET_BRIGHTNESS}. If the "
                 "main scheduler is running against this charger too, it is "
                 "likely re-pushing its own brightness/effect -- stop it "
-                "before calibrating."
+                "before calibrating.",
+                flush=True,
             )
 
         while True:
@@ -161,7 +189,7 @@ async def run(config_file: Path) -> None:
         # delivering CancelledError here instead. Catching both means the
         # friendly message and the cleanup below run regardless of which one
         # actually arrives.
-        print("\nStopping -- clearing LEDs.")
+        print("\nStopping -- clearing LEDs.", flush=True)
     finally:
         # Each step runs even if an earlier one raises (e.g. the websocket
         # already dropped) -- a best-effort shutdown that doesn't leave the
@@ -170,15 +198,17 @@ async def run(config_file: Path) -> None:
         try:
             await ws_client.set_led_effect("none")
         except Exception as e:
-            print(f"Failed to clear LED display: {type(e).__name__}: {e}")
+            print(f"Failed to clear LED display: {type(e).__name__}: {e}", flush=True)
         try:
             await ws_client.disconnect()
         except Exception as e:
-            print(f"Failed to disconnect websocket: {type(e).__name__}: {e}")
+            print(
+                f"Failed to disconnect websocket: {type(e).__name__}: {e}", flush=True
+            )
         try:
             await rest_client.close()
         except Exception as e:
-            print(f"Failed to close REST client: {type(e).__name__}: {e}")
+            print(f"Failed to close REST client: {type(e).__name__}: {e}", flush=True)
 
 
 def main() -> None:
