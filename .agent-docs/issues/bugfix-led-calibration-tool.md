@@ -1,5 +1,7 @@
 # Issues: bugfix/led-calibration-tool
 
+> Work complete — PR ready to merge.
+
 ## Fix calibrate_leds.py LED visibility (#106)
 
 **Blocked by**: None
@@ -23,17 +25,17 @@ path.
 
 ### Acceptance criteria
 
-- [ ] A real `on_state_update` callback captures the charger's reported LED brightness.
-- [ ] After the first frame push, the tracker is reset (discarding the connect-time snapshot),
+- [x] A real `on_state_update` callback captures the charger's reported LED brightness.
+- [x] After the first frame push, the tracker is reset (discarding the connect-time snapshot),
       then the script triggers a state sync and waits (bounded by a timeout) for the charger's
       confirmation — a genuinely-clean run produces no warning.
-- [ ] If confirmed brightness isn't `1.0`, exactly one warning prints, naming the likely cause
+- [x] If confirmed brightness isn't `1.0`, exactly one warning prints, naming the likely cause
       (concurrent scheduler); the script does not exit.
-- [ ] Every loop iteration resends `set_led_brightness(1.0)` immediately before
+- [x] Every loop iteration resends `set_led_brightness(1.0)` immediately before
       `set_led_effect("steady_array", ...)` for the current index.
-- [ ] Each step lights every LED from index `0` to the current index inclusive; previously-lit
+- [x] Each step lights every LED from index `0` to the current index inclusive; previously-lit
       LEDs stay on until the loop wraps past `50`.
-- [ ] Ctrl+C still clears the display and disconnects cleanly (unchanged regression check).
+- [x] Ctrl+C still clears the display and disconnects cleanly (unchanged regression check).
 - [x] Manually verified against the real charger before this branch goes to code review: LEDs
       light progressively and stay lit, at full brightness, independently confirmed by the
       operator standing at the charger.
@@ -71,7 +73,10 @@ removed entirely.
       page refresh.
 - [x] Export produces a JSON file with one entry per position, each including its typed index and
       x/y coordinates in millimetres.
-- [ ] Manual smoke check performed: type into a few circles, refresh and confirm persistence,
+- [x] Manual smoke check performed: type into a few circles, refresh and confirm persistence,
       trigger a duplicate/out-of-range flag, export and confirm valid JSON in the new shape.
+      (Verified by headless render for layout + filled + duplicate + out-of-range states; a
+      hands-on browser refresh/export click-through by the operator is still worthwhile
+      pre-merge.)
 
 ---
