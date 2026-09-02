@@ -87,9 +87,10 @@ the typed index and that position's true-scale x/y coordinates.
   The terminal still prints the single newly-added `index` each step.
 - No behavioural change to the connection setup, the Ctrl+C shutdown path, or the deliberate
   avoidance of `HypervoltChargerClient.create()` (still bypasses `clear_schedule()` — see the
-  existing module docstring). Every `print` in the script — progress, the warning, and the
-  best-effort error lines in `_connect`/`finally` — passes `flush=True` so nothing is withheld
-  in a block buffer when stdout isn't a TTY (piped to `tee`, redirected to a log).
+  existing module docstring). Every line the script emits — progress, the warning, and the
+  best-effort error lines in `_connect`/`finally` — goes through one `_out()` helper that
+  `print`s with `flush=True`, so nothing is withheld in a block buffer when stdout isn't a TTY
+  (piped to `tee`, redirected to a log).
 
 **`scripts/led_map.html`**:
 
