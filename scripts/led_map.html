@@ -245,6 +245,9 @@
   // than restated -- exported coordinates are measured from here so they read
   // as real charger measurements, not diagram-canvas offsets.
   var bodyShell = document.querySelector(".body-shell");
+  if (!bodyShell) {
+    throw new Error("led_map.html: <rect class=\"body-shell\"> is missing");
+  }
   var BODY_ORIGIN = {
     x: Number(bodyShell.getAttribute("x")),
     y: Number(bodyShell.getAttribute("y")),

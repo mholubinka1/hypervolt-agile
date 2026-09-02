@@ -49,6 +49,13 @@ _WHITE = {"r": 1.0, "g": 1.0, "b": 1.0}
 _BLACK = {"r": 0.0, "g": 0.0, "b": 0.0}
 
 
+def _out(message: str) -> None:
+    # Every line this script prints is progress an operator watches live, but
+    # Python block-buffers stdout when it isn't a TTY (piped to `tee`,
+    # redirected to a log) -- flush each line so nothing is withheld.
+    print(message, flush=True)
+
+
 class _BrightnessTracker:
     """Tracks the charger's own confirmation of the LED brightness it last
     reported.
@@ -123,13 +130,11 @@ async def _connect(
         try:
             await ws_client.disconnect()
         except Exception as e:
-            print(
-                f"Failed to disconnect websocket: {type(e).__name__}: {e}", flush=True
-            )
+            _out(f"Failed to disconnect websocket: {type(e).__name__}: {e}")
         try:
             await rest_client.close()
         except Exception as e:
-            print(f"Failed to close REST client: {type(e).__name__}: {e}", flush=True)
+            _out(f"Failed to close REST client: {type(e).__name__}: {e}")
         raise
     return rest_client, ws_client
 
@@ -143,20 +148,14 @@ async def _push_frame(ws_client: HypervoltWebSocketClient, index: int) -> None:
     # is actively overriding it.
     await ws_client.set_led_brightness(_TARGET_BRIGHTNESS)
     await ws_client.set_led_effect("steady_array", leds=_frame_for(index))
-    # flush: an operator watches these scroll past live, but Python
-    # block-buffers stdout whenever it isn't a TTY (piped to `tee`, redirected
-    # to a log), which would hide every line until the script exits.
-    print(f"Index {index}", flush=True)
+    _out(f"Index {index}")
 
 
 async def run(config_file: Path) -> None:
     app_config = ConfigLoader(config_file).get_config()
     brightness = _BrightnessTracker()
     rest_client, ws_client = await _connect(app_config, brightness.on_state_update)
-    print(
-        f"Connected to charger {rest_client.charger.id}. Press Ctrl+C to stop.",
-        flush=True,
-    )
+    _out(f"Connected to charger {rest_client.charger.id}. Press Ctrl+C to stop.")
     try:
         index = 0
         await _push_frame(ws_client, index)
@@ -176,13 +175,12 @@ async def run(config_file: Path) -> None:
             brightness.reported is None
             or abs(brightness.reported - _TARGET_BRIGHTNESS) > _BRIGHTNESS_TOLERANCE
         ):
-            print(
+            _out(
                 f"Warning: charger reports LED brightness "
                 f"{brightness.reported!r}, not {_TARGET_BRIGHTNESS}. If the "
                 "main scheduler is running against this charger too, it is "
                 "likely re-pushing its own brightness/effect -- stop it "
-                "before calibrating.",
-                flush=True,
+                "before calibrating."
             )
 
         while True:
@@ -196,7 +194,7 @@ async def run(config_file: Path) -> None:
         # delivering CancelledError here instead. Catching both means the
         # friendly message and the cleanup below run regardless of which one
         # actually arrives.
-        print("\nStopping -- clearing LEDs.", flush=True)
+        _out("\nStopping -- clearing LEDs.")
     finally:
         # Each step runs even if an earlier one raises (e.g. the websocket
         # already dropped) -- a best-effort shutdown that doesn't leave the
@@ -205,17 +203,15 @@ async def run(config_file: Path) -> None:
         try:
             await ws_client.set_led_effect("none")
         except Exception as e:
-            print(f"Failed to clear LED display: {type(e).__name__}: {e}", flush=True)
+            _out(f"Failed to clear LED display: {type(e).__name__}: {e}")
         try:
             await ws_client.disconnect()
         except Exception as e:
-            print(
-                f"Failed to disconnect websocket: {type(e).__name__}: {e}", flush=True
-            )
+            _out(f"Failed to disconnect websocket: {type(e).__name__}: {e}")
         try:
             await rest_client.close()
         except Exception as e:
-            print(f"Failed to close REST client: {type(e).__name__}: {e}", flush=True)
+            _out(f"Failed to close REST client: {type(e).__name__}: {e}")
 
 
 def main() -> None:
