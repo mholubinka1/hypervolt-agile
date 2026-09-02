@@ -252,6 +252,9 @@
     x: Number(bodyShell.getAttribute("x")),
     y: Number(bodyShell.getAttribute("y")),
   };
+  if (!Number.isFinite(BODY_ORIGIN.x) || !Number.isFinite(BODY_ORIGIN.y)) {
+    throw new Error("led_map.html: .body-shell has non-numeric x/y attributes");
+  }
 
   // positionId -> { input, circle, x, y }; x/y in mm from BODY_ORIGIN.
   var positions = {};
@@ -359,6 +362,11 @@
   function buildRegion(groupId, guideId, count, prefix, closed) {
     var group = document.getElementById(groupId);
     var guide = document.getElementById(guideId);
+    if (!group || !guide) {
+      throw new Error(
+        "led_map.html: missing #" + groupId + " or #" + guideId + " in the SVG"
+      );
+    }
     var points = samplePath(guide, count, closed);
 
     points.forEach(function (pt, i) {

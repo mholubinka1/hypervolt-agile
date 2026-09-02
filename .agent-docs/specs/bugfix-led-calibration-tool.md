@@ -29,7 +29,7 @@ previously-lit ones stay on so the operator watches the run grow rather than cha
 moving dot. Wrapping past index 50 resets to a single lit LED at index 0.
 
 **Issue 2**: `led_map.html` drops the rows panel entirely. The diagram becomes the whole tool:
-redrawn to the Hypervolt Home 3's real body dimensions (328mm × 243mm, per the
+redrawn to the Hypervolt Home 3's real body dimensions (243mm wide × 328mm tall, per the
 [official technical spec](https://support.hypervolt.co.uk/en/knowledge-base/home-3-technical-sheet))
 so LED positions are genuinely to scale, not an arbitrary invented layout. Each of the 51 LED
 positions is a small circle holding a number input — the operator finds the dot at the position
