@@ -34,7 +34,7 @@ path.
 - [ ] Each step lights every LED from index `0` to the current index inclusive; previously-lit
       LEDs stay on until the loop wraps past `50`.
 - [ ] Ctrl+C still clears the display and disconnects cleanly (unchanged regression check).
-- [ ] Manually verified against the real charger before this branch goes to code review: LEDs
+- [x] Manually verified against the real charger before this branch goes to code review: LEDs
       light progressively and stay lit, at full brightness, independently confirmed by the
       operator standing at the charger.
 

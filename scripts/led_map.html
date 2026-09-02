@@ -190,8 +190,11 @@
   </div>
 
   <div class="diagram">
-    <svg id="diagram" viewBox="0 0 275 360" role="img"
-      aria-label="Scale diagram of the Hypervolt Home 3 charger body, 243 by 328 millimetres, showing the outer LED ring and the lightning-bolt LED strip. Each of the 51 LEDs is a circle with a number input for the index observed lighting up at that position.">
+    <svg id="diagram" viewBox="0 0 275 360" aria-labelledby="diagram-title">
+      <title id="diagram-title">Scale diagram of the Hypervolt Home 3 charger body, 243 by 328
+        millimetres, showing the outer LED ring and the lightning-bolt LED strip. Each of the 51
+        LEDs is a circle with a number input for the index observed lighting up at that
+        position.</title>
       <rect class="body-shell" x="16" y="16" width="243" height="328" rx="30"></rect>
       <path id="ring-guide" class="guide-path"
         d="M221,30 L54,30 A24,24 0 0 0 30,54 L30,306 A24,24 0 0 0 54,330 L221,330 A24,24 0 0 0 245,306 L245,54 A24,24 0 0 0 221,30 Z"></path>
@@ -225,13 +228,27 @@
   var MIN_INDEX = 0;
   var MAX_INDEX = LED_COUNT - 1;
   var STORAGE_KEY = "hypervolt-led-map-positions-v1";
-  // Top-left corner of the <rect class="body-shell"> in viewBox units (== mm).
-  // Exported coordinates are measured from here so they read as real charger
-  // measurements rather than diagram-canvas offsets.
-  var BODY_ORIGIN = { x: 16, y: 16 };
 
   var svgNS = "http://www.w3.org/2000/svg";
   var xhtmlNS = "http://www.w3.org/1999/xhtml";
+
+  // ring-0..ring-38 then bolt-0..bolt-11 -- the traced order of the two
+  // guide paths, and the order the export is written in. Built once.
+  var ORDERED_IDS = (function () {
+    var ids = [];
+    for (var i = 0; i < RING_COUNT; i++) ids.push("ring-" + i);
+    for (var j = 0; j < BOLT_COUNT; j++) ids.push("bolt-" + j);
+    return ids;
+  })();
+
+  // Top-left corner of the charger body, read from the drawn <rect> rather
+  // than restated -- exported coordinates are measured from here so they read
+  // as real charger measurements, not diagram-canvas offsets.
+  var bodyShell = document.querySelector(".body-shell");
+  var BODY_ORIGIN = {
+    x: Number(bodyShell.getAttribute("x")),
+    y: Number(bodyShell.getAttribute("y")),
+  };
 
   // positionId -> { input, circle, x, y }; x/y in mm from BODY_ORIGIN.
   var positions = {};
@@ -265,13 +282,6 @@
     return Math.round(n * 10) / 10;
   }
 
-  function orderedIds() {
-    var ids = [];
-    for (var i = 0; i < RING_COUNT; i++) ids.push("ring-" + i);
-    for (var j = 0; j < BOLT_COUNT; j++) ids.push("bolt-" + j);
-    return ids;
-  }
-
   function samplePath(path, count, closed) {
     // Open paths (the bolt) have `count` distinct endpoints, so spacing
     // divides by count - 1 to include both ends. Closed paths (the ring,
@@ -293,14 +303,14 @@
     // holds. Invalid values are flagged (orange box) but never cleared or
     // rejected -- the operator fixes them when convenient.
     var counts = {};
-    orderedIds().forEach(function (id) {
+    ORDERED_IDS.forEach(function (id) {
       var raw = positions[id].input.value.trim();
       if (raw === "") return;
       var v = Number(raw);
       counts[v] = (counts[v] || 0) + 1;
     });
 
-    orderedIds().forEach(function (id) {
+    ORDERED_IDS.forEach(function (id) {
       var pos = positions[id];
       var raw = pos.input.value.trim();
       var filled = raw !== "";
@@ -384,7 +394,7 @@
 
   function prefill() {
     var store = loadStore();
-    orderedIds().forEach(function (id) {
+    ORDERED_IDS.forEach(function (id) {
       if (Object.prototype.hasOwnProperty.call(store, id)) {
         positions[id].input.value = store[id];
       }
@@ -393,7 +403,7 @@
 
   function exportJson() {
     var out = {};
-    orderedIds().forEach(function (id) {
+    ORDERED_IDS.forEach(function (id) {
       var raw = positions[id].input.value.trim();
       out[id] = {
         index: raw === "" ? null : Number(raw),
@@ -419,7 +429,7 @@
     } catch (e) {
       // Nothing to clear if storage was never writable.
     }
-    orderedIds().forEach(function (id) {
+    ORDERED_IDS.forEach(function (id) {
       positions[id].input.value = "";
     });
     revalidate();

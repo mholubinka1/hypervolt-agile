@@ -83,9 +83,11 @@ the typed index and that position's true-scale x/y coordinates.
   full white, the rest black — so the lit run grows one LED per step and previously-lit LEDs stay
   on. When the loop wraps past `50` back to `0`, the frame is just LED `0` lit, resetting the run.
   The terminal still prints the single newly-added `index` each step.
-- No change to the connection setup, the Ctrl+C shutdown path, or the deliberate avoidance of
-  `HypervoltChargerClient.create()` (still bypasses `clear_schedule()` — see the existing module
-  docstring).
+- No behavioural change to the connection setup, the Ctrl+C shutdown path, or the deliberate
+  avoidance of `HypervoltChargerClient.create()` (still bypasses `clear_schedule()` — see the
+  existing module docstring). Every `print` in the script — progress, the warning, and the
+  best-effort error lines in `_connect`/`finally` — passes `flush=True` so nothing is withheld
+  in a block buffer when stdout isn't a TTY (piped to `tee`, redirected to a log).
 
 **`scripts/led_map.html`**:
 
@@ -101,14 +103,19 @@ the typed index and that position's true-scale x/y coordinates.
 - Rendered large enough (diagram now has the full page width, no more 340px sidebar constraint)
   that true-scale spacing between the 51 points is enough on its own to fit 28px circles without
   overlap — no artificial exaggeration of spacing needed.
-- Each of the 51 points becomes a `<circle>` (visual state: filled/highlighted once it holds a
-  value) with a `<foreignObject>` positioned over it containing a real `<input type="number"
-  min="0" max="50" step="1">`. Each input keeps a real, associated `<label>` (visually hidden)
-  for accessibility, consistent with the recent accessibility work on this file (`3ab efabb`,
-  `ceec472`) — no more relying on placeholder text or a separate visible `<label for>` in a rows
-  list, since the rows list is gone.
+- Each of the 51 points becomes a `<circle>` (fills red once it holds a value) with a
+  `<foreignObject>` positioned over it containing a real `<input type="number" min="0" max="50"
+  step="1">`. Each input carries an `aria-label` naming its region and ordinal (e.g. "Observed
+  LED index at outer ring position 12") — a real accessible name, consistent with the recent
+  accessibility work on this file (`3abefabb`, `ceec472`); an `aria-label` on the control itself
+  is used rather than a separate visually-hidden `<label>` node because the control lives inside
+  SVG `<foreignObject>` where a paired `<label for>` is more fragile. The SVG uses
+  `aria-labelledby` pointing at a `<title>` for its own name — **not** `role="img"`, which would
+  make the 51 inner inputs presentational.
 - Out-of-range (outside 0–50) or duplicate (same index typed into more than one circle) values
-  get a visual flag (red border on the input) — validation never blocks typing or clears a value.
+  flag the input with an orange fill (`--danger`) — chosen over a red border because the circle
+  is already red once filled, so a red border would not read. Validation never blocks typing or
+  clears a value.
 - The rows panel, `.layout` two-column grid, `buildRows`, `focusRow`, `.row*` CSS, and the
   `.diagram-card` sticky-sidebar styling are removed entirely — the diagram is the only panel.
 - `localStorage` key bumps to a new name (schema is now position-keyed, not index-keyed, so the

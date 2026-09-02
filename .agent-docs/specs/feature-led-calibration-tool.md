@@ -1,5 +1,11 @@
 # Physical LED Index Calibration Tool
 
+> **Partly superseded by [`bugfix-led-calibration-tool.md`](bugfix-led-calibration-tool.md).**
+> That spec replaces the two-panel `led_map.html` layout described below with a single
+> true-scale diagram of position-keyed number-input circles, changes the `localStorage` and
+> export shapes from `{index: label}` to `{positionId: {index, x, y}}`, and fixes
+> `calibrate_leds.py` to verify brightness read-back and light LEDs cumulatively.
+
 ## Problem Statement
 
 Every custom LED pattern this project has ever designed — the five originally-shipped
