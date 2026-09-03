@@ -48,9 +48,10 @@ are superseded by the reference page (issue #4).
 Move custom-theme colour-map resolution off the operator's config directory and onto the repo's
 `themes/` directory. Hard break — no `led_effects/` fallback.
 
-- `app/main.py`: replace `config_path.parent / "led_effects"` with the repo `themes/` directory,
-  resolved relative to the application (`Path(__file__).resolve().parent.parent / "themes"`),
-  passed to `load_custom_themes_for_config`.
+- Expose the repo `themes/` directory as `hypervolt.led.THEMES_DIR`
+  (`Path(__file__).resolve().parents[2] / "themes"` from `app/hypervolt/led.py`).
+  `app/main.py`: replace `config_path.parent / "led_effects"` with `THEMES_DIR`, passed to
+  `load_custom_themes_for_config`.
 - `app/hypervolt/led.py`: rename the `led_effects_dir` parameter to `themes_dir` in
   `load_custom_themes` and `load_custom_themes_for_config`; `load_custom_themes` resolves
   `themes_dir / f"{entry.effect}.yaml"`. `load_custom_effect` is untouched. Resolution stays

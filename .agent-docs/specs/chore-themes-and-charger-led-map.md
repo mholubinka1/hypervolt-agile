@@ -71,10 +71,11 @@ on-charger-validated Saints geometry.
 
 ### `themes/` resolution
 
-- `app/main.py` stops using `config_path.parent / "led_effects"`. The custom-theme directory is
-  the repo's `themes/`, resolved relative to the application
-  (`Path(__file__).resolve().parent.parent / "themes"`), and passed to
-  `load_custom_themes_for_config`.
+- The repo `themes/` directory is exposed as `hypervolt.led.THEMES_DIR` (resolved relative to the
+  application, `Path(__file__).resolve().parents[2] / "themes"` from `app/hypervolt/led.py`).
+  `app/main.py` stops using `config_path.parent / "led_effects"` and passes `THEMES_DIR` to
+  `load_custom_themes_for_config`. Keeping the constant in `led.py` gives one source that
+  `scripts/show_led_theme.py` also imports.
 - `app/hypervolt/led.py`: `load_custom_themes_for_config(led_config, led_effects_dir)` and
   `load_custom_themes(entries, led_effects_dir)` take a parameter renamed to `themes_dir`;
   `load_custom_themes` resolves `themes_dir / f"{entry.effect}.yaml"`. `load_custom_effect` is

@@ -18,7 +18,8 @@ def test_loads_custom_themes_from_led_config(tmp_path: Path) -> None:
         custom_themes=[{"effect": "peace", "start": "03-14", "end": "03-16"}]
     )
 
-    result = load_custom_themes_for_config(led_config, tmp_path)
+    result = load_custom_themes_for_config(led_config, themes_dir=tmp_path)
 
     assert len(result) == 1
     assert result[0][0].effect_name == "peace"
+    assert result[0][0].leds is not None  # resolved from themes_dir/peace.yaml

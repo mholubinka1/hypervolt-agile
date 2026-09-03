@@ -169,6 +169,9 @@
   </div>
 </div>
 
+<!-- Deliberate copy of themes/reference/charger_led_map.json: this page must run
+     from file:// where fetching a sibling file is blocked. The two are kept
+     identical by tests/themes/test_charger_led_map.py -->
 <script type="application/json" id="charger-led-map">
 {
   "0": { "x_mm": 210.0, "y_mm": 15.0, "region": "ring-top", "live": true },
@@ -428,6 +431,9 @@
         cur = { colour: m[1].toUpperCase(), indices: [] };
         segments.push(cur); mode = null; return;
       }
+      // Everything below belongs to a segment; a well-formed theme always has
+      // "- colour:" first. Bail on stray indices/ranges rather than deref null.
+      if (!cur) { mode = null; return; }
       if (/^\s*indices:\s*\[/.test(line)) {
         (line.match(/-?\d+/g) || []).forEach(function (n) { cur.indices.push(+n); });
         mode = null; return;
