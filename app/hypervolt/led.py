@@ -24,6 +24,11 @@ logger: Logger = getLogger(APP_NAME)
 
 _LOCAL_TZ = ZoneInfo(TIMEZONE)
 _LED_COUNT = 51
+# Custom-theme colour maps live in a `themes/` directory at the repo root
+# (this file is app/hypervolt/led.py, so the root is three parents up). The
+# app reads from here, not the operator's config directory -- see ADR
+# "custom themes move to a repo themes/ directory".
+THEMES_DIR = Path(__file__).resolve().parents[2] / "themes"
 # A fixed leap year, shared by parse_window_date (so "02-29" parses) and by
 # config.py's end_must_be_after_start validator (so its chronological check
 # uses the same reference year as everything else that materialises a Window
@@ -295,12 +300,12 @@ async def load_extensions(
 
 
 def load_custom_themes(
-    entries: Sequence[CustomLedTheme], led_effects_dir: Path
+    entries: Sequence[CustomLedTheme], themes_dir: Path
 ) -> list[tuple[LedTheme, Window, Window]]:
     _loaded: list[tuple[LedTheme, Window, Window]] = []
     for entry in entries:
         try:
-            _leds = load_custom_effect(led_effects_dir / f"{entry.effect}.yaml")
+            _leds = load_custom_effect(themes_dir / f"{entry.effect}.yaml")
         except Exception as e:
             logger.error(
                 f"Failed to load custom LED theme {entry.effect!r}: {type(e).__name__}: {e}."
@@ -314,11 +319,11 @@ def load_custom_themes(
 
 
 def load_custom_themes_for_config(
-    led_config: LedConfig | None, led_effects_dir: Path
+    led_config: LedConfig | None, themes_dir: Path
 ) -> list[tuple[LedTheme, Window, Window]]:
     if led_config is None:
         return []
-    return load_custom_themes(led_config.custom_themes, led_effects_dir)
+    return load_custom_themes(led_config.custom_themes, themes_dir)
 
 
 def load_built_in_themes(

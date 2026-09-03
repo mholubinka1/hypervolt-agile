@@ -22,8 +22,8 @@ schedule:
 #     - effect: party_mode
 #       start: "12-31 06:00"
 #       end: "01-01 06:00"
-#   custom_themes:                 # Static colour patterns for dates that matter to you, priority over built-in seasonal effects. Add your own led_effects/*.yaml (in Docker: /home/pi/.config/hypervolt-agile/led_effects/ -- the whole directory is bind-mounted to /config, so files placed there are picked up without rebuilding the image) and a matching entry here, e.g.:
-#     - effect: my_theme              # led_effects/my_theme.yaml
+#   custom_themes:                 # Static colour patterns for dates that matter to you, priority over built-in seasonal effects. Colour maps live in this repo's themes/ directory (themes/<effect>.yaml, image content -- adding your own means forking/rebuilding). Preview and edit LED positions with themes/reference/charger_led_map.html. Add a matching entry here, e.g.:
+#     - effect: my_theme              # themes/my_theme.yaml
 #       start: "MM-DD"
 #       end: "MM-DD"
 #   extensions:                     # Dynamic themes resolved by a Python module you register, priority over custom_themes and built-ins. A saints_fc reference implementation ships in this repo's extensions/ -- to use it, copy extensions/saints_fc.py into a SEPARATE directory from config.yml (in Docker: /home/pi/.config/hypervolt-agile-extensions/, mounted to /extensions -- see --extensions-dir) and uncomment the entry below.
