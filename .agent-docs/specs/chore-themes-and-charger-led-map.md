@@ -87,6 +87,9 @@ on-charger-validated Saints geometry.
 - `config/config.yml.template` comments and `README.md` (the `custom_themes` note and the Docker
   section) are updated: colour maps live in the repo `themes/` directory; the per-operator
   `led_effects/` mount is gone.
+- `Dockerfile` runtime stage gains `COPY themes ./themes` so the maps are actually in the image —
+  without it, `THEMES_DIR` (`/app/themes`) is absent in the container and every custom theme is
+  silently skipped, since there is no `led_effects/` fallback.
 - The reference `saints_fc.yaml` colour map (currently on `chore/led-map-geometry-research` at
   `config/led_effects/saints_fc.yaml`) is added at `themes/saints_fc.yaml`.
 

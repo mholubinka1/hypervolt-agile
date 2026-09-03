@@ -30,16 +30,18 @@ _DARK_INDICES = set(range(20, 27))
 
 
 @pytest.fixture(scope="module")
-def led_map() -> dict[str, dict]:
+def led_map() -> dict[str, dict[str, object]]:
     return json.loads(_MAP_PATH.read_text(encoding="utf-8"))
 
 
-def test_every_led_index_0_to_50_is_present_once(led_map: dict[str, dict]) -> None:
+def test_every_led_index_0_to_50_is_present_once(
+    led_map: dict[str, dict[str, object]],
+) -> None:
     assert sorted(int(k) for k in led_map) == list(range(51))
 
 
 def test_positions_are_numeric_and_within_the_charger_body(
-    led_map: dict[str, dict],
+    led_map: dict[str, dict[str, object]],
 ) -> None:
     for entry in led_map.values():
         assert isinstance(entry["x_mm"], (int, float))
@@ -49,7 +51,7 @@ def test_positions_are_numeric_and_within_the_charger_body(
 
 
 def test_the_reference_page_embeds_the_same_map_as_the_json_file(
-    led_map: dict[str, dict],
+    led_map: dict[str, dict[str, object]],
 ) -> None:
     block = re.search(
         r'<script type="application/json" id="charger-led-map">(.*?)</script>',
@@ -60,12 +62,14 @@ def test_the_reference_page_embeds_the_same_map_as_the_json_file(
     assert json.loads(block.group(1)) == led_map
 
 
-def test_regions_are_ring_regions_or_bolt(led_map: dict[str, dict]) -> None:
+def test_regions_are_ring_regions_or_bolt(
+    led_map: dict[str, dict[str, object]],
+) -> None:
     assert {e["region"] for e in led_map.values()} <= _RING_REGIONS | {"bolt"}
 
 
 def test_bolt_segment_is_present_exactly_for_bolt_leds(
-    led_map: dict[str, dict],
+    led_map: dict[str, dict[str, object]],
 ) -> None:
     for index, entry in led_map.items():
         if entry["region"] == "bolt":
@@ -74,11 +78,15 @@ def test_bolt_segment_is_present_exactly_for_bolt_leds(
             assert "bolt_segment" not in entry
 
 
-def test_only_the_dead_bottom_run_is_marked_not_live(led_map: dict[str, dict]) -> None:
+def test_only_the_dead_bottom_run_is_marked_not_live(
+    led_map: dict[str, dict[str, object]],
+) -> None:
     dark = {int(k) for k, e in led_map.items() if not e["live"]}
     assert dark == _DARK_INDICES
 
 
-def test_no_two_lit_leds_share_a_position(led_map: dict[str, dict]) -> None:
+def test_no_two_lit_leds_share_a_position(
+    led_map: dict[str, dict[str, object]],
+) -> None:
     lit_positions = [(e["x_mm"], e["y_mm"]) for e in led_map.values() if e["live"]]
     assert len(lit_positions) == len(set(lit_positions))

@@ -26,6 +26,7 @@ COPY --from=builder /app/.venv ./.venv
 USER 999
 
 COPY app ./app
+COPY themes ./themes
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import os,time; f='/tmp/healthy'; exit(0 if os.path.exists(f) and float(open(f).read()) > time.time() else 1)"

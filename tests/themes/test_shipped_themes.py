@@ -1,12 +1,13 @@
 import importlib.util
 from pathlib import Path
+from types import ModuleType
 
 from hypervolt.led import load_custom_effect
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _load_show_led_theme():
+def _load_show_led_theme() -> ModuleType:
     _path = _REPO_ROOT / "scripts" / "show_led_theme.py"
     _spec = importlib.util.spec_from_file_location("_show_led_theme", _path)
     assert _spec and _spec.loader
@@ -35,7 +36,7 @@ _SAINTS_RED_INDICES = {
 }
 
 
-def _is_reddish(led: dict) -> bool:
+def _is_reddish(led: dict[str, float]) -> bool:
     return led["r"] > 0.6 and led["g"] < 0.4 and led["b"] < 0.4
 
 

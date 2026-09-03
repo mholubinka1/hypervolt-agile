@@ -460,8 +460,7 @@
     });
     Object.keys(model).forEach(function (k) {
       model[k].colour = colours[k];
-      var el = handleEls[k].querySelector("circle");
-      el.setAttribute("fill", colours[k]);
+      handleEls[k].querySelector("circle").setAttribute("fill", colours[k]);
       var lum = luminance(colours[k]);
       handleEls[k].querySelector("text").setAttribute("fill", lum > 0.55 ? "#10131a" : "#ffffff");
     });
