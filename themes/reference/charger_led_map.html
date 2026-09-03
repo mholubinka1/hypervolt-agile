@@ -121,6 +121,10 @@
   .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
   .swatch { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #10131a; flex: none; }
   .status { font: 500 0.8rem/1.4 "IBM Plex Mono", ui-monospace, monospace; color: var(--ink-faint); margin-top: 0.6rem; min-height: 1.4em; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  }
 </style>
 </head>
 <body>
@@ -140,7 +144,7 @@
         <label class="file">Load map&hellip;<input type="file" id="load-map" accept=".json,application/json"></label>
         <button id="reset">Reset to seed</button>
       </div>
-      <svg class="map" id="map" viewBox="-28 -28 299 384" role="img"
+      <svg class="map" id="map" viewBox="-28 -28 299 384" role="group"
         aria-label="Scale map of the charger face with 51 draggable LED handles.">
         <rect class="body-shell" x="0" y="0" width="243" height="328" rx="24"></rect>
         <g id="handles"></g>
@@ -228,9 +232,13 @@
   var BODY_W = 243, BODY_H = 328;
   var SVGNS = "http://www.w3.org/2000/svg";
 
-  var seedEl = document.getElementById("charger-led-map");
-  if (!seedEl) throw new Error("charger_led_map.html: missing <script id=\"charger-led-map\"> seed");
-  var SEED = JSON.parse(seedEl.textContent);
+  function el(id) {
+    var node = document.getElementById(id);
+    if (!node) throw new Error("charger_led_map.html: missing #" + id);
+    return node;
+  }
+
+  var SEED = JSON.parse(el("charger-led-map").textContent);
   // working model: index -> {x, y, region, live, bolt_segment?, colour?}
   var model = {};
 
@@ -260,9 +268,9 @@
     });
   }
 
-  var svg = document.getElementById("map");
-  var handlesGroup = document.getElementById("handles");
-  var readout = document.getElementById("readout");
+  var svg = el("map");
+  var handlesGroup = el("handles");
+  var readout = el("readout");
   var handleEls = {};
 
   function buildHandles() {
@@ -274,8 +282,9 @@
       g.setAttribute("class", "led" + (m.live ? "" : " dead"));
       g.setAttribute("data-index", k);
       g.setAttribute("tabindex", "0");
+      g.setAttribute("role", "button");
       g.setAttribute("transform", "translate(" + m.x + "," + m.y + ")");
-      g.setAttribute("aria-label", "LED " + k + " " + m.region);
+      g.setAttribute("aria-label", "LED " + k + " " + m.region + " -- arrow keys nudge 1 mm");
 
       var c = document.createElementNS(SVGNS, "circle");
       c.setAttribute("r", "7");
@@ -340,6 +349,7 @@
     g.addEventListener("pointerup", end);
     g.addEventListener("pointercancel", end);
     g.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showReadout(k); return; }
       var step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (!step) return;
       e.preventDefault();
@@ -405,7 +415,9 @@
     var cur = null;
     var mode = null; // "indices" | "ranges"
     lines.forEach(function (raw) {
-      var line = raw.replace(/#.*$/, "");
+      // Strip only a "# comment" that follows whitespace or starts the line --
+      // never a "#RRGGBB" colour literal, which is always preceded by a quote.
+      var line = raw.replace(/(^|\s)#.*$/, "$1");
       if (!line.trim()) return;
       var m;
       if ((m = line.match(/^default_colour:\s*["']?(#[0-9a-fA-F]{6})["']?/))) {
@@ -435,7 +447,7 @@
   }
 
   function applyTheme(text) {
-    var status = document.getElementById("status");
+    var status = el("status");
     var parsed;
     try { parsed = parseThemeYaml(text); }
     catch (err) { status.textContent = "Parse error: " + err.message; return; }
@@ -466,8 +478,8 @@
       handleEls[k].querySelector("circle").setAttribute("fill", regionFill(model[k]));
       handleEls[k].querySelector("text").setAttribute("fill", model[k].live ? "#10131a" : "var(--dead)");
     });
-    document.getElementById("status").textContent = "";
-    document.getElementById("regen").textContent = "(load or paste a theme)";
+    el("status").textContent = "";
+    el("regen").textContent = "(load or paste a theme)";
   }
 
   function luminance(hex) {
@@ -507,12 +519,12 @@
         ranges.forEach(function (r) { lines.push("      - [" + r[0] + ", " + r[1] + "]"); });
       }
     });
-    document.getElementById("regen").textContent = lines.join("\n");
+    el("regen").textContent = lines.join("\n");
   }
 
   // ---- legend ----
   function buildLegend() {
-    var legend = document.getElementById("legend");
+    var legend = el("legend");
     var items = [
       ["#7db4ff", "ring edge"], ["#3f7fd6", "ring corner"], ["#8fd0a0", "ring side"],
       ["#f4b860", "bolt lower-blade"], ["#e0902f", "bolt hook"], ["#c06a1e", "bolt upper-blade"],
@@ -523,31 +535,31 @@
   }
 
   // ---- wire up ----
-  document.getElementById("export").addEventListener("click", exportJson);
-  document.getElementById("reset").addEventListener("click", function () {
+  el("export").addEventListener("click", exportJson);
+  el("reset").addEventListener("click", function () {
     seedModel(); buildHandles();
     readout.textContent = "Reset to the committed seed.";
     clearTheme();
   });
-  document.getElementById("load-map").addEventListener("change", function (e) {
+  el("load-map").addEventListener("change", function (e) {
     if (e.target.files[0]) loadMap(e.target.files[0]);
     e.target.value = "";
   });
-  document.getElementById("load-yaml").addEventListener("change", function (e) {
+  el("load-yaml").addEventListener("change", function (e) {
     var f = e.target.files[0];
     if (!f) return;
     var reader = new FileReader();
     reader.onload = function () {
-      document.getElementById("yaml").value = reader.result;
+      el("yaml").value = reader.result;
       applyTheme(reader.result);
     };
     reader.readAsText(f);
     e.target.value = "";
   });
-  document.getElementById("preview").addEventListener("click", function () {
-    applyTheme(document.getElementById("yaml").value);
+  el("preview").addEventListener("click", function () {
+    applyTheme(el("yaml").value);
   });
-  document.getElementById("clear-preview").addEventListener("click", clearTheme);
+  el("clear-preview").addEventListener("click", clearTheme);
 
   seedModel();
   buildHandles();

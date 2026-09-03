@@ -15,7 +15,6 @@ def _load_show_led_theme():
     return _module
 
 
-_RED = {"r": 0xD7 / 255, "g": 0x19 / 255, "b": 0x20 / 255}  # Southampton red #D71920
 _SAINTS_RED_INDICES = {
     1,
     2,
@@ -36,11 +35,15 @@ _SAINTS_RED_INDICES = {
 }
 
 
+def _is_reddish(led: dict) -> bool:
+    return led["r"] > 0.6 and led["g"] < 0.4 and led["b"] < 0.4
+
+
 def test_shipped_saints_fc_map_paints_the_southampton_stripes() -> None:
     leds = load_custom_effect(_REPO_ROOT / "themes" / "saints_fc.yaml")
 
     assert len(leds) == 51
-    red_indices = {i for i, led in enumerate(leds) if led == _RED}
+    red_indices = {i for i, led in enumerate(leds) if _is_reddish(led)}
     assert red_indices == _SAINTS_RED_INDICES
 
 

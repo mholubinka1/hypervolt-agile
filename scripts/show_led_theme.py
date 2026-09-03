@@ -37,15 +37,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 from hypervolt.client.rest import HypervoltRestClient
 from hypervolt.client.websocket import HypervoltWebSocketClient
-from hypervolt.led import load_custom_effect
+from hypervolt.led import THEMES_DIR, load_custom_effect
 from hypervolt.state import HypervoltChargerStateDelta
 
 from config import AppConfig, ConfigLoader
 
 _HOLD_SECS = 15
 _TARGET_BRIGHTNESS = 1.0
-# themes/ sits at the repo root; this file is scripts/show_led_theme.py.
-_THEMES_DIR = Path(__file__).resolve().parent.parent / "themes"
 
 
 def _out(message: str) -> None:
@@ -104,10 +102,9 @@ async def _push_theme(
 
 
 def _resolve_effect_path(effect: str) -> Path:
-    # Custom-theme colour maps live in the repo's themes/ folder -- resolve
-    # against the same folder the app reads (app/main.py), so this previews
-    # the real file.
-    return _THEMES_DIR / f"{effect}.yaml"
+    # Resolve against the same repo themes/ folder the app reads
+    # (hypervolt.led.THEMES_DIR), so this previews the real file.
+    return THEMES_DIR / f"{effect}.yaml"
 
 
 async def run(config_file: Path, effect: str) -> None:
