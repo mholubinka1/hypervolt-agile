@@ -215,3 +215,7 @@ Prior art: `tests/hypervolt/test_led_load_custom_themes*.py`; `tests/hypervolt/t
 - CONTEXT.md is updated on this branch: **Custom theme** now points at `themes/`; **Charger LED
   map** term added.
 - `config/config.yml` holds live credentials and is gitignored — never read, echo, or commit it.
+- Commit `c77406e` regenerates `requirements.txt` from `uv.lock` (`pydantic-core` 2.48.0 → 2.46.5).
+  This is **not** a dependency change by this work: `uv.lock` on `main` already resolves 2.46.5
+  and `requirements.txt` had drifted. The `uv-export` pre-commit hook blocks every commit until
+  the two agree, so the sync is unavoidable here; it is isolated in its own `chore(deps)` commit.
