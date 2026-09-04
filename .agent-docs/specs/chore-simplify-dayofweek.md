@@ -15,7 +15,7 @@ Replace the bitmask values with `auto()`, and remove the unused `all` member. Th
 
 ## Implementation Decisions
 
-- **`app/hypervolt/model.py`** — `DayOfWeek` enum: replace all seven bitmask tuple values (`monday = (1,)` … `sunday = (64,)`) with `auto()`. Remove the `all = (127,)` member entirely — it has exactly one reference in the codebase (the `weekday_to_dayofweek` fallback below), confirmed by a repo-wide search.
+- **`app/hypervolt/model.py`** — `DayOfWeek` enum: replace all seven bitmask tuple values (`monday = (1,)` … `sunday = (64,)`) with `auto()`. Remove the `all = (127,)` member entirely — besides its own definition, its only other use in the codebase is the `weekday_to_dayofweek` fallback below, confirmed by a repo-wide search.
 - **`weekday_to_dayofweek`** — currently `mapping.get(weekday, DayOfWeek.all)`. Python's `datetime.weekday()` is contractually 0–6, so the dict (which already has all seven keys) never misses in practice — the fallback is dead code today. Change to direct indexing, `mapping[weekday]`, so a future out-of-contract input raises `KeyError` immediately instead of being masked by a fallback that no longer has a meaningful target once `all` is removed.
 - No other production code references `DayOfWeek` — confirmed by a repo-wide search, `app/hypervolt/model.py` is the only file that does. `parse_from_response` already looks members up by name (`DayOfWeek[_days[0].lower()]`), not by value, so it needs no change.
 - No config, wire format, schema, or public interface changes. `HypervoltSession.__str__`, `parse_from_response`, and `create_from_charge_session` all continue to work unchanged since none of them ever read `.value`.
