@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
-from enum import Enum
+from enum import Enum, auto
 from zoneinfo import ZoneInfo
 
 from common.model import ChargeSession
@@ -30,14 +30,13 @@ class ReleaseState(Enum):
 
 
 class DayOfWeek(Enum):
-    monday = (1,)
-    tuesday = (2,)
-    wednesday = (4,)
-    thursday = (8,)
-    friday = ((16),)
-    saturday = (32,)
-    sunday = (64,)
-    all = (127,)
+    monday = auto()
+    tuesday = auto()
+    wednesday = auto()
+    thursday = auto()
+    friday = auto()
+    saturday = auto()
+    sunday = auto()
 
 
 def weekday_to_dayofweek(weekday: int) -> DayOfWeek:
@@ -50,7 +49,7 @@ def weekday_to_dayofweek(weekday: int) -> DayOfWeek:
         5: DayOfWeek.saturday,
         6: DayOfWeek.sunday,
     }
-    return mapping.get(weekday, DayOfWeek.all)
+    return mapping[weekday]
 
 
 @dataclass

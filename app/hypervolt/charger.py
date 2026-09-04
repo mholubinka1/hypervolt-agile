@@ -9,7 +9,7 @@ from common.constants import APP_NAME
 from common.logging import config
 from hypervolt.client.rest import HypervoltRestClient
 from hypervolt.client.websocket import HypervoltWebSocketClient
-from hypervolt.model import HypervoltCharger, HypervoltSession
+from hypervolt.model import DayOfWeek, HypervoltCharger, HypervoltSession
 from hypervolt.state import HypervoltChargerState, HypervoltChargerStateDelta
 
 from config import AppConfig
@@ -20,6 +20,14 @@ logger: Logger = getLogger(APP_NAME)
 # Wire sentinel the charger understands as "stop showing an effect" -- there is
 # no separate clear/disable message, this is sent as an ordinary effect_name.
 _NO_EFFECT = "none"
+
+# DayOfWeek members carry no meaningful `.value` (Monday..Sunday just get auto()'d
+# ints) -- declaration order is the only thing that encodes weekday order.
+_DAY_OF_WEEK_ORDER: tuple[DayOfWeek, ...] = tuple(DayOfWeek)
+
+
+def _schedule_sort_key(session: HypervoltSession) -> tuple[time, int]:
+    return (session.start, _DAY_OF_WEEK_ORDER.index(session.day_of_week))
 
 
 class HypervoltChargerClient:
@@ -134,21 +142,14 @@ class HypervoltChargerClient:
         if not self.is_connected:
             return False
         _current_schedule = self._charger_state.current_schedule
-        _proposed_sorted = sorted(
-            schedule, key=lambda s: (s.start, s.day_of_week.value[0])
-        )
+        _proposed_sorted = sorted(schedule, key=_schedule_sort_key)
         if _current_schedule is not None:
-            _current_sorted = sorted(
-                _current_schedule, key=lambda s: (s.start, s.day_of_week.value[0])
-            )
+            _current_sorted = sorted(_current_schedule, key=_schedule_sort_key)
             if _proposed_sorted == _current_sorted:
                 logger.debug("Schedule unchanged, skipping apply.")
                 return False
         _last_sorted = (
-            sorted(
-                self._last_pushed_sessions,
-                key=lambda s: (s.start, s.day_of_week.value[0]),
-            )
+            sorted(self._last_pushed_sessions, key=_schedule_sort_key)
             if self._last_pushed_sessions is not None
             else None
         )
