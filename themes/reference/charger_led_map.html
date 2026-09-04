@@ -409,15 +409,133 @@
     URL.revokeObjectURL(a.href);
   }
 
-  function saveMap() {
+  function saveViaDownload() {
     var jsonText = mapJsonText();
     var htmlText = mapHtmlText();
     downloadFile("charger_led_map.json", jsonText, "application/json");
     setTimeout(function () {
       downloadFile("charger_led_map.html", htmlText, "text/html");
-      readout.textContent = "Saved charger_led_map.json and charger_led_map.html to your " +
-        "Downloads folder — move both into themes/reference/ to update the reference.";
+      readout.textContent = "This browser can't write files in place, so both were " +
+        "downloaded — move charger_led_map.json and charger_led_map.html into " +
+        "themes/reference/ to update the reference.";
     }, 150);
+  }
+
+  // ---- save in place (File System Access API) ----
+  // Chromium only (Chrome, Edge) -- Firefox and Safari have no
+  // showSaveFilePicker, so saveMap() below falls back to saveViaDownload().
+  // See ADR 0018 for why: it's the only static, no-server way to write the
+  // committed reference files directly, at the cost of browser support.
+  var HANDLE_DB_NAME = "charger-led-map-handles";
+  var HANDLE_STORE = "handles";
+
+  function openHandleDb() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(HANDLE_DB_NAME, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(HANDLE_STORE); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  function idbGet(key) {
+    return openHandleDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var req = db.transaction(HANDLE_STORE, "readonly").objectStore(HANDLE_STORE).get(key);
+        req.onsuccess = function () { resolve(req.result || null); };
+        req.onerror = function () { reject(req.error); };
+      });
+    });
+  }
+
+  function idbSet(key, value) {
+    return openHandleDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(HANDLE_STORE, "readwrite");
+        tx.objectStore(HANDLE_STORE).put(value, key);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+
+  function idbDelete(key) {
+    return openHandleDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(HANDLE_STORE, "readwrite");
+        tx.objectStore(HANDLE_STORE).delete(key);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+
+  function ensureWritePermission(handle) {
+    var opts = { mode: "readwrite" };
+    return handle.queryPermission(opts).then(function (state) {
+      if (state === "granted") return true;
+      return handle.requestPermission(opts).then(function (state2) {
+        return state2 === "granted";
+      });
+    });
+  }
+
+  function pickerOptsFor(filename) {
+    if (filename.slice(-5) === ".json") {
+      return { suggestedName: filename, types: [{ description: "JSON", accept: { "application/json": [".json"] } }] };
+    }
+    return { suggestedName: filename, types: [{ description: "HTML", accept: { "text/html": [".html"] } }] };
+  }
+
+  function pickAndStoreHandle(filename) {
+    return window.showSaveFilePicker(pickerOptsFor(filename)).then(function (handle) {
+      return idbSet(filename, handle).then(function () { return handle; });
+    });
+  }
+
+  // Reuses a remembered handle (re-confirming permission) so only the very
+  // first Save per browser profile needs the native picker; a denied
+  // permission clears the stale handle so the next Save re-prompts cleanly.
+  function getOrPickHandle(filename) {
+    return idbGet(filename).then(function (stored) {
+      if (!stored) return pickAndStoreHandle(filename);
+      return ensureWritePermission(stored).then(function (ok) {
+        if (ok) return stored;
+        return idbDelete(filename).then(function () {
+          throw new Error("permission denied for " + filename + " — click Save again to choose it");
+        });
+      });
+    });
+  }
+
+  function writeHandle(handle, content) {
+    return handle.createWritable().then(function (writable) {
+      return writable.write(content).then(function () { return writable.close(); });
+    });
+  }
+
+  // Both handles (and their permission) are secured before either file is
+  // written, so cancelling or denying either one leaves neither file touched.
+  function saveInPlace() {
+    var jsonText = mapJsonText();
+    var htmlText = mapHtmlText();
+    return getOrPickHandle("charger_led_map.json").then(function (jsonHandle) {
+      return getOrPickHandle("charger_led_map.html").then(function (htmlHandle) {
+        return writeHandle(jsonHandle, jsonText)
+          .then(function () { return writeHandle(htmlHandle, htmlText); })
+          .then(function () {
+            readout.textContent = "Saved charger_led_map.json and charger_led_map.html.";
+          });
+      });
+    });
+  }
+
+  function saveMap() {
+    if (typeof window.showSaveFilePicker !== "function") { saveViaDownload(); return; }
+    saveInPlace().catch(function (err) {
+      if (err && err.name === "AbortError") { readout.textContent = "Save cancelled."; return; }
+      readout.textContent = "Save failed: " + err.message;
+    });
   }
 
   function loadMap(file) {
