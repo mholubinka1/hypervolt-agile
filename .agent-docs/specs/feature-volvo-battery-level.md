@@ -241,7 +241,8 @@ uncharged because of a vehicle API problem.
   unchanged). Also required, matching an existing proven precedent in this exact area —
   `tests/extensions/test_saints_fc.py`'s test guarding against an API key embedded in a request
   URL leaking into a logged exception message: a case proving that a failed request never leaks
-  `client_secret`, `vcc_api_key`, the access token, or the refresh token into a log message,
+  `client_id`, `client_secret`, `vcc_api_key`, the access token, or the refresh token into a log
+  message,
   since httpx's own exception messages embed the full request URL and this client's credentials
   are materially more sensitive than `saints_fc`'s shared public test key.
 - **`extensions/volvo.py`**: the thin adapter's own logic (background task lifecycle,
