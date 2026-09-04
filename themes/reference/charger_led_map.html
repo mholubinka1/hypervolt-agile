@@ -427,13 +427,19 @@
     var jsonText = mapJsonText();
     var htmlText = mapHtmlText();
     downloadFile(MAP_JSON_FILENAME, jsonText, "application/json");
-    return new Promise(function (resolve) {
+    return new Promise(function (resolve, reject) {
       setTimeout(function () {
-        downloadFile(MAP_HTML_FILENAME, htmlText, "text/html");
-        readout.textContent = "This browser can't write files in place, so both were " +
-          "downloaded — move " + MAP_JSON_FILENAME + " and " + MAP_HTML_FILENAME + " into " +
-          "themes/reference/ to update the reference.";
-        resolve();
+        try {
+          downloadFile(MAP_HTML_FILENAME, htmlText, "text/html");
+          readout.textContent = "This browser can't write files in place, so both were " +
+            "downloaded — move " + MAP_JSON_FILENAME + " and " + MAP_HTML_FILENAME + " into " +
+            "themes/reference/ to update the reference.";
+          resolve();
+        } catch (err) {
+          // A throw inside setTimeout would otherwise leave this promise
+          // (and saveInFlight) hanging forever with no status message.
+          reject(err);
+        }
       }, DOWNLOAD_STAGGER_MS);
     });
   }
@@ -523,6 +529,12 @@
     });
   }
 
+  // Best-effort cleanup: if idbDelete itself fails, that failure must not
+  // displace the real error the caller is already throwing.
+  function forgetHandle(filename) {
+    return idbDelete(filename).catch(function () {});
+  }
+
   // Reuses a remembered handle (re-confirming permission) so only the very
   // first Save per browser profile needs the native picker; a denied
   // permission clears the stale handle so the next Save re-prompts cleanly.
@@ -531,7 +543,7 @@
       if (!stored) return pickAndStoreHandle(filename);
       return ensureWritePermission(stored).then(function (ok) {
         if (ok) return stored;
-        return idbDelete(filename).then(function () {
+        return forgetHandle(filename).then(function () {
           throw permissionDeniedError(filename);
         });
       });
@@ -547,7 +559,7 @@
     return handle.createWritable().then(function (writable) {
       return writable.write(content).then(function () { return writable.close(); });
     }).catch(function (err) {
-      return idbDelete(filename).then(function () { throw err; });
+      return forgetHandle(filename).then(function () { throw err; });
     });
   }
 
