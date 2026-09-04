@@ -1,4 +1,5 @@
 import asyncio
+import math
 from datetime import date, datetime, timedelta
 from logging import Logger, getLogger
 from typing import Any
@@ -102,14 +103,17 @@ class SaintsFcExtension:
         if (
             isinstance(self._poll_interval_hours, bool)
             or not isinstance(self._poll_interval_hours, (int, float))
+            or not math.isfinite(self._poll_interval_hours)
             or self._poll_interval_hours <= 0
         ):
             # ValueError, not TypeError, to match every other config
             # validation error in this extension (api_key) -- load_extensions()
             # catches them identically, so one consistent type is one less
-            # thing for an operator reading logs to remember.
+            # thing for an operator reading logs to remember. isfinite rejects
+            # a YAML `.nan` / `.inf`, which would otherwise poison every()'s
+            # interval arithmetic.
             raise ValueError(
-                f"poll_interval_hours must be a positive number, got type "
+                f"poll_interval_hours must be a positive, finite number, got type "
                 f"{type(self._poll_interval_hours).__name__}."
             )
         self._client = httpx.AsyncClient(

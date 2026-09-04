@@ -651,13 +651,17 @@ async def test_stop_cancels_the_background_task_cleanly() -> None:
     assert extension._task.cancelled() or extension._task.done()
 
 
-@pytest.mark.parametrize("poll_interval_hours", [0, 0.0, -1, "6", None, True, ["6"]])
+@pytest.mark.parametrize(
+    "poll_interval_hours",
+    [0, 0.0, -1, "6", None, True, ["6"], float("nan"), float("inf")],
+)
 def test_init_rejects_a_non_positive_or_non_numeric_poll_interval(
     poll_interval_hours: object,
 ) -> None:
-    # Scenario 10: poll_interval_hours must be a positive int/float. A bool,
-    # string, None, list, zero or negative all raise at construction -- the
-    # same ValueError style as api_key (describe the type, don't echo).
+    # Scenario 10: poll_interval_hours must be a positive, finite int/float. A
+    # bool, string, None, list, zero, negative, or a YAML .nan / .inf all raise
+    # at construction -- the same ValueError style as api_key (describe the
+    # type, don't echo). nan/inf would otherwise poison every()'s interval maths.
     with pytest.raises(ValueError):
         SaintsFcExtension({"poll_interval_hours": poll_interval_hours})
 
