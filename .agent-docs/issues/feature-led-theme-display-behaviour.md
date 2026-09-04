@@ -1,3 +1,5 @@
+> Work complete — PR ready to merge.
+
 # Issues: feature-led-theme-display-behaviour
 
 ## 1. Binary brightness and the always_on display gate
@@ -34,22 +36,22 @@ and give custom/built-in themes a per-theme display gate.
 
 ### Acceptance criteria
 
-- [ ] Given a resolved theme with `always_on=True`, when the car is not charging (and not
+- [x] Given a resolved theme with `always_on=True`, when the car is not charging (and not
       plugged in), then the LEDs are set to that theme at full brightness.
-- [ ] Given a resolved theme with `always_on=False`, when the car is not charging, then the
+- [x] Given a resolved theme with `always_on=False`, when the car is not charging, then the
       LEDs are set to the off state.
-- [ ] Given a resolved theme with `always_on=False`, when the car is charging, then the LEDs
+- [x] Given a resolved theme with `always_on=False`, when the car is charging, then the LEDs
       are set to that theme at full brightness.
-- [ ] Given no theme resolves, when the car is charging, then the LEDs are set to the off
+- [x] Given no theme resolves, when the car is charging, then the LEDs are set to the off
       state (no plain-white state).
-- [ ] Given `is_charging` is unknown, `_apply_led_state` makes no call to the charger.
-- [ ] `CustomLedTheme` and `BuiltInLedTheme` default `always_on` to `False` when omitted; a
+- [x] Given `is_charging` is unknown, `_apply_led_state` makes no call to the charger.
+- [x] `CustomLedTheme` and `BuiltInLedTheme` default `always_on` to `False` when omitted; a
       non-bool value raises at config load.
-- [ ] A `config.yml` with `led.brightness` set raises at load; an unknown key under `led:`
+- [x] A `config.yml` with `led.brightness` set raises at load; an unknown key under `led:`
       raises at load.
-- [ ] The custom- and built-in-theme loaders produce `LedTheme`s carrying the configured
+- [x] The custom- and built-in-theme loaders produce `LedTheme`s carrying the configured
       `always_on`; `resolve_theme` returns it unchanged through the defensive copy.
-- [ ] ADR 0014 committed under `.agent-docs/adr/`, and ADR 0010 marked superseded.
+- [x] ADR 0014 committed under `.agent-docs/adr/`, and ADR 0010 marked superseded.
 
 ---
 
@@ -83,17 +85,17 @@ themes as well as above them.
 
 ### Acceptance criteria
 
-- [ ] Given the primary walk finds a theme, `resolve_theme` returns it (defensively copied)
+- [x] Given the primary walk finds a theme, `resolve_theme` returns it (defensively copied)
       and no `resolve_fallback` is consulted.
-- [ ] Given the primary walk finds nothing and one extension's `resolve_fallback` returns a
+- [x] Given the primary walk finds nothing and one extension's `resolve_fallback` returns a
       theme, `resolve_theme` returns that theme (defensively copied, `always_on` preserved).
-- [ ] Given two extensions both return from `resolve_fallback`, the earlier one in config
+- [x] Given two extensions both return from `resolve_fallback`, the earlier one in config
       list order wins.
-- [ ] Given an extension's `resolve_fallback` raises, it is isolated (logged once, treated
+- [x] Given an extension's `resolve_fallback` raises, it is isolated (logged once, treated
       as `None`) and the next extension's `resolve_fallback` is still consulted.
-- [ ] Given an extension without a `resolve_fallback` method, `resolve_theme` handles it as
+- [x] Given an extension without a `resolve_fallback` method, `resolve_theme` handles it as
       yielding `None`.
-- [ ] ADR 0015 committed.
+- [x] ADR 0015 committed.
 
 ---
 
@@ -134,22 +136,22 @@ issue #4).
 
 ### Acceptance criteria
 
-- [ ] On a match date, `resolve` returns a theme whose LEDs equal the parsed
+- [x] On a match date, `resolve` returns a theme whose LEDs equal the parsed
       `themes/saints_fc.yaml` colour map and whose wire effect name is `saints_fc`, with
       `always_on=False`.
-- [ ] On a non-match date, `resolve` returns `None`.
-- [ ] Given the colour file is missing, construction raises and the extension is absent from
+- [x] On a non-match date, `resolve` returns `None`.
+- [x] Given the colour file is missing, construction raises and the extension is absent from
       the priority stack (logged; the app still starts).
-- [ ] The fixture store maps each recorded local date to a list of timezone-aware kick-off
+- [x] The fixture store maps each recorded local date to a list of timezone-aware kick-off
       instants; a fixture with an unparseable/absent kick-off is recorded with an empty list.
-- [ ] Kick-off parsing handles the UTC timestamp field and the local-time+local-date pair,
+- [x] Kick-off parsing handles the UTC timestamp field and the local-time+local-date pair,
       and falls back to the empty list on garbage.
-- [ ] The extension polls on the configured interval (default hourly), recording today and
+- [x] The extension polls on the configured interval (default hourly), recording today and
       tomorrow each poll, and drops entries for past dates.
-- [ ] The old `poll_time` field is gone; a `poll_interval_hours` that is not a positive
+- [x] The old `poll_time` field is gone; a `poll_interval_hours` that is not a positive
       number raises at extension load.
-- [ ] The placeholder LED builder and its `_RED` / `_WHITE` constants no longer exist.
-- [ ] ADR 0016 committed.
+- [x] The placeholder LED builder and its `_RED` / `_WHITE` constants no longer exist.
+- [x] ADR 0016 committed.
 
 ---
 
@@ -179,19 +181,19 @@ Narrow the Saints display to the match itself and give it its two-mode priority.
 
 ### Acceptance criteria
 
-- [ ] Given a fixture with a known kick-off, `resolve` returns the strip (`always_on=True`)
+- [x] Given a fixture with a known kick-off, `resolve` returns the strip (`always_on=True`)
       when `now` is within `[kickoff − 30m, kickoff + 3h]`, and `None` one second before
       `kickoff − 30m` and one second after `kickoff + 3h`.
-- [ ] Given two fixtures on one local date, `resolve` returns the strip during either
+- [x] Given two fixtures on one local date, `resolve` returns the strip during either
       fixture's window (union).
-- [ ] Given a fixture date whose kick-off is unknown (empty list), `resolve` returns `None`
+- [x] Given a fixture date whose kick-off is unknown (empty list), `resolve` returns `None`
       for every `now` that day and `resolve_fallback` returns the strip (`always_on=False`).
-- [ ] Given a match date and `now` outside every window, `resolve` returns `None` and
+- [x] Given a match date and `now` outside every window, `resolve` returns `None` and
       `resolve_fallback` returns the strip with `always_on=False`.
-- [ ] Given a non-match date, both `resolve` and `resolve_fallback` return `None`.
-- [ ] The window bounds are correct across a DST transition (kick-offs compared as
+- [x] Given a non-match date, both `resolve` and `resolve_fallback` return `None`.
+- [x] The window bounds are correct across a DST transition (kick-offs compared as
       timezone-aware instants).
-- [ ] End-to-end via the coordinator, on a fixture date with an `always_on:true` custom
+- [x] End-to-end via the coordinator, on a fixture date with an `always_on:true` custom
       theme configured: the custom theme shows before `kickoff − 30m` and after
       `kickoff + 3h`; the Saints strip shows during the window. With no custom theme
       configured: the charger is off before the window when idle, and shows the Saints strip
