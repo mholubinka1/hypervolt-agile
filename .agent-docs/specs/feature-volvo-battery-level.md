@@ -77,12 +77,15 @@ uncharged because of a vehicle API problem.
   (`_load_provider_class`, the `sys.modules` registration workaround, the `extensions_dir`
   path-traversal guard, `load_extensions`) and the isolation/dedup-logging wrapper
   (`ExtensionWrapper`) are protocol-agnostic already — only "which method identifies a valid
-  provider class" (`hasattr(cls, "resolve")`) is LED-specific. Extract the generic parts into a
-  shared location, parameterised by the provider's marker method name, so both
-  `LedThemeProvider` (`resolve`) and the new `VehicleProvider` (`get_battery_status`) load
-  through the same code, the same `extensions/` directory, and the same `--extensions-dir` CLI
-  flag. `hypervolt/led.py` keeps only what's LED-specific (the `LedTheme` dataclass, theme
-  window resolution) and a thin LED-specific wrapper around the shared loader.
+  provider class" (`hasattr(cls, "resolve")`) is LED-specific — and `ExtensionWrapper` itself
+  hardcodes `.resolve()`/`.resolve_fallback()` as the methods it dispatches through for
+  isolation/dedup. Extract the generic parts into a shared location, parameterised by both the
+  provider's marker method name (how the loader identifies a valid class) and the wrapper's own
+  dispatch method (what it actually calls and isolates), so both `LedThemeProvider` (`resolve`)
+  and the new `VehicleProvider` (`get_battery_status`) load through the same code, the same
+  `extensions/` directory, and the same `--extensions-dir` CLI flag. `hypervolt/led.py` keeps
+  only what's LED-specific (the `LedTheme` dataclass, theme window resolution) and a thin
+  LED-specific wrapper around the shared loader.
 - No change to LED behaviour, config, or existing extension files (`saints_fc.py` continues to
   work unmodified) — this is a pure prefactor making the mechanism reusable, not a rewrite.
 
@@ -105,17 +108,21 @@ uncharged because of a vehicle API problem.
   extension (cheap, cached — same pattern as LED's `resolve()`). Filter to statuses where
   `connected is True` and `reported_at` is within a 30-minute staleness window.
 - **Exactly one** match → that is the active vehicle for this cycle.
-- **Zero or more than one** match → ambiguous/unknown. Log a warning on the multiple-match case
-  (deduplicated the same way `ExtensionWrapper` already dedupes repeated identical failures, so
-  a persistently ambiguous household doesn't spam logs every ~10s). No gating either way — the
-  scheduler behaves exactly as it does today.
+- **Zero or more than one** match → ambiguous/unknown. Log a warning on the multiple-match case,
+  deduplicated by a new coordinator-level "last logged ambiguous state" check (analogous in
+  spirit to how `ExtensionWrapper` dedupes a single extension's repeated identical failures, but
+  necessarily a new mechanism — this is a cross-extension comparison across multiple providers'
+  results each cycle, not one provider's own repeated exception) so a persistently ambiguous
+  household doesn't spam logs every ~10s. No gating either way — the scheduler behaves exactly
+  as it does today.
 - If the active vehicle has a configured `target_charge_percent` and its battery is at or above
-  that target: force the lock decision in `_lock_control()` to locked, regardless of
-  `_should_unlock()` — this is a new override alongside the existing `car_plugged`/
-  `release_state` gates, not a replacement for either. It affects **lock state only**; schedule
-  building and pushing (`_apply_charging_schedule`) continue to run normally on the
-  price-optimal windows, since a locked charger simply can't act on them — this mirrors how the
-  app already separates "what the ideal schedule would be" from "whether the charger is
+  that target: force the lock decision inside `_lock_control()` to locked, regardless of
+  `_should_unlock()`. This is a new override that runs only when `_can_push()` already permits
+  lock control (i.e. `car_plugged` and `release_state` already allow it) — it does not touch
+  `_can_push()` itself, and does not replace either existing gate. It affects **lock state
+  only**; schedule building and pushing (`_apply_charging_schedule`) continue to run normally on
+  the price-optimal windows, since a locked charger simply can't act on them — this mirrors how
+  the app already separates "what the ideal schedule would be" from "whether the charger is
   currently allowed to act on it." No target configured on the active vehicle → no gating at
   all, that vehicle is monitored/logged only.
 - This gate re-evaluates fresh every cycle from the live battery reading — no persisted "target
@@ -178,8 +185,10 @@ uncharged because of a vehicle API problem.
 
 - Tokens are **not** stored in `config.yml`. Volvo's own official sample re-captures
   `refresh_token` after every refresh call — the standard defensive pattern for a token that may
-  rotate on a Keycloak-style OIDC provider (which `volvoid.eu.volvocars.com` appears to be,
-  notably the same pattern Hypervolt's own auth already uses). Persisting a possibly-rotating
+  rotate on a Keycloak-style OIDC provider (`volvoid.eu.volvocars.com`, confirmed via Volvo's
+  official `oauth2-code-flow-sample` on GitHub). Whether Hypervolt's own auth provider behaves
+  the same way was not checked during this session and isn't relevant to this decision — this
+  choice rests solely on Volvo's own confirmed sample behaviour. Persisting a possibly-rotating
   value into `config.yml` would require a comment-preserving YAML writer (`ruamel.yaml`, a new
   dependency) and would turn a previously read-only startup file into runtime-mutable state.
 - Instead, each vehicle's `config:` block requires an explicit `token_store_path` — a flat,
@@ -229,7 +238,12 @@ uncharged because of a vehicle API problem.
   hints, 429 backs off with the 60s/3-retry bounds, 5xx/network is caught and skipped), plus
   VIN auto-discovery (single vehicle, multiple vehicles with a warning), and refresh-token
   persistence (the token file is rewritten with whatever `refresh_token` came back, even when
-  unchanged).
+  unchanged). Also required, matching an existing proven precedent in this exact area —
+  `tests/extensions/test_saints_fc.py`'s test guarding against an API key embedded in a request
+  URL leaking into a logged exception message: a case proving that a failed request never leaks
+  `client_secret`, `vcc_api_key`, the access token, or the refresh token into a log message,
+  since httpx's own exception messages embed the full request URL and this client's credentials
+  are materially more sensitive than `saints_fc`'s shared public test key.
 - **`extensions/volvo.py`**: the thin adapter's own logic (background task lifecycle,
   caching) follows the same test shape already proven for `saints_fc.py`'s `start()`/`stop()`
   task management — no new pattern needed.

@@ -112,6 +112,10 @@ callback listener, works identically whether run locally or over SSH on a headle
       its value is unchanged from before
 - [ ] Two vehicle entries with different `token_store_path` values never read or write each
       other's token file
+- [ ] A failed token exchange/refresh never leaks `client_id`, `client_secret`, the access
+      token, or the refresh token into a logged message (matches the existing precedent in
+      `tests/extensions/test_saints_fc.py` guarding against its own API key leaking via an
+      httpx exception's default URL-embedding message)
 
 ---
 
@@ -145,6 +149,9 @@ capped at 3 retries), 5xx/network (log a warning, skip this call).
 - [ ] 429 backs off exponentially with a 60s minimum wait and stops after 3 retries
 - [ ] 5xx and network errors are caught, logged as a warning, and never propagate as an
       exception out of the client
+- [ ] A failed request never leaks the `vcc_api_key` header or the access token into a logged
+      message (matches the existing precedent in `tests/extensions/test_saints_fc.py` guarding
+      against its own API key leaking via an httpx exception's default URL-embedding message)
 
 ---
 
