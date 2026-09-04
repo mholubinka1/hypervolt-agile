@@ -17,14 +17,12 @@ def _load_show_led_theme() -> ModuleType:
 
 
 _SAINTS_RED_INDICES = {
-    1,
-    2,
-    5,
-    6,
-    21,
-    22,
-    24,
-    25,
+    # right ring edge: 0 plus the run 27..38
+    0,
+    *range(27, 39),
+    # left ring edge: 7..19
+    *range(7, 20),
+    # bolt: lower blade 39-40, hook 42-44, upper blade 48-50
     39,
     40,
     42,

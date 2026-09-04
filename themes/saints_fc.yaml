@@ -1,17 +1,21 @@
-# Southampton FC home kit -- five wide vertical stripes across the charger face:
-#   white . red . white . red . white   (left -> right)
+# Southampton FC home kit -- red down both long edges of the charger ring and
+# along the lightning bolt; white across the top edge, bottom edge and centre.
 #
-# One colour per LED, by which vertical stripe the LED position falls in. LED
-# positions are the golden record in themes/reference/charger_led_map.json;
-# preview and edit with themes/reference/charger_led_map.html.
+#   left ring edge (7 -> 19)  : red
+#   right ring edge (0, 27 -> 38) : red
+#   top edge (1 -> 6)         : white
+#   bottom edge (20 -> 26)    : white   (these LEDs are physically dead anyway)
+#   bolt (39 -> 50)           : 39,40 42-44 48-50 red, the rest white
+#
+# One colour per LED. LED positions are the golden record in
+# themes/reference/charger_led_map.json; preview and edit with
+# themes/reference/charger_led_map.html.
 default_colour: "#FFFFFF"
 segments:
   - colour: "#D71920"        # Southampton red
+    indices: [0]
     ranges:
-      - [1, 2]
-      - [5, 6]
-      - [21, 22]
-      - [24, 25]
-      - [39, 40]
+      - [7, 19]
+      - [27, 40]
       - [42, 44]
       - [48, 50]
