@@ -295,6 +295,10 @@ to always outrank Saints via issue #133's priority field.
 - [ ] Given an England fixture with a known kick-off, `resolve` returns the strip
       (`always_on=True`, `effect_name="england"`) when `now` is within
       `[kickoff − 30m, kickoff + 3h]`, and `None` outside it.
+- [ ] Kick-off parsing is tested for both source shapes: a fixture whose event carries
+      `strTimestamp` (UTC) parses correctly from it, and a fixture without `strTimestamp` but
+      with `strTimeLocal`+`dateEventLocal` parses correctly from that fallback pair — mirroring
+      `tests/extensions/themes/test_saints_fc.py`'s existing coverage of both branches.
 - [ ] Given an England fixture date with the kick-off unknown, `resolve` returns `None` all
       day and `resolve_fallback` returns the strip (`always_on=False`).
 - [ ] Given a double-header (two England fixtures one date), `resolve` covers either
