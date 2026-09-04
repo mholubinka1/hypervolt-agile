@@ -70,8 +70,8 @@ An operator-registered Python module implementing the `LedThemeProvider` protoco
 _Avoid_: LED plugin, dynamic theme
 
 **Charger LED map**:
-The canonical record of where each of the 51 LEDs sits on the charger face — millimetres from the body's top-left corner (body 243 × 328 mm), a region, and whether the LED visibly lights. Maintained by dragging LEDs at true scale on `themes/reference/charger_led_map.html` and exporting `themes/reference/charger_led_map.json`; every theme's colours are designed against it. Indices 20–26 are recorded but do not light.
-_Avoid_: LED layout, position file, calibration map
+The canonical record of where each of the 51 LEDs sits on the charger face — millimetres from the body's top-left corner (body 243 × 328 mm), a region, and whether the LED visibly lights. Maintained by dragging LEDs at true scale on `themes/reference/charger_led_map.html`, then Saving, which writes the corrected positions straight back to the committed `charger_led_map.json` and a regenerated `charger_led_map.html` in place (Chromium only, via the File System Access API); every theme's colours are designed against it. Indices 20–26 are recorded but do not light.
+_Avoid_: LED layout, position file, calibration map, exporting
 
 **Priority stack**:
 The authority order used to resolve which LED Theme applies when multiple sources could match at once: registered extensions (config list order) beat custom themes (config list order) beat built-in presets. Resolution runs a second, fallback pass — extensions' `resolve_fallback` — only when the first pass finds nothing, which is how the Saints FC extension sits _above_ everything inside its Match window and _below_ everything outside it.
