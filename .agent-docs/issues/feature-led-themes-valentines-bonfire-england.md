@@ -12,8 +12,9 @@
 
 Move the existing LED theme extension into a new `extensions/themes/` subfolder, and
 establish (without populating) `extensions/vehicles/` as its sibling, so `extensions/` is
-organised by the two provider kinds the shared extension loader (ADR 0017) distinguishes.
-Pure reorganisation — no loader/mechanism code changes, no behaviour change.
+organised by the two provider kinds ADR 0017 decided the extension loader will distinguish
+once it becomes multi-protocol (not yet implemented). Pure reorganisation — no loader/
+mechanism code changes, no behaviour change.
 
 - Move `extensions/saints_fc.py` → `extensions/themes/saints_fc.py`.
 - Move `tests/extensions/test_saints_fc.py` → `tests/extensions/themes/test_saints_fc.py`.
@@ -228,8 +229,12 @@ orange/red/yellow flicker on every call, using issue #134's `animated` flag and 
 ### Acceptance criteria
 
 - [ ] Given `now` inside the Nov 5 window, `resolve(now)` returns a `LedTheme` with 51 LEDs,
-      `animated=True`, every colour drawn from the orange/red/yellow palette.
-- [ ] Given `now` outside the window, `resolve(now)` returns `None`.
+      `animated=True`, every colour drawn from the orange/red/yellow palette. Sampled across
+      many consecutive calls, every colour returned stays within that palette (no stray
+      values) — not just true for one sample.
+- [ ] `resolve(now)` returns `None` at the exact boundary instants — one second before the
+      window opens and one second after it closes — not just "somewhere outside," proving the
+      window is closed at both ends.
 - [ ] Two consecutive `resolve()` calls while inside the window return LEDs that differ from
       each other (proves real per-call randomisation, not one fixed frame).
 - [ ] `resolve_fallback` is either absent or always returns `None` — bonfire never competes
@@ -282,7 +287,8 @@ to always outrank Saints via issue #133's priority field.
 ### Acceptance criteria
 
 - [ ] `themes/england.yaml` exists and `hypervolt.led.load_custom_effect` parses it to 51
-      LEDs with no error.
+      LEDs with no error. A `tests/themes/test_shipped_themes.py`-style shipped-theme test
+      asserts this, mirroring the pattern used for `themes/valentines.yaml` in #132.
 - [ ] The colours have been pushed to the real charger via
       `scripts/show_led_theme.py --effect england` and iterated against
       `themes/reference/charger_led_map.html` until confirmed to look right on the hardware.
@@ -294,6 +300,9 @@ to always outrank Saints via issue #133's priority field.
 - [ ] Given a double-header (two England fixtures one date), `resolve` covers either
       fixture's window.
 - [ ] Given a non-fixture date, both `resolve` and `resolve_fallback` return `None`.
+- [ ] The match window's bounds are correct across a DST transition — a fixture whose kick-off
+      falls near a clock change resolves the same real-world window either side of it (mirrors
+      `tests/extensions/themes/test_saints_fc.py`'s existing DST-transition case).
 - [ ] `poll_interval_hours` validation matches Saints' (positive, finite, default 1).
 - [ ] End-to-end via the coordinator, with both `england` (priority 1) and `saints_fc`
       (priority 0, or unset) configured and both extensions' match windows simultaneously

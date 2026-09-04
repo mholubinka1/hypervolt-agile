@@ -66,8 +66,10 @@ documented hard rename for the one already-shipped extension.
    accepting the duplication rather than extracting a shared base — so each file stays fully
    readable on its own, at the cost of two files to update if the shared shape ever changes.
 8. As a maintainer, I want `extensions/` organised by provider kind (`themes/`, `vehicles/`)
-   so the shared, multi-protocol extension loader (ADR 0017) has a directory layout that
-   actually reflects what it loads, without needing a second loader or a second CLI flag.
+   so the extension loader — decided by ADR 0017 to become multi-protocol once the Volvo
+   feature lands, though that implementation hasn't happened yet — gets a directory layout
+   that already reflects what it will load, without needing a second loader or a second CLI
+   flag later.
 
 ## Implementation Decisions
 
@@ -186,9 +188,10 @@ invoked fresh every cycle, so it's the only seam that can return different LEDs 
 
 - Exactly two new subfolders, both nested under the existing `extensions/` directory:
   `extensions/themes/` and `extensions/vehicles/`. Named after the two provider kinds
-  ADR 0017's shared extension loader already distinguishes (`LedThemeProvider` vs
-  `VehicleProvider`) — **not** named after this repo's separate, unrelated top-level
-  `themes/` directory (YAML colour data), which this reorg does not touch at all.
+  ADR 0017 decided a (not-yet-built) shared extension loader will distinguish
+  (`LedThemeProvider` vs `VehicleProvider`) — **not** named after this repo's separate,
+  unrelated top-level `themes/` directory (YAML colour data), which this reorg does not touch
+  at all.
   `themes/saints_fc.yaml`, `themes/valentines.yaml`, `themes/england.yaml`, and
   `themes/reference/` all stay exactly where they are.
 - `extensions/themes/` holds every `LedThemeProvider`: the existing `extensions/saints_fc.py`
