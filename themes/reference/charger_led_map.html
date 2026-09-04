@@ -391,7 +391,9 @@
         var data = JSON.parse(reader.result);
         var skipped = 0;
         Object.keys(data).forEach(function (k) {
-          if (!model[k]) return;
+          // own numeric keys only -- guards against "__proto__" etc. from an
+          // arbitrary loaded file resolving through the prototype chain.
+          if (!Object.prototype.hasOwnProperty.call(model, k)) return;
           var x = Number(data[k].x_mm), y = Number(data[k].y_mm);
           if (!Number.isFinite(x) || !Number.isFinite(y)) { skipped++; return; }
           model[k].x = round1(clamp(x, 0, BODY_W));
