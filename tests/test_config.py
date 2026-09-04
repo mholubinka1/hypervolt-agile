@@ -225,6 +225,14 @@ def test_led_config_accepts_built_in_themes() -> None:
     ]
 
 
+def test_led_config_accepts_custom_themes() -> None:
+    config = LedConfig(
+        custom_themes=[{"effect": "saints_fc", "start": "08-01", "end": "05-31"}]
+    )
+
+    assert [t.effect for t in config.custom_themes] == ["saints_fc"]
+
+
 def test_extension_entry_defaults_config_to_an_empty_dict_when_omitted() -> None:
     entry = ExtensionEntry(name="saints_fc")
 

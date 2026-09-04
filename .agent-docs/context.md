@@ -62,12 +62,16 @@ The visual pattern applied to the charger's LEDs: either a built-in effect the c
 _Avoid_: LED pattern, colour scheme
 
 **Custom theme**:
-An operator-defined LED Effect backed by a static colour YAML file in `led_effects/`, mapped to a year-agnostic date window in `config.yml`. Pure data — no logic, no config of its own.
-_Avoid_: custom effect, theme file
+An LED Effect backed by a static colour YAML file in the repo's `themes/` directory, mapped to a year-agnostic date window via a `custom_themes` entry in `config.yml`. Shipped maps and operator-added maps sit together in `themes/`; each is opt-in — listing it in `config.yml` is what activates it. Pure data — no logic.
+_Avoid_: custom effect, theme file, led_effects
 
 **LED Theme Extension**:
 An operator-registered Python module implementing the `LedThemeProvider` protocol, resolving a theme dynamically (e.g. from a sports fixtures API) rather than from a fixed calendar window. Fully self-contained — each extension operates from its own isolated config, with nothing shared or inherited between extensions.
 _Avoid_: LED plugin, dynamic theme
+
+**Charger LED map**:
+The canonical record of where each of the 51 LEDs sits on the charger face — millimetres from the body's top-left corner (body 243 × 328 mm), a region, and whether the LED visibly lights. Maintained by dragging LEDs at true scale on `themes/reference/charger_led_map.html` and exporting `themes/reference/charger_led_map.json`; every theme's colours are designed against it. Indices 20–26 are recorded but do not light.
+_Avoid_: LED layout, position file, calibration map
 
 **Priority stack**:
 The fixed authority order used to resolve which LED Theme applies when multiple sources could match at once: registered extensions (config list order) beat custom themes (config list order) beat built-in presets.

@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Charger LED Map</title>
+<style>
+  :root {
+    --bg: #10131a;
+    --panel: #171b24;
+    --panel-2: #1e2330;
+    --border: #2b3040;
+    --ink: #e9ecf2;
+    --ink-dim: #99a1b3;
+    --ink-faint: #6b7385;
+    --accent: #4da3ff;
+    --backing: #e9ebef;
+    --body-stroke: #b6bcc6;
+    --dead: #b9bfc9;
+    --shadow: rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #eef0f4;
+      --panel: #ffffff;
+      --panel-2: #f4f6f9;
+      --border: #d6dae2;
+      --ink: #1a1f2b;
+      --ink-dim: #5b6472;
+      --ink-faint: #8a93a3;
+      --accent: #1d6fd0;
+      --shadow: rgba(20, 22, 28, 0.1);
+      color-scheme: light;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.55 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 78rem; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+  h1 {
+    font: 700 1.7rem/1.1 "Chakra Petch", system-ui, sans-serif;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.4rem;
+  }
+  p.sub { color: var(--ink-dim); margin: 0 0 1.75rem; max-width: 44rem; }
+
+  .layout { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(300px, 26rem); gap: 1.5rem; align-items: start; }
+  @media (max-width: 60rem) { .layout { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.25rem;
+    box-shadow: 0 1px 2px var(--shadow), 0 16px 40px -30px var(--shadow);
+  }
+  .card + .card { margin-top: 1.25rem; }
+  .card h2 {
+    font: 600 0.95rem/1.2 "Chakra Petch", system-ui, sans-serif;
+    margin: 0 0 0.75rem;
+    color: var(--ink);
+  }
+
+  svg.map { display: block; width: 100%; height: auto; background: var(--panel-2); border-radius: 10px; touch-action: none; }
+
+  .body-shell { fill: var(--backing); stroke: var(--body-stroke); stroke-width: 1.5; }
+  .led { cursor: grab; }
+  .led:active { cursor: grabbing; }
+  .led circle { stroke: #10131a; stroke-width: 1; }
+  .led.dead circle { fill: none !important; stroke: var(--dead); stroke-dasharray: 2.5 2; }
+  .led text {
+    font: 700 7px/1 "IBM Plex Mono", ui-monospace, monospace;
+    text-anchor: middle; dominant-baseline: central;
+    pointer-events: none; user-select: none;
+  }
+  .led:focus-visible { outline: none; }
+  .led:focus-visible circle { stroke: var(--accent); stroke-width: 2.5; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  button, label.file, .toggle {
+    font: 600 0.82rem/1 inherit;
+    padding: 0.5rem 0.85rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:hover, label.file:hover { filter: brightness(1.12); }
+  input[type=file] { display: none; }
+
+  .readout {
+    font: 500 0.82rem/1.5 "IBM Plex Mono", ui-monospace, monospace;
+    color: var(--ink-dim);
+    margin-top: 0.75rem;
+    min-height: 1.5em;
+  }
+  .readout b { color: var(--ink); }
+
+  textarea {
+    width: 100%; min-height: 7rem; resize: vertical;
+    font: 0.8rem/1.5 "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem;
+  }
+  pre.out {
+    font: 0.8rem/1.5 "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.7rem 0.8rem; margin: 0.75rem 0 0; overflow-x: auto; white-space: pre;
+  }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem; margin-top: 0.9rem; font-size: 0.76rem; color: var(--ink-dim); }
+  .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .swatch { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #10131a; flex: none; }
+  .status { font: 500 0.8rem/1.4 "IBM Plex Mono", ui-monospace, monospace; color: var(--ink-faint); margin-top: 0.6rem; min-height: 1.4em; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Charger LED Map</h1>
+  <p class="sub">
+    True-scale map of the Hypervolt Home 3 face (243&nbsp;&times;&nbsp;328&nbsp;mm). Drag any LED to
+    its real position, or nudge a focused one with the arrow keys (1&nbsp;mm). <b>Export</b> writes
+    <code>charger_led_map.json</code> &mdash; the golden record every theme is designed against.
+    Load a <code>themes/*.yaml</code> colour map to preview it here and read its segment ranges back.
+  </p>
+
+  <div class="layout">
+    <div class="card">
+      <div class="row">
+        <button class="primary" id="export">Export JSON</button>
+        <label class="file">Load map&hellip;<input type="file" id="load-map" accept=".json,application/json"></label>
+        <button id="reset">Reset to seed</button>
+      </div>
+      <svg class="map" id="map" viewBox="-28 -28 299 384" role="group"
+        aria-label="Scale map of the charger face with 51 draggable LED handles.">
+        <rect class="body-shell" x="0" y="0" width="243" height="328" rx="24"></rect>
+        <g id="handles"></g>
+      </svg>
+      <div class="readout" id="readout">Drag or focus an LED to see its position.</div>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="card">
+      <h2>Preview a theme</h2>
+      <div class="row" style="margin-bottom:0.6rem">
+        <label class="file">Load YAML&hellip;<input type="file" id="load-yaml" accept=".yaml,.yml,text/yaml"></label>
+        <button id="preview">Preview pasted</button>
+        <button id="clear-preview">Clear</button>
+      </div>
+      <textarea id="yaml" aria-label="Theme YAML to preview"
+        placeholder="default_colour: &quot;#FFFFFF&quot;&#10;segments:&#10;  - colour: &quot;#D71920&quot;&#10;    ranges:&#10;      - [1, 2]"></textarea>
+      <div class="status" id="status"></div>
+      <h2 style="margin-top:1.25rem">Segment ranges from the shown colours</h2>
+      <pre class="out" id="regen">(load or paste a theme)</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Deliberate copy of themes/reference/charger_led_map.json: this page must run
+     from file:// where fetching a sibling file is blocked. The two are kept
+     identical by tests/themes/test_charger_led_map.py -->
+<script type="application/json" id="charger-led-map">
+{
+  "0": { "x_mm": 210.0, "y_mm": 15.0, "region": "ring-top", "live": true },
+  "1": { "x_mm": 184.7, "y_mm": 15.0, "region": "ring-top", "live": true },
+  "2": { "x_mm": 159.4, "y_mm": 15.0, "region": "ring-top", "live": true },
+  "3": { "x_mm": 134.1, "y_mm": 15.0, "region": "ring-top", "live": true },
+  "4": { "x_mm": 108.9, "y_mm": 15.0, "region": "ring-top", "live": true },
+  "5": { "x_mm": 83.6, "y_mm": 15.0, "region": "ring-top", "live": true },
+  "6": { "x_mm": 58.3, "y_mm": 15.0, "region": "ring-top", "live": true },
+  "7": { "x_mm": 33.0, "y_mm": 15.0, "region": "ring-top", "live": true },
+  "8": { "x_mm": 16.0, "y_mm": 27.0, "region": "ring-top-left-corner", "live": true },
+  "9": { "x_mm": 15.0, "y_mm": 50.0, "region": "ring-left", "live": true },
+  "10": { "x_mm": 15.0, "y_mm": 78.8, "region": "ring-left", "live": true },
+  "11": { "x_mm": 15.0, "y_mm": 107.5, "region": "ring-left", "live": true },
+  "12": { "x_mm": 15.0, "y_mm": 136.2, "region": "ring-left", "live": true },
+  "13": { "x_mm": 15.0, "y_mm": 165.0, "region": "ring-left", "live": true },
+  "14": { "x_mm": 15.0, "y_mm": 193.8, "region": "ring-left", "live": true },
+  "15": { "x_mm": 15.0, "y_mm": 222.5, "region": "ring-left", "live": true },
+  "16": { "x_mm": 15.0, "y_mm": 251.2, "region": "ring-left", "live": true },
+  "17": { "x_mm": 15.0, "y_mm": 280.0, "region": "ring-left", "live": true },
+  "18": { "x_mm": 16.0, "y_mm": 301.0, "region": "ring-bottom-left-corner", "live": true },
+  "19": { "x_mm": 33.0, "y_mm": 313.0, "region": "ring-bottom", "live": true },
+  "20": { "x_mm": 55.1, "y_mm": 313.0, "region": "ring-bottom", "live": false },
+  "21": { "x_mm": 77.2, "y_mm": 313.0, "region": "ring-bottom", "live": false },
+  "22": { "x_mm": 99.4, "y_mm": 313.0, "region": "ring-bottom", "live": false },
+  "23": { "x_mm": 121.5, "y_mm": 313.0, "region": "ring-bottom", "live": false },
+  "24": { "x_mm": 143.6, "y_mm": 313.0, "region": "ring-bottom", "live": false },
+  "25": { "x_mm": 165.8, "y_mm": 313.0, "region": "ring-bottom", "live": false },
+  "26": { "x_mm": 187.9, "y_mm": 313.0, "region": "ring-bottom", "live": false },
+  "27": { "x_mm": 210.0, "y_mm": 313.0, "region": "ring-bottom", "live": true },
+  "28": { "x_mm": 227.0, "y_mm": 301.0, "region": "ring-bottom-right-corner", "live": true },
+  "29": { "x_mm": 228.0, "y_mm": 280.0, "region": "ring-right", "live": true },
+  "30": { "x_mm": 228.0, "y_mm": 251.2, "region": "ring-right", "live": true },
+  "31": { "x_mm": 228.0, "y_mm": 222.5, "region": "ring-right", "live": true },
+  "32": { "x_mm": 228.0, "y_mm": 193.8, "region": "ring-right", "live": true },
+  "33": { "x_mm": 228.0, "y_mm": 165.0, "region": "ring-right", "live": true },
+  "34": { "x_mm": 228.0, "y_mm": 136.2, "region": "ring-right", "live": true },
+  "35": { "x_mm": 228.0, "y_mm": 107.5, "region": "ring-right", "live": true },
+  "36": { "x_mm": 228.0, "y_mm": 78.8, "region": "ring-right", "live": true },
+  "37": { "x_mm": 228.0, "y_mm": 50.0, "region": "ring-right", "live": true },
+  "38": { "x_mm": 227.0, "y_mm": 27.0, "region": "ring-top-right-corner", "live": true },
+  "39": { "x_mm": 80.0, "y_mm": 244.0, "region": "bolt", "bolt_segment": "lower-blade", "live": true },
+  "40": { "x_mm": 78.0, "y_mm": 185.0, "region": "bolt", "bolt_segment": "lower-blade", "live": true },
+  "41": { "x_mm": 105.0, "y_mm": 218.0, "region": "bolt", "bolt_segment": "lower-blade", "live": true },
+  "42": { "x_mm": 92.0, "y_mm": 188.0, "region": "bolt", "bolt_segment": "hook", "live": true },
+  "43": { "x_mm": 88.0, "y_mm": 178.0, "region": "bolt", "bolt_segment": "hook", "live": true },
+  "44": { "x_mm": 95.0, "y_mm": 164.0, "region": "bolt", "bolt_segment": "hook", "live": true },
+  "45": { "x_mm": 104.0, "y_mm": 154.0, "region": "bolt", "bolt_segment": "upper-blade", "live": true },
+  "46": { "x_mm": 114.0, "y_mm": 142.0, "region": "bolt", "bolt_segment": "upper-blade", "live": true },
+  "47": { "x_mm": 133.0, "y_mm": 126.0, "region": "bolt", "bolt_segment": "upper-blade", "live": true },
+  "48": { "x_mm": 144.0, "y_mm": 116.0, "region": "bolt", "bolt_segment": "upper-blade", "live": true },
+  "49": { "x_mm": 158.0, "y_mm": 95.0, "region": "bolt", "bolt_segment": "upper-blade", "live": true },
+  "50": { "x_mm": 172.0, "y_mm": 74.0, "region": "bolt", "bolt_segment": "upper-blade", "live": true }
+}
+</script>
+
+<script>
+(function () {
+  "use strict";
+
+  var BODY_W = 243, BODY_H = 328;
+  var SVGNS = "http://www.w3.org/2000/svg";
+
+  function el(id) {
+    var node = document.getElementById(id);
+    if (!node) throw new Error("charger_led_map.html: missing #" + id);
+    return node;
+  }
+
+  var SEED = JSON.parse(el("charger-led-map").textContent);
+  // working model: index -> {x, y, region, live, bolt_segment?, colour?}
+  var model = {};
+
+  var REGION_COLOUR = {
+    "ring-top": "#7db4ff", "ring-top-left-corner": "#3f7fd6",
+    "ring-left": "#8fd0a0", "ring-bottom-left-corner": "#3f7fd6",
+    "ring-bottom": "#c7cdd8", "ring-bottom-right-corner": "#3f7fd6",
+    "ring-right": "#8fd0a0", "ring-top-right-corner": "#3f7fd6",
+  };
+  var SEGMENT_COLOUR = {
+    "lower-blade": "#f4b860", "hook": "#e0902f", "upper-blade": "#c06a1e",
+  };
+
+  function regionFill(entry) {
+    if (entry.region === "bolt") return SEGMENT_COLOUR[entry.bolt_segment] || "#f4b860";
+    return REGION_COLOUR[entry.region] || "#888";
+  }
+
+  function seedModel() {
+    model = {};
+    Object.keys(SEED).forEach(function (k) {
+      var s = SEED[k];
+      model[k] = {
+        x: s.x_mm, y: s.y_mm, region: s.region, live: s.live,
+        bolt_segment: s.bolt_segment, colour: null,
+      };
+    });
+  }
+
+  var svg = el("map");
+  var handlesGroup = el("handles");
+  var readout = el("readout");
+  var handleEls = {};
+
+  function buildHandles() {
+    handlesGroup.textContent = "";
+    handleEls = {};
+    Object.keys(model).forEach(function (k) {
+      var m = model[k];
+      var g = document.createElementNS(SVGNS, "g");
+      g.setAttribute("class", "led" + (m.live ? "" : " dead"));
+      g.setAttribute("data-index", k);
+      g.setAttribute("tabindex", "0");
+      g.setAttribute("role", "button");
+      g.setAttribute("transform", "translate(" + m.x + "," + m.y + ")");
+      g.setAttribute("aria-label", "LED " + k + " " + m.region + " -- arrow keys nudge 1 mm");
+
+      var c = document.createElementNS(SVGNS, "circle");
+      c.setAttribute("r", "7");
+      c.setAttribute("fill", regionFill(m));
+
+      var t = document.createElementNS(SVGNS, "text");
+      t.textContent = k;
+      t.setAttribute("fill", m.live ? "#10131a" : "var(--dead)");
+
+      g.appendChild(c);
+      g.appendChild(t);
+      handlesGroup.appendChild(g);
+      handleEls[k] = g;
+      wireHandle(g, k);
+    });
+  }
+
+  function place(k) {
+    var m = model[k];
+    handleEls[k].setAttribute("transform", "translate(" + m.x + "," + m.y + ")");
+  }
+
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  function round1(v) { return Math.round(v * 10) / 10; }
+
+  function showReadout(k) {
+    var m = model[k];
+    readout.innerHTML = "<b>LED " + k + "</b> &mdash; " + m.region +
+      (m.bolt_segment ? " / " + m.bolt_segment : "") +
+      " &mdash; x <b>" + round1(m.x) + "</b> mm, y <b>" + round1(m.y) + "</b> mm" +
+      (m.live ? "" : " &mdash; not lit");
+  }
+
+  function svgPoint(clientX, clientY) {
+    var pt = svg.createSVGPoint();
+    pt.x = clientX; pt.y = clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  function wireHandle(g, k) {
+    g.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      g.setPointerCapture(e.pointerId);
+      g.dataset.dragging = "1";
+      g.focus();
+      showReadout(k);
+    });
+    g.addEventListener("pointermove", function (e) {
+      if (g.dataset.dragging !== "1") return;
+      var p = svgPoint(e.clientX, e.clientY);
+      model[k].x = round1(clamp(p.x, 0, BODY_W));
+      model[k].y = round1(clamp(p.y, 0, BODY_H));
+      place(k);
+      showReadout(k);
+    });
+    function end(e) {
+      if (g.dataset.dragging === "1") {
+        g.dataset.dragging = "";
+        try { g.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
+    }
+    g.addEventListener("pointerup", end);
+    g.addEventListener("pointercancel", end);
+    g.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showReadout(k); return; }
+      var step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      model[k].x = round1(clamp(model[k].x + step[0], 0, BODY_W));
+      model[k].y = round1(clamp(model[k].y + step[1], 0, BODY_H));
+      place(k);
+      showReadout(k);
+    });
+    g.addEventListener("focus", function () { showReadout(k); });
+  }
+
+  // ---- export / load ----
+  function exportJson() {
+    var out = {};
+    Object.keys(model).forEach(function (k) {
+      var m = model[k];
+      var row = { x_mm: round1(m.x), y_mm: round1(m.y), region: m.region };
+      if (m.bolt_segment) row.bolt_segment = m.bolt_segment;
+      row.live = m.live;
+      out[k] = row;
+    });
+    var blob = new Blob([JSON.stringify(out, null, 2) + "\n"], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "charger_led_map.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function loadMap(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var data = JSON.parse(reader.result);
+        var skipped = 0;
+        Object.keys(data).forEach(function (k) {
+          // own numeric keys only -- guards against "__proto__" etc. from an
+          // arbitrary loaded file resolving through the prototype chain.
+          if (!Object.prototype.hasOwnProperty.call(model, k)) return;
+          var x = Number(data[k].x_mm), y = Number(data[k].y_mm);
+          if (!Number.isFinite(x) || !Number.isFinite(y)) { skipped++; return; }
+          model[k].x = round1(clamp(x, 0, BODY_W));
+          model[k].y = round1(clamp(y, 0, BODY_H));
+          if (typeof data[k].live === "boolean") model[k].live = data[k].live;
+          place(k);
+        });
+        buildHandles();
+        readout.textContent = "Loaded " + file.name +
+          (skipped ? " (" + skipped + " entr" + (skipped === 1 ? "y" : "ies") +
+            " skipped: non-numeric position)" : ".");
+      } catch (err) {
+        readout.textContent = "Could not read that file: " + err.message;
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---- theme YAML: parse a small subset ----
+  function parseThemeYaml(text) {
+    var lines = text.replace(/\r/g, "").split("\n");
+    var defColour = null;
+    var segments = [];
+    var cur = null;
+    var mode = null; // "indices" | "ranges"
+    lines.forEach(function (raw) {
+      // Strip only a "# comment" that follows whitespace or starts the line --
+      // never a "#RRGGBB" colour literal, which is always preceded by a quote.
+      var line = raw.replace(/(^|\s)#.*$/, "$1");
+      if (!line.trim()) return;
+      var m;
+      if ((m = line.match(/^default_colour:\s*["']?(#[0-9a-fA-F]{6})["']?/))) {
+        defColour = m[1].toUpperCase(); return;
+      }
+      if (/^segments:\s*$/.test(line)) { return; }
+      if ((m = line.match(/^\s*-\s*colour:\s*["']?(#[0-9a-fA-F]{6})["']?/))) {
+        cur = { colour: m[1].toUpperCase(), indices: [] };
+        segments.push(cur); mode = null; return;
+      }
+      // Everything below belongs to a segment; a well-formed theme always has
+      // "- colour:" first. Bail on stray indices/ranges rather than deref null.
+      if (!cur) { mode = null; return; }
+      if (/^\s*indices:\s*\[/.test(line)) {
+        (line.match(/-?\d+/g) || []).forEach(function (n) { cur.indices.push(+n); });
+        mode = null; return;
+      }
+      if (/^\s*indices:\s*$/.test(line)) { mode = "indices"; return; }
+      if (/^\s*ranges:\s*$/.test(line)) { mode = "ranges"; return; }
+      if ((m = line.match(/^\s*-\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]/))) {
+        for (var i = +m[1]; i <= +m[2]; i++) cur.indices.push(i);
+        return;
+      }
+      if (mode === "indices" && (m = line.match(/^\s*-\s*(\d+)/))) {
+        cur.indices.push(+m[1]);
+      }
+    });
+    if (!defColour) throw new Error("no default_colour found");
+    return { defColour: defColour, segments: segments };
+  }
+
+  function applyTheme(text) {
+    var status = el("status");
+    var parsed;
+    try { parsed = parseThemeYaml(text); }
+    catch (err) { status.textContent = "Parse error: " + err.message; return; }
+    var colours = {};
+    for (var i = 0; i < 51; i++) colours[i] = parsed.defColour;
+    parsed.segments.forEach(function (seg) {
+      seg.indices.forEach(function (idx) {
+        if (idx >= 0 && idx < 51) colours[idx] = seg.colour;
+      });
+    });
+    Object.keys(model).forEach(function (k) {
+      model[k].colour = colours[k];
+      handleEls[k].querySelector("circle").setAttribute("fill", colours[k]);
+      var lum = luminance(colours[k]);
+      handleEls[k].querySelector("text").setAttribute("fill", lum > 0.55 ? "#10131a" : "#ffffff");
+    });
+    var counts = {};
+    Object.keys(colours).forEach(function (k) { counts[colours[k]] = (counts[colours[k]] || 0) + 1; });
+    status.textContent = "Applied. " + parsed.segments.length + " segment(s); " +
+      Object.keys(counts).length + " colour(s).";
+    regenerate();
+  }
+
+  function clearTheme() {
+    Object.keys(model).forEach(function (k) {
+      model[k].colour = null;
+      handleEls[k].querySelector("circle").setAttribute("fill", regionFill(model[k]));
+      handleEls[k].querySelector("text").setAttribute("fill", model[k].live ? "#10131a" : "var(--dead)");
+    });
+    el("status").textContent = "";
+    el("regen").textContent = "(load or paste a theme)";
+  }
+
+  function luminance(hex) {
+    var r = parseInt(hex.substr(1, 2), 16) / 255;
+    var g = parseInt(hex.substr(3, 2), 16) / 255;
+    var b = parseInt(hex.substr(5, 2), 16) / 255;
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function regenerate() {
+    var byColour = {};
+    for (var i = 0; i < 51; i++) {
+      var c = model[i].colour;
+      if (!c) return;
+      (byColour[c] = byColour[c] || []).push(i);
+    }
+    var colours = Object.keys(byColour);
+    // default = the colour covering the most LEDs
+    colours.sort(function (a, b) { return byColour[b].length - byColour[a].length; });
+    var def = colours[0];
+    var lines = ['default_colour: "' + def + '"'];
+    var segs = colours.slice(1);
+    if (segs.length) lines.push("segments:");
+    segs.forEach(function (c) {
+      lines.push('  - colour: "' + c + '"');
+      var idx = byColour[c].slice().sort(function (a, b) { return a - b; });
+      var ranges = [], singles = [], j = 0;
+      while (j < idx.length) {
+        var start = idx[j], end = start;
+        while (j + 1 < idx.length && idx[j + 1] === end + 1) { end = idx[++j]; }
+        if (end > start) ranges.push([start, end]); else singles.push(start);
+        j++;
+      }
+      if (singles.length) lines.push("    indices: [" + singles.join(", ") + "]");
+      if (ranges.length) {
+        lines.push("    ranges:");
+        ranges.forEach(function (r) { lines.push("      - [" + r[0] + ", " + r[1] + "]"); });
+      }
+    });
+    el("regen").textContent = lines.join("\n");
+  }
+
+  // ---- legend ----
+  function buildLegend() {
+    var legend = el("legend");
+    var items = [
+      ["#7db4ff", "ring edge"], ["#3f7fd6", "ring corner"], ["#8fd0a0", "ring side"],
+      ["#f4b860", "bolt lower-blade"], ["#e0902f", "bolt hook"], ["#c06a1e", "bolt upper-blade"],
+    ];
+    legend.innerHTML = items.map(function (it) {
+      return '<span><span class="swatch" style="background:' + it[0] + '"></span>' + it[1] + "</span>";
+    }).join("") + '<span><span class="swatch" style="background:transparent;border-style:dashed;border-color:var(--dead)"></span>not lit (20–26)</span>';
+  }
+
+  // ---- wire up ----
+  el("export").addEventListener("click", exportJson);
+  el("reset").addEventListener("click", function () {
+    seedModel(); buildHandles();
+    readout.textContent = "Reset to the committed seed.";
+    clearTheme();
+  });
+  el("load-map").addEventListener("change", function (e) {
+    if (e.target.files[0]) loadMap(e.target.files[0]);
+    e.target.value = "";
+  });
+  el("load-yaml").addEventListener("change", function (e) {
+    var f = e.target.files[0];
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      el("yaml").value = reader.result;
+      applyTheme(reader.result);
+    };
+    reader.readAsText(f);
+    e.target.value = "";
+  });
+  el("preview").addEventListener("click", function () {
+    applyTheme(el("yaml").value);
+  });
+  el("clear-preview").addEventListener("click", clearTheme);
+
+  seedModel();
+  buildHandles();
+  buildLegend();
+})();
+</script>
+</body>
+</html>

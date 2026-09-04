@@ -7,9 +7,9 @@ from hypervolt.led import load_custom_themes
 from config import CustomLedTheme
 
 
-def _write_theme_yaml(led_effects_dir: Path, name: str, colour: str) -> None:
-    led_effects_dir.mkdir(parents=True, exist_ok=True)
-    (led_effects_dir / f"{name}.yaml").write_text(
+def _write_theme_yaml(themes_dir: Path, name: str, colour: str) -> None:
+    themes_dir.mkdir(parents=True, exist_ok=True)
+    (themes_dir / f"{name}.yaml").write_text(
         f'default_colour: "{colour}"\n', encoding="utf-8"
     )
 

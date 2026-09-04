@@ -11,6 +11,7 @@ from common.constants import APP_NAME
 from common.logging import config, configure_file_logging
 from common.polling import every
 from hypervolt.led import (
+    THEMES_DIR,
     ExtensionWrapper,
     load_built_in_themes_for_config,
     load_custom_themes_for_config,
@@ -65,9 +66,7 @@ async def main() -> None:
         await agile_client.close()
         sys.exit(1)
 
-    custom_themes = load_custom_themes_for_config(
-        app_config.led, config_path.parent / "led_effects"
-    )
+    custom_themes = load_custom_themes_for_config(app_config.led, THEMES_DIR)
     built_in_themes = load_built_in_themes_for_config(app_config.led)
 
     extensions: list[ExtensionWrapper] = []

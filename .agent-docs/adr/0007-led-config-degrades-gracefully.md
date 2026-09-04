@@ -27,3 +27,7 @@ refusing to start — acceptable specifically because none of it can affect char
 only what the LEDs display. A config-authoring mistake in `config.yml` itself, by contrast, is
 caught immediately at startup like every other config field, so an operator gets the same fast
 feedback loop they already have for the rest of the file.
+
+**Path superseded by ADR 0012**: the missing/malformed external file this ADR describes is now a
+`themes/<effect>.yaml` under the repo's `themes/` directory, not `<config dir>/led_effects/*.yaml`.
+The graceful-degradation behaviour itself is unchanged.

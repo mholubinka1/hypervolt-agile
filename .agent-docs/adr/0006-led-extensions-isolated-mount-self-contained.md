@@ -11,6 +11,8 @@ premise of the feature.
 `led_effects/*.yaml` is pure data with the same nature as `config.yml` itself, so it lives
 alongside it: `config_path.parent / "led_effects"`, i.e. `/config/led_effects` in the deployed
 container, resolved from the existing `--config-file` path with no new CLI argument needed.
+(**Superseded by ADR 0012**: colour-map YAMLs now live in the repo's `themes/` directory, baked
+into the image, not `/config/led_effects`. The `extensions/` reasoning below stands.)
 
 `extensions/*.py` is executable code, not data, so it gets its own mount (`--extensions-dir`,
 `/extensions` in `docker-compose.yml`) rather than sharing `/config` — keeping `/config` as

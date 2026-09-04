@@ -68,7 +68,9 @@ led:
       end: "01-01 06:00"
 ```
 
-Dates use `MM-DD`, or `"MM-DD HH:MM"` for a specific time (default `00:00`). See `config/config.yml.template` for the full `led:` block, including `custom_themes` (your own static colour patterns) and `extensions` (dynamically resolved themes, e.g. match-day colours).
+Dates use `MM-DD`, or `"MM-DD HH:MM"` for a specific time (default `00:00`). See `config/config.yml.template` for the full `led:` block, including `custom_themes` (static colour patterns) and `extensions` (dynamically resolved themes, e.g. match-day colours).
+
+Custom-theme colour maps are YAML files in this repo's `themes/` directory (`themes/<effect>.yaml`); a `custom_themes` entry naming `effect: <name>` loads `themes/<name>.yaml`. Each is opt-in — nothing runs until it is listed with a date window. Preview a map, and edit the LED positions it is painted against, by opening `themes/reference/charger_led_map.html` in a browser.
 
 ---
 
@@ -90,11 +92,14 @@ Place your `config.yml` in `/home/pi/.config/hypervolt-agile/`, then run:
 docker-compose up -d
 ```
 
-If you're using custom LED themes (`led.custom_themes` in `config.yml`), the `*.yaml` effect
-files are **not** baked into the Docker image. The whole `/home/pi/.config/hypervolt-agile`
-directory is bind-mounted to `/config`, so copy the effect files (this repo's
-`config/led_effects/*.yaml`, or your own) into `/home/pi/.config/hypervolt-agile/led_effects/`
-alongside `config.yml` and they'll be picked up without rebuilding the image.
+Custom LED theme colour maps (`led.custom_themes` in `config.yml`) live in the repo's `themes/`
+directory and are **baked into the Docker image**. The shipped maps work out of the box; adding
+your own means forking the repo, dropping `themes/<name>.yaml` in, and rebuilding the image.
+
+> **Upgrading from a version that read `led_effects/`:** custom-theme YAMLs are no longer read
+> from `/home/pi/.config/hypervolt-agile/led_effects/`. Move any you rely on into the repo's
+> `themes/` directory and rebuild. There is no fallback — a `custom_themes` entry with no
+> matching `themes/<name>.yaml` is logged and skipped.
 
 If you're using LED theme extensions (`led.extensions` in `config.yml`), place each extension's
 `*.py` file in `/home/pi/.config/hypervolt-agile-extensions/` — this is a separate mount from
