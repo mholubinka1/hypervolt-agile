@@ -6,7 +6,7 @@
 #   top edge (1 -> 6)             : white
 #   bottom edge (20 -> 26)        : white   (these LEDs are physically dead anyway)
 #   bolt (39 -> 50)               : 39,40 (lower blade) 42-44 (hook) 48-50
-#                                    (upper tip) red; 41, 45-47 (the joins)
+#                                    (upper-blade tip) red; 41, 45-47 (the joins)
 #                                    stay white
 #
 # One colour per LED. LED positions are the golden record in
@@ -21,4 +21,4 @@ segments:
       - [27, 38]    # right ring edge
       - [39, 40]    # bolt lower blade
       - [42, 44]    # bolt hook
-      - [48, 50]    # bolt upper tip
+      - [48, 50]    # bolt upper-blade tip
