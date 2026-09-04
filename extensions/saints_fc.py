@@ -37,6 +37,11 @@ _DEFAULT_POLL_INTERVAL_HOURS = 1
 _DEFAULT_API_KEY = "3"
 _API_BASE_URL_TEMPLATE = "https://www.thesportsdb.com/api/v1/json/{api_key}"
 _SAINTS_FC_THEME = "saints_fc.yaml"
+# The match window: from 30 minutes before kick-off until three hours after.
+# Fixed in code (not config) -- the whole span behaves identically, there is
+# no weaker "lead-in" sub-window.
+_MATCH_LEADIN = timedelta(minutes=30)
+_MATCH_WINDOW = timedelta(hours=3)
 
 
 def _kickoff_from_timestamp(raw: str) -> datetime | None:
@@ -212,11 +217,32 @@ class SaintsFcExtension:
         # can't grow without bound.
         self._matches = {d: v for d, v in self._matches.items() if d >= _today}
 
+    def _strip(self, *, always_on: bool) -> LedTheme:
+        # The one place the wire effect name and the shipped colour map are
+        # tied together -- both resolution passes hand back this strip, only
+        # the display gate differs.
+        return LedTheme(effect_name="saints_fc", leds=self._leds, always_on=always_on)
+
+    def _in_match_window(self, now: datetime) -> bool:
+        _kickoffs = self._matches.get(now.astimezone(_LOCAL_TZ).date(), None)
+        if not _kickoffs:
+            # None -> not a match date at all; [] -> match that day, kick-off
+            # unknown, so no window either.
+            return False
+        return any(ko - _MATCH_LEADIN <= now <= ko + _MATCH_WINDOW for ko in _kickoffs)
+
     async def resolve(self, now: datetime) -> LedTheme | None:
-        _d = now.astimezone(_LOCAL_TZ).date()
-        if _d not in self._matches:
-            return None
-        # The whole local match date at this slice -- the kick-off window
-        # narrows this in issue #117. Charging-gated (always_on=False) until
-        # then.
-        return LedTheme(effect_name="saints_fc", leds=self._leds, always_on=False)
+        # Top priority (primary pass): inside the match window the strip is
+        # always-on and outranks every other theme; outside it, nothing -- the
+        # charging-gated fallback is resolve_fallback's job.
+        return self._strip(always_on=True) if self._in_match_window(now) else None
+
+    async def resolve_fallback(self, now: datetime) -> LedTheme | None:
+        # Second pass (ADR 0015): the rest of a match day, the strip sits
+        # *below* custom/built-in themes as a charging-gated fallback -- so a
+        # fixture doesn't blank an all-day seasonal theme. A match date whose
+        # kick-off is unknown (empty list) has no window, so it is fallback-only.
+        _date = now.astimezone(_LOCAL_TZ).date()
+        if _date in self._matches and not self._in_match_window(now):
+            return self._strip(always_on=False)
+        return None

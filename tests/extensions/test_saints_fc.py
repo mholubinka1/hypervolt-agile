@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
-from saints_fc import SaintsFcExtension
+from saints_fc import SaintsFcExtension, _kickoff_from_timestamp
 
 _LONDON = ZoneInfo("Europe/London")
 _UTC = ZoneInfo("UTC")
@@ -174,9 +174,10 @@ async def test_poll_once_finds_no_match_produces_none() -> None:
 
     with patch("saints_fc.datetime", _frozen_clock()):
         await extension._poll_once()
-    theme = await extension.resolve(_FIXED_NOW + timedelta(days=1))
+    _now = _FIXED_NOW + timedelta(days=1)
 
-    assert theme is None
+    assert (await extension.resolve(_now)) is None
+    assert (await extension.resolve_fallback(_now)) is None
 
 
 async def test_both_endpoints_returning_null_is_treated_as_no_fixtures() -> None:
@@ -187,9 +188,9 @@ async def test_both_endpoints_returning_null_is_treated_as_no_fixtures() -> None
 
     with patch("saints_fc.datetime", _frozen_clock()):
         await extension._poll_once()
-    theme = await extension.resolve(_FIXED_NOW)
 
-    assert theme is None
+    assert (await extension.resolve(_FIXED_NOW)) is None
+    assert (await extension.resolve_fallback(_FIXED_NOW)) is None
 
 
 async def test_a_confirmed_fixture_records_its_utc_timestamp_as_an_aware_instant() -> (
@@ -239,6 +240,154 @@ async def test_a_fixture_with_an_iso_offset_timestamp_is_respected() -> None:
         await extension._poll_once()
 
     assert extension._matches[_TOMORROW] == [datetime(2026, 8, 26, 14, 0, tzinfo=_UTC)]
+
+
+async def test_resolve_lights_the_always_on_strip_only_inside_the_match_window() -> (
+    None
+):
+    # Tracer bullet for issue #117: from 30 minutes before kick-off until three
+    # hours after, the strip is always-on; outside that, resolve() yields
+    # nothing (the charging-gated fallback is a separate path).
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(
+            next_events=[
+                {"dateEventLocal": _TODAY_ISO, "strTimestamp": "2026-08-25 15:00:00"}
+            ],
+            last_events=None,
+        )
+    )
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+
+    _in_window = await extension.resolve(datetime(2026, 8, 25, 15, 30, tzinfo=_UTC))
+    _before_leadin = await extension.resolve(datetime(2026, 8, 25, 14, 0, tzinfo=_UTC))
+
+    assert _in_window is not None
+    assert _in_window.effect_name == "saints_fc"
+    assert _in_window.always_on is True
+    assert _before_leadin is None
+
+
+async def _seeded(matches: dict[date, list[datetime]]) -> SaintsFcExtension:
+    # Reach-in seeding of the fixture store, matching this file's existing
+    # style (see test_poll_once_prunes_dates_now_in_the_past) -- lets a test
+    # pin an exact kick-off instant without routing it through the poll/parse
+    # path, which has its own coverage.
+    extension = SaintsFcExtension({})
+    extension._matches = matches
+    return extension
+
+
+async def test_resolve_is_none_one_second_after_the_window_closes() -> None:
+    # Scenario 2: KO+3h is the inclusive upper bound; one second past it is out.
+    _ko = datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)
+    extension = await _seeded({date(2026, 8, 25): [_ko]})
+
+    _at_close = await extension.resolve(_ko + timedelta(hours=3))
+    _just_after = await extension.resolve(_ko + timedelta(hours=3, seconds=1))
+
+    assert _at_close is not None
+    assert _just_after is None
+
+
+async def test_resolve_lights_the_strip_at_the_exact_inclusive_bounds() -> None:
+    # Scenario 3: exactly KO-30m and exactly KO+3h are both inside the window.
+    _ko = datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)
+    extension = await _seeded({date(2026, 8, 25): [_ko]})
+
+    _at_leadin = await extension.resolve(_ko - timedelta(minutes=30))
+    _at_close = await extension.resolve(_ko + timedelta(hours=3))
+
+    assert _at_leadin is not None
+    assert _at_leadin.always_on is True
+    assert _at_close is not None
+    assert _at_close.always_on is True
+
+
+async def test_resolve_covers_either_fixtures_window_in_a_double_header() -> None:
+    # Scenario 4: two kick-offs on one local date -- the strip shows during
+    # either window (their union) and goes dark in the gap between them.
+    _early_ko = datetime(2026, 8, 25, 12, 0, tzinfo=_UTC)
+    _late_ko = datetime(2026, 8, 25, 17, 30, tzinfo=_UTC)
+    extension = await _seeded({date(2026, 8, 25): [_early_ko, _late_ko]})
+
+    _in_first = await extension.resolve(datetime(2026, 8, 25, 12, 15, tzinfo=_UTC))
+    _in_second = await extension.resolve(datetime(2026, 8, 25, 18, 0, tzinfo=_UTC))
+    _in_gap = await extension.resolve(datetime(2026, 8, 25, 16, 0, tzinfo=_UTC))
+
+    assert _in_first is not None
+    assert _in_second is not None
+    assert _in_gap is None
+
+
+async def test_unknown_kickoff_is_fallback_only_all_day() -> None:
+    # Scenario 5: an empty kick-off list contributes no window -- resolve()
+    # returns None for every `now` that day, and resolve_fallback() offers the
+    # charging-gated strip.
+    extension = await _seeded({date(2026, 8, 25): []})
+
+    for _hour in (0, 6, 12, 15, 21, 23):
+        _now = datetime(2026, 8, 25, _hour, 0, tzinfo=_LONDON)
+        assert (await extension.resolve(_now)) is None
+        _fallback = await extension.resolve_fallback(_now)
+        assert _fallback is not None
+        assert _fallback.effect_name == "saints_fc"
+        assert _fallback.always_on is False
+
+
+async def test_resolve_fallback_offers_the_strip_outside_a_known_window() -> None:
+    # Scenario 6: match date, known kick-off, `now` before KO-30m and after
+    # KO+3h -- resolve_fallback() returns the charging-gated strip.
+    _ko = datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)
+    extension = await _seeded({date(2026, 8, 25): [_ko]})
+
+    _before = await extension.resolve_fallback(_ko - timedelta(hours=1))
+    _after = await extension.resolve_fallback(_ko + timedelta(hours=4))
+
+    for _theme in (_before, _after):
+        assert _theme is not None
+        assert _theme.effect_name == "saints_fc"
+        assert _theme.always_on is False
+
+
+async def test_resolve_fallback_is_none_inside_the_window() -> None:
+    # Scenario 7: resolve() owns the in-window case; resolve_fallback() stays
+    # out of its way so the strip is never offered at both priorities at once.
+    _ko = datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)
+    extension = await _seeded({date(2026, 8, 25): [_ko]})
+
+    assert (await extension.resolve_fallback(_ko)) is None
+    assert (await extension.resolve_fallback(_ko - timedelta(minutes=30))) is None
+    assert (await extension.resolve_fallback(_ko + timedelta(hours=3))) is None
+
+
+async def test_resolve_fallback_is_none_on_a_non_match_date() -> None:
+    # Scenario 8: nothing recorded for the date -> the extension contributes
+    # nothing on either pass.
+    extension = await _seeded(
+        {date(2026, 8, 25): [datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)]}
+    )
+
+    _other_day = datetime(2026, 8, 26, 15, 0, tzinfo=_UTC)
+    assert (await extension.resolve(_other_day)) is None
+    assert (await extension.resolve_fallback(_other_day)) is None
+
+
+async def test_window_bounds_hold_across_a_dst_transition() -> None:
+    # Scenario 9: BST->GMT is 2026-10-25 02:00 local. A kick-off at 01:00 UTC
+    # (02:00 BST) has KO+3h at 04:00 UTC == 04:00 GMT -- the window is 3.5h of
+    # real elapsed time regardless of the clock going back an hour mid-window.
+    _ko = _kickoff_from_timestamp("2026-10-25 01:00:00")
+    assert _ko is not None
+    extension = await _seeded({date(2026, 10, 25): [_ko]})
+
+    _in_window = await extension.resolve(datetime(2026, 10, 25, 3, 30, tzinfo=_UTC))
+    _after_window = await extension.resolve(datetime(2026, 10, 25, 4, 30, tzinfo=_UTC))
+
+    assert _in_window is not None
+    assert _in_window.always_on is True
+    assert _after_window is None
 
 
 async def test_kickoff_falls_back_to_local_time_and_local_date_fields() -> None:
@@ -296,10 +445,12 @@ async def test_a_fixture_with_no_parseable_kickoff_records_an_empty_list(
         {"dateEventLocal": _TOMORROW_ISO, "strTimestamp": "2026-08-26 14:00:00"},
     ],
 )
-async def test_resolve_lights_the_strip_for_the_whole_match_date(event: dict) -> None:
-    # Scenario 7: kick-off times are recorded but not yet consulted -- the
-    # strip shows all day on any date present in the store, empty list or
-    # not. The window narrows this in issue #117.
+async def test_outside_every_window_the_strip_is_a_charging_gated_fallback(
+    event: dict,
+) -> None:
+    # Scenario 6: on a match date but well away from any kick-off (or with the
+    # kick-off unknown), resolve() yields nothing and resolve_fallback() offers
+    # the charging-gated (always_on=False) strip.
     extension = SaintsFcExtension({})
     extension._client = _mock_client(_router(next_events=[event], last_events=None))
 
@@ -308,14 +459,18 @@ async def test_resolve_lights_the_strip_for_the_whole_match_date(event: dict) ->
 
     _early = datetime(2026, 8, 26, 6, 0, tzinfo=_LONDON)
     _late = datetime(2026, 8, 26, 23, 0, tzinfo=_LONDON)
-    assert (await extension.resolve(_early)) is not None
-    assert (await extension.resolve(_late)) is not None
+    for _now in (_early, _late):
+        assert (await extension.resolve(_now)) is None
+        _fallback = await extension.resolve_fallback(_now)
+        assert _fallback is not None
+        assert _fallback.effect_name == "saints_fc"
+        assert _fallback.always_on is False
 
 
-async def test_resolve_uses_londons_date_for_a_now_expressed_in_utc() -> None:
+async def test_the_date_lookup_uses_londons_date_for_a_now_expressed_in_utc() -> None:
     # BST is UTC+1 -- 2026-08-25T23:30 UTC is 2026-08-26 00:30 in London, a
-    # different calendar date. resolve() must convert `now` to London before
-    # comparing dates, not use the UTC date directly.
+    # different calendar date. The date lookup must convert `now` to London
+    # before comparing, not use the UTC date directly.
     extension = SaintsFcExtension({})
     extension._client = _mock_client(
         _router(next_events=[{"dateEventLocal": _TOMORROW_ISO}], last_events=None)
@@ -326,7 +481,7 @@ async def test_resolve_uses_londons_date_for_a_now_expressed_in_utc() -> None:
         2026, 8, 25, 23, 30, tzinfo=_UTC
     )
 
-    theme = await extension.resolve(_utc_just_before_londons_tomorrow_midnight)
+    theme = await extension.resolve_fallback(_utc_just_before_londons_tomorrow_midnight)
 
     assert theme is not None
     assert theme.effect_name == "saints_fc"
@@ -335,16 +490,18 @@ async def test_resolve_uses_londons_date_for_a_now_expressed_in_utc() -> None:
 async def test_resolve_returns_none_before_any_poll_has_happened() -> None:
     extension = SaintsFcExtension({})
 
-    theme = await extension.resolve(_FIXED_NOW)
+    assert (await extension.resolve(_FIXED_NOW)) is None
+    assert (await extension.resolve_fallback(_FIXED_NOW)) is None
 
-    assert theme is None
 
-
-async def test_resolve_uses_the_shipped_colour_map_as_a_charging_gated_theme() -> None:
-    # Tracer bullet for issue #116: the strip is the tuned themes/saints_fc.yaml
-    # colour map (not a placeholder alternation), wired as effect_name
-    # "saints_fc", and charging-gated (always_on False) until the match window
-    # narrows it in issue #117.
+async def test_resolve_fallback_uses_the_shipped_colour_map_as_a_charging_gated_theme() -> (
+    None
+):
+    # Tracer bullet for issue #116, now the "whole match day, kick-off unknown"
+    # behaviour: the strip is the tuned themes/saints_fc.yaml colour map (not a
+    # placeholder alternation), wired as effect_name "saints_fc", and
+    # charging-gated (always_on False) -- offered by resolve_fallback since the
+    # match window (issue #117) now owns resolve().
     from hypervolt.led import THEMES_DIR, load_custom_effect
 
     extension = SaintsFcExtension({})
@@ -357,7 +514,7 @@ async def test_resolve_uses_the_shipped_colour_map_as_a_charging_gated_theme() -
         patch("saints_fc.every", AsyncMock()),
     ):
         await extension.start()
-    theme = await extension.resolve(_FIXED_NOW)
+    theme = await extension.resolve_fallback(_FIXED_NOW)
     await extension.stop()
 
     assert theme is not None
@@ -382,7 +539,7 @@ async def test_start_directly_confirms_a_match_today_before_returning() -> None:
         patch("saints_fc.every", AsyncMock()),
     ):
         await extension.start()
-    theme = await extension.resolve(_FIXED_NOW)
+    theme = await extension.resolve_fallback(_FIXED_NOW)
 
     assert theme is not None
     assert theme.effect_name == "saints_fc"
@@ -407,7 +564,7 @@ async def test_start_bootstrap_check_finds_a_match_today_via_eventslast() -> Non
         patch("saints_fc.every", AsyncMock()),
     ):
         await extension.start()
-    theme = await extension.resolve(_FIXED_NOW)
+    theme = await extension.resolve_fallback(_FIXED_NOW)
 
     assert theme is not None
     assert theme.effect_name == "saints_fc"
@@ -435,8 +592,8 @@ async def test_resolve_returns_the_theme_for_both_a_bootstrap_and_a_later_confir
         )
         await extension._poll_once()  # confirms tomorrow, independently
 
-    _today_theme = await extension.resolve(_FIXED_NOW)
-    _tomorrow_theme = await extension.resolve(_FIXED_NOW + timedelta(days=1))
+    _today_theme = await extension.resolve_fallback(_FIXED_NOW)
+    _tomorrow_theme = await extension.resolve_fallback(_FIXED_NOW + timedelta(days=1))
     assert _today_theme is not None
     assert _tomorrow_theme is not None
     await extension.stop()
@@ -557,7 +714,7 @@ async def test_a_poll_failure_logs_a_warning_and_keeps_previously_confirmed_date
         ):
             await extension._poll_once()  # tomorrow's check fails
 
-    theme = await extension.resolve(_FIXED_NOW)
+    theme = await extension.resolve_fallback(_FIXED_NOW)
     assert theme is not None
     assert theme.effect_name == "saints_fc"
     # common.decorator.retry logs its own warning per retry attempt (already
@@ -622,7 +779,7 @@ async def test_a_single_transient_failure_is_retried_and_does_not_log_a_saints_f
     ):
         await extension._poll_once()
 
-    theme = await extension.resolve(_FIXED_NOW + timedelta(days=1))
+    theme = await extension.resolve_fallback(_FIXED_NOW + timedelta(days=1))
     assert theme is not None
     # 5 calls: today's check fails its first eventsnext attempt, retries the
     # whole _fetch_kickoffs_on_date once (eventsnext + eventslast) and finds
