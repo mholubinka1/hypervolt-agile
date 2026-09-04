@@ -62,9 +62,16 @@ class Schedule(BaseModel):
 
 
 class _WindowedLedTheme(BaseModel):
+    model_config = {"extra": "forbid"}
+
     effect: str
     start: str
     end: str
+    # Per-theme display gate (ADR 0014). Default false: charging-gated -- the
+    # theme lights the charger only while the car is actively charging. True:
+    # always-on -- lit for the theme's whole start..end window regardless of
+    # charge or plug state.
+    always_on: bool = False
 
     @field_validator("start", "end")
     def must_be_a_valid_window_date(cls, v: str) -> str:
@@ -127,8 +134,9 @@ class ExtensionEntry(BaseModel):
 
 
 class LedConfig(BaseModel):
+    model_config = {"extra": "forbid"}
+
     enabled: bool = True
-    brightness: float = Field(0.5, gt=0, le=1)
     built_in_themes: list[BuiltInLedTheme] = []
     custom_themes: list[CustomLedTheme] = []
     extensions: list[ExtensionEntry] = []

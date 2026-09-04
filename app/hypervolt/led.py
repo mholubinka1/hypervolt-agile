@@ -45,6 +45,10 @@ class LedTheme:
     # what stops nested `leds` list mutation from reaching them, see below).
     effect_name: str
     leds: list[dict[str, float]] | None = None
+    # Per-theme display gate (ADR 0014). True: light the charger for the theme's
+    # whole active window regardless of charge *or* plug state. False
+    # (default): light only while the car is actively charging.
+    always_on: bool = False
 
 
 def _hex_to_rgb(hex_colour: str) -> dict[str, float]:
@@ -175,6 +179,7 @@ async def resolve_theme(
     return LedTheme(
         effect_name=_match.effect_name,
         leds=[dict(led) for led in _match.leds] if _match.leds is not None else None,
+        always_on=_match.always_on,
     )
 
 
@@ -311,7 +316,9 @@ def load_custom_themes(
                 f"Failed to load custom LED theme {entry.effect!r}: {type(e).__name__}: {e}."
             )
             continue
-        _theme = LedTheme(effect_name=entry.effect, leds=_leds)
+        _theme = LedTheme(
+            effect_name=entry.effect, leds=_leds, always_on=entry.always_on
+        )
         _loaded.append(
             (_theme, parse_window_date(entry.start), parse_window_date(entry.end))
         )
@@ -331,7 +338,7 @@ def load_built_in_themes(
 ) -> list[tuple[LedTheme, Window, Window]]:
     return [
         (
-            LedTheme(effect_name=entry.effect),
+            LedTheme(effect_name=entry.effect, always_on=entry.always_on),
             parse_window_date(entry.start),
             parse_window_date(entry.end),
         )

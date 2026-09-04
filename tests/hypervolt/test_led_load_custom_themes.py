@@ -29,6 +29,28 @@ def test_load_custom_themes_loads_a_valid_entry(tmp_path: Path) -> None:
     assert end == (3, 16, 0, 0)
 
 
+def test_load_custom_themes_defaults_always_on_to_false(tmp_path: Path) -> None:
+    _write_theme_yaml(tmp_path, "peace", "#0057B7")
+    entries = [CustomLedTheme(effect="peace", start="03-14", end="03-16")]
+
+    result = load_custom_themes(entries, tmp_path)
+
+    assert result[0][0].always_on is False
+
+
+def test_load_custom_themes_carries_always_on_into_the_built_theme(
+    tmp_path: Path,
+) -> None:
+    _write_theme_yaml(tmp_path, "peace", "#0057B7")
+    entries = [
+        CustomLedTheme(effect="peace", start="03-14", end="03-16", always_on=True)
+    ]
+
+    result = load_custom_themes(entries, tmp_path)
+
+    assert result[0][0].always_on is True
+
+
 def test_load_custom_themes_drops_entry_with_missing_yaml_file(tmp_path: Path) -> None:
     _write_theme_yaml(tmp_path, "peace", "#0057B7")
     entries = [

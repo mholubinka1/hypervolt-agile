@@ -50,12 +50,11 @@ Your Octopus account postcode is used to determine the charger's timezone automa
 
 ### LED Themes
 
-The charger's LEDs can show one of three built-in seasonal effects whenever the car is plugged in (not just while actively charging). Each is opt-in — listing an effect in `built_in_themes` is what enables it; leave one out and it never runs:
+The charger's LEDs can show one of three built-in seasonal effects. Each is opt-in — listing an effect in `built_in_themes` is what enables it; leave one out and it never runs:
 
 ```yaml
 led:
   enabled: true
-  brightness: 0.5
   built_in_themes:
     - effect: halloween_mode
       start: "10-31"
@@ -66,9 +65,10 @@ led:
     - effect: party_mode
       start: "12-31 06:00"
       end: "01-01 06:00"
+      always_on: true
 ```
 
-Dates use `MM-DD`, or `"MM-DD HH:MM"` for a specific time (default `00:00`). See `config/config.yml.template` for the full `led:` block, including `custom_themes` (static colour patterns) and `extensions` (dynamically resolved themes, e.g. match-day colours).
+Dates use `MM-DD`, or `"MM-DD HH:MM"` for a specific time (default `00:00`). A displaying theme is always shown at full brightness; when nothing is displaying the LEDs are off — there is no brightness setting. By default a theme is **charging-gated**: it lights the charger only while the car is actively charging. Set `always_on: true` on an entry to light the charger for that theme's whole window regardless of charge or plug state. See `config/config.yml.template` for the full `led:` block, including `custom_themes` (static colour patterns) and `extensions` (dynamically resolved themes, e.g. match-day colours).
 
 Custom-theme colour maps are YAML files in this repo's `themes/` directory (`themes/<effect>.yaml`); a `custom_themes` entry naming `effect: <name>` loads `themes/<name>.yaml`. Each is opt-in — nothing runs until it is listed with a date window. Preview a map, and edit the LED positions it is painted against, by opening `themes/reference/charger_led_map.html` in a browser.
 
