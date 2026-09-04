@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
@@ -8,7 +8,10 @@ import pytest
 from saints_fc import SaintsFcExtension
 
 _LONDON = ZoneInfo("Europe/London")
+_UTC = ZoneInfo("UTC")
 _FIXED_NOW = datetime(2026, 8, 25, 12, 0, tzinfo=_LONDON)
+_TODAY = date(2026, 8, 25)
+_TOMORROW = date(2026, 8, 26)
 _TODAY_ISO = "2026-08-25"
 _TOMORROW_ISO = "2026-08-26"
 
@@ -54,6 +57,27 @@ def test_init_logs_the_resolved_team_id(caplog: pytest.LogCaptureFixture) -> Non
     assert any("999" in r.message for r in caplog.records)
 
 
+def test_init_raises_when_the_shipped_colour_map_cannot_be_loaded() -> None:
+    # Scenario 3: a missing/malformed themes/saints_fc.yaml must raise from
+    # __init__ so load_extensions() logs it and treats the extension as
+    # absent (ADR 0007) rather than the app failing to start.
+    with (
+        patch("saints_fc.load_custom_effect", side_effect=FileNotFoundError("gone")),
+        pytest.raises(FileNotFoundError),
+    ):
+        SaintsFcExtension({})
+
+
+def test_init_checks_config_before_touching_the_colour_map() -> None:
+    # The cheap config validation fails fast even if the colour file is also
+    # unloadable -- an operator sees the config mistake first.
+    with (
+        patch("saints_fc.load_custom_effect", side_effect=FileNotFoundError("gone")),
+        pytest.raises(ValueError),
+    ):
+        SaintsFcExtension({"api_key": ""})
+
+
 async def test_poll_once_uses_the_default_api_key_and_team_id_when_omitted() -> None:
     _captured_urls: list[str] = []
 
@@ -72,9 +96,12 @@ async def test_poll_once_uses_the_default_api_key_and_team_id_when_omitted() -> 
         transport=httpx.MockTransport(_handler), base_url=extension._client.base_url
     )
 
-    await extension._poll_once()
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
 
-    assert len(_captured_urls) == 2
+    # Two endpoints (eventsnext + eventslast), checked for both today and
+    # tomorrow -> four requests per poll.
+    assert len(_captured_urls) == 4
     assert all(
         url.startswith("https://www.thesportsdb.com/api/v1/json/3/")
         for url in _captured_urls
@@ -82,10 +109,10 @@ async def test_poll_once_uses_the_default_api_key_and_team_id_when_omitted() -> 
     assert any("id=134778" in url for url in _captured_urls)
 
 
-async def test_poll_once_computes_tomorrow_in_europe_london_not_utc() -> None:
+async def test_poll_once_computes_today_in_europe_london_not_utc() -> None:
     # dateEventLocal must be compared against London's calendar date, not
     # UTC's -- a bare datetime.now() or datetime.now(timezone.utc) would
-    # silently compute the wrong "tomorrow" for part of every day.
+    # silently compute the wrong "today"/"tomorrow" for part of every day.
     extension = SaintsFcExtension({})
     extension._client = _mock_client(_router(next_events=None, last_events=None))
     _clock = _frozen_clock()
@@ -96,26 +123,47 @@ async def test_poll_once_computes_tomorrow_in_europe_london_not_utc() -> None:
     _clock.now.assert_called_once_with(_LONDON)
 
 
-async def test_poll_once_checks_tomorrow_not_today() -> None:
-    # The recurring daily poll must check *tomorrow*'s date, not today's --
-    # by the time today arrives, a match must already have been confirmed
-    # the day before (or via the startup bootstrap check in start()).
+async def test_poll_once_records_both_today_and_tomorrow() -> None:
+    # Scenario 11: each poll checks *both* dates itself, so a fixture that
+    # firms up during the day is picked up without waiting for the next
+    # calendar day's poll.
     extension = SaintsFcExtension({})
     extension._client = _mock_client(
-        _router(next_events=[{"dateEventLocal": _TOMORROW_ISO}], last_events=None)
+        _router(
+            next_events=[
+                {"dateEventLocal": _TODAY_ISO},
+                {"dateEventLocal": _TOMORROW_ISO},
+            ],
+            last_events=None,
+        )
     )
 
     with patch("saints_fc.datetime", _frozen_clock()):
         await extension._poll_once()
 
-    _tomorrow_theme = await extension.resolve(_FIXED_NOW + timedelta(days=1))
-    assert _tomorrow_theme is not None
-    assert _tomorrow_theme.effect_name == "saints_fc_matchday"
-    _today_theme = await extension.resolve(_FIXED_NOW)
-    assert _today_theme is None
+    assert _TODAY in extension._matches
+    assert _TOMORROW in extension._matches
 
 
-async def test_poll_once_finds_no_match_for_tomorrow_produces_none() -> None:
+async def test_poll_once_prunes_dates_now_in_the_past() -> None:
+    # Scenario 12: fixes the fixture store growing without bound in a
+    # long-running process -- a poll drops keys for dates before today.
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(next_events=[{"dateEventLocal": _TOMORROW_ISO}], last_events=None)
+    )
+    extension._matches[date(2026, 8, 20)] = []
+    extension._matches[_TODAY] = []
+
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+
+    assert date(2026, 8, 20) not in extension._matches
+    assert _TODAY in extension._matches
+    assert _TOMORROW in extension._matches
+
+
+async def test_poll_once_finds_no_match_produces_none() -> None:
     extension = SaintsFcExtension({})
     extension._client = _mock_client(
         _router(
@@ -144,6 +192,126 @@ async def test_both_endpoints_returning_null_is_treated_as_no_fixtures() -> None
     assert theme is None
 
 
+async def test_a_confirmed_fixture_records_its_utc_timestamp_as_an_aware_instant() -> (
+    None
+):
+    # Scenario 4: strTimestamp is "YYYY-MM-DD HH:MM:SS" UTC (no offset). The
+    # store maps the local date to a list holding an aware datetime equal to
+    # that instant.
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(
+            next_events=[
+                {
+                    "dateEventLocal": _TOMORROW_ISO,
+                    "strTimestamp": "2026-08-26 14:00:00",
+                }
+            ],
+            last_events=None,
+        )
+    )
+
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+
+    _kickoffs = extension._matches[_TOMORROW]
+    assert _kickoffs == [datetime(2026, 8, 26, 14, 0, tzinfo=_UTC)]
+    assert _kickoffs[0].tzinfo is not None
+
+
+async def test_a_fixture_with_an_iso_offset_timestamp_is_respected() -> None:
+    # Scenario 4: some records carry an explicit offset -- respect it rather
+    # than forcing UTC.
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(
+            next_events=[
+                {
+                    "dateEventLocal": _TOMORROW_ISO,
+                    "strTimestamp": "2026-08-26T14:00:00+00:00",
+                }
+            ],
+            last_events=None,
+        )
+    )
+
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+
+    assert extension._matches[_TOMORROW] == [datetime(2026, 8, 26, 14, 0, tzinfo=_UTC)]
+
+
+async def test_kickoff_falls_back_to_local_time_and_local_date_fields() -> None:
+    # Scenario 5: no strTimestamp -> combine strTimeLocal + dateEventLocal
+    # and attach the charger-local timezone.
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(
+            next_events=[
+                {
+                    "dateEventLocal": _TOMORROW_ISO,
+                    "strTimestamp": "",
+                    "strTimeLocal": "15:00:00",
+                }
+            ],
+            last_events=None,
+        )
+    )
+
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+
+    assert extension._matches[_TOMORROW] == [
+        datetime(2026, 8, 26, 15, 0, tzinfo=_LONDON)
+    ]
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        {"dateEventLocal": _TOMORROW_ISO},
+        {"dateEventLocal": _TOMORROW_ISO, "strTimestamp": "TBD"},
+        {"dateEventLocal": _TOMORROW_ISO, "strTimestamp": "", "strTimeLocal": ""},
+        {"dateEventLocal": _TOMORROW_ISO, "strTimeLocal": "not-a-time"},
+    ],
+)
+async def test_a_fixture_with_no_parseable_kickoff_records_an_empty_list(
+    event: dict,
+) -> None:
+    # Scenario 6: the date is still recorded (an empty list means "match that
+    # day, kick-off unknown").
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(_router(next_events=[event], last_events=None))
+
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+
+    assert extension._matches[_TOMORROW] == []
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        {"dateEventLocal": _TOMORROW_ISO},
+        {"dateEventLocal": _TOMORROW_ISO, "strTimestamp": "2026-08-26 14:00:00"},
+    ],
+)
+async def test_resolve_lights_the_strip_for_the_whole_match_date(event: dict) -> None:
+    # Scenario 7: kick-off times are recorded but not yet consulted -- the
+    # strip shows all day on any date present in the store, empty list or
+    # not. The window narrows this in issue #117.
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(_router(next_events=[event], last_events=None))
+
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+
+    _early = datetime(2026, 8, 26, 6, 0, tzinfo=_LONDON)
+    _late = datetime(2026, 8, 26, 23, 0, tzinfo=_LONDON)
+    assert (await extension.resolve(_early)) is not None
+    assert (await extension.resolve(_late)) is not None
+
+
 async def test_resolve_uses_londons_date_for_a_now_expressed_in_utc() -> None:
     # BST is UTC+1 -- 2026-08-25T23:30 UTC is 2026-08-26 00:30 in London, a
     # different calendar date. resolve() must convert `now` to London before
@@ -155,13 +323,13 @@ async def test_resolve_uses_londons_date_for_a_now_expressed_in_utc() -> None:
     with patch("saints_fc.datetime", _frozen_clock()):
         await extension._poll_once()
     _utc_just_before_londons_tomorrow_midnight = datetime(
-        2026, 8, 25, 23, 30, tzinfo=ZoneInfo("UTC")
+        2026, 8, 25, 23, 30, tzinfo=_UTC
     )
 
     theme = await extension.resolve(_utc_just_before_londons_tomorrow_midnight)
 
     assert theme is not None
-    assert theme.effect_name == "saints_fc_matchday"
+    assert theme.effect_name == "saints_fc"
 
 
 async def test_resolve_returns_none_before_any_poll_has_happened() -> None:
@@ -172,29 +340,53 @@ async def test_resolve_returns_none_before_any_poll_has_happened() -> None:
     assert theme is None
 
 
-async def test_start_directly_confirms_a_match_today_before_returning() -> None:
-    # start() awaits its bootstrap "today" check directly -- unlike the
-    # recurring daily task, no yielding to the event loop is needed for the
-    # caller to see today's confirmed match reflected in resolve().
+async def test_resolve_uses_the_shipped_colour_map_as_a_charging_gated_theme() -> None:
+    # Tracer bullet for issue #116: the strip is the tuned themes/saints_fc.yaml
+    # colour map (not a placeholder alternation), wired as effect_name
+    # "saints_fc", and charging-gated (always_on False) until the match window
+    # narrows it in issue #117.
+    from hypervolt.led import THEMES_DIR, load_custom_effect
+
     extension = SaintsFcExtension({})
     extension._client = _mock_client(
         _router(next_events=[{"dateEventLocal": _TODAY_ISO}], last_events=None)
     )
 
-    with patch("saints_fc.datetime", _frozen_clock()):
+    with (
+        patch("saints_fc.datetime", _frozen_clock()),
+        patch("saints_fc.every", AsyncMock()),
+    ):
+        await extension.start()
+    theme = await extension.resolve(_FIXED_NOW)
+    await extension.stop()
+
+    assert theme is not None
+    assert theme.effect_name == "saints_fc"
+    assert theme.always_on is False
+    assert theme.leds == load_custom_effect(THEMES_DIR / "saints_fc.yaml")
+
+
+async def test_start_directly_confirms_a_match_today_before_returning() -> None:
+    # start() awaits its bootstrap "today" check directly -- unlike the
+    # recurring interval task, no yielding to the event loop is needed for the
+    # caller to see today's confirmed match reflected in resolve().
+    from hypervolt.led import THEMES_DIR, load_custom_effect
+
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(next_events=[{"dateEventLocal": _TODAY_ISO}], last_events=None)
+    )
+
+    with (
+        patch("saints_fc.datetime", _frozen_clock()),
+        patch("saints_fc.every", AsyncMock()),
+    ):
         await extension.start()
     theme = await extension.resolve(_FIXED_NOW)
 
     assert theme is not None
-    assert theme.effect_name == "saints_fc_matchday"
-    assert theme.leds is not None
-    assert len(theme.leds) == 51
-    _colours = {tuple(sorted(led.items())) for led in theme.leds}
-    assert _colours == {
-        (("b", 0.0), ("g", 0.0), ("r", 1.0)),
-        (("b", 1.0), ("g", 1.0), ("r", 1.0)),
-    }, "expected exactly Southampton FC red and white"
-    assert theme.leds[0] != theme.leds[1], "adjacent LEDs must alternate"
+    assert theme.effect_name == "saints_fc"
+    assert theme.leds == load_custom_effect(THEMES_DIR / "saints_fc.yaml")
     await extension.stop()
 
 
@@ -203,33 +395,39 @@ async def test_start_bootstrap_check_finds_a_match_today_via_eventslast() -> Non
     # this is what prompted the original switch away from football-data.org:
     # a match already underway or finished today must still count. The
     # bootstrap "today" check in start() is the only path that can ever see
-    # this via eventslast, since the recurring daily poll only ever checks
-    # tomorrow (a future date can never be "recently completed").
+    # this via eventslast, since the recurring poll checks today+tomorrow and
+    # a future date can never be "recently completed".
     extension = SaintsFcExtension({})
     extension._client = _mock_client(
         _router(next_events=None, last_events=[{"dateEventLocal": _TODAY_ISO}])
     )
 
-    with patch("saints_fc.datetime", _frozen_clock()):
+    with (
+        patch("saints_fc.datetime", _frozen_clock()),
+        patch("saints_fc.every", AsyncMock()),
+    ):
         await extension.start()
     theme = await extension.resolve(_FIXED_NOW)
 
     assert theme is not None
-    assert theme.effect_name == "saints_fc_matchday"
+    assert theme.effect_name == "saints_fc"
     await extension.stop()
 
 
 async def test_resolve_returns_the_theme_for_both_a_bootstrap_and_a_later_confirmed_date() -> (
     None
 ):
-    # The whole reason _match_date (a single date) became _match_dates (a
-    # set): a bootstrap "today" confirmation and a later daily "tomorrow"
+    # The whole reason _match_dates (now _matches) is keyed by date: a
+    # bootstrap "today" confirmation and a later poll's "tomorrow"
     # confirmation must coexist -- neither may silently overwrite the other.
     extension = SaintsFcExtension({})
     extension._client = _mock_client(
         _router(next_events=[{"dateEventLocal": _TODAY_ISO}], last_events=None)
     )
-    with patch("saints_fc.datetime", _frozen_clock()):
+    with (
+        patch("saints_fc.datetime", _frozen_clock()),
+        patch("saints_fc.every", AsyncMock()),
+    ):
         await extension.start()  # confirms today
 
         extension._client = _mock_client(
@@ -244,32 +442,43 @@ async def test_resolve_returns_the_theme_for_both_a_bootstrap_and_a_later_confir
     await extension.stop()
 
 
-async def test_start_schedules_the_daily_poll_at_the_default_time() -> None:
+async def test_start_schedules_an_interval_poll_at_the_default_cadence() -> None:
     extension = SaintsFcExtension({})
     extension._client = _mock_client(_router(next_events=None, last_events=None))
 
     with (
         patch("saints_fc.datetime", _frozen_clock()),
-        patch("saints_fc.daily_at", AsyncMock()) as _daily_at,
+        patch("saints_fc.every", AsyncMock()) as _every,
     ):
         await extension.start()
 
-    _daily_at.assert_called_once_with(23, 0, _LONDON, extension._poll_once)
+    _every.assert_called_once_with(3600, extension._poll_once)
     await extension.stop()
 
 
-async def test_start_schedules_the_daily_poll_at_a_configured_poll_time() -> None:
-    extension = SaintsFcExtension({"poll_time": "06:30"})
+async def test_start_schedules_an_interval_poll_at_a_configured_cadence() -> None:
+    extension = SaintsFcExtension({"poll_interval_hours": 6})
     extension._client = _mock_client(_router(next_events=None, last_events=None))
 
     with (
         patch("saints_fc.datetime", _frozen_clock()),
-        patch("saints_fc.daily_at", AsyncMock()) as _daily_at,
+        patch("saints_fc.every", AsyncMock()) as _every,
     ):
         await extension.start()
 
-    _daily_at.assert_called_once_with(6, 30, _LONDON, extension._poll_once)
+    _every.assert_called_once_with(21600, extension._poll_once)
     await extension.stop()
+
+
+async def test_stop_is_safe_before_start() -> None:
+    # load_extensions() best-effort calls stop() on an extension whose
+    # start() never ran (or was never reached) -- it must not raise on the
+    # absent background task.
+    extension = SaintsFcExtension({})
+
+    await extension.stop()
+
+    assert extension._task is None
 
 
 async def test_stop_cancels_the_background_task_cleanly() -> None:
@@ -285,16 +494,15 @@ async def test_stop_cancels_the_background_task_cleanly() -> None:
     assert extension._task.cancelled() or extension._task.done()
 
 
-@pytest.mark.parametrize("poll_time", ["24:00", "23:60", "not-a-time", "11pm", ""])
-def test_init_rejects_an_invalid_poll_time_string(poll_time: str) -> None:
+@pytest.mark.parametrize("poll_interval_hours", [0, 0.0, -1, "6", None, True, ["6"]])
+def test_init_rejects_a_non_positive_or_non_numeric_poll_interval(
+    poll_interval_hours: object,
+) -> None:
+    # Scenario 10: poll_interval_hours must be a positive int/float. A bool,
+    # string, None, list, zero or negative all raise at construction -- the
+    # same ValueError style as api_key (describe the type, don't echo).
     with pytest.raises(ValueError):
-        SaintsFcExtension({"poll_time": poll_time})
-
-
-@pytest.mark.parametrize("poll_time", [23, 23.0, True, None, ["23:00"]])
-def test_init_rejects_a_non_string_poll_time(poll_time: object) -> None:
-    with pytest.raises(ValueError):
-        SaintsFcExtension({"poll_time": poll_time})
+        SaintsFcExtension({"poll_interval_hours": poll_interval_hours})
 
 
 @pytest.mark.parametrize("api_key", ["", "   "])
@@ -321,17 +529,28 @@ def test_init_rejects_a_non_string_api_key(api_key: object) -> None:
 async def test_a_poll_failure_logs_a_warning_and_keeps_previously_confirmed_dates(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    def _failing_handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500)
-
     extension = SaintsFcExtension({})
     extension._client = _mock_client(
         _router(next_events=[{"dateEventLocal": _TODAY_ISO}], last_events=None)
     )
-    with patch("saints_fc.datetime", _frozen_clock()):
+    with (
+        patch("saints_fc.datetime", _frozen_clock()),
+        patch("saints_fc.every", AsyncMock()),
+    ):
         await extension.start()  # bootstrap check confirms today
 
-        extension._client = _mock_client(httpx.MockTransport(_failing_handler))
+        _calls = {"n": 0}
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            _calls["n"] += 1
+            # today's two endpoint calls succeed with no fixture; every call
+            # after (tomorrow's check) fails.
+            if _calls["n"] <= 2:
+                _key = "events" if "eventsnext.php" in str(request.url) else "results"
+                return httpx.Response(200, json={_key: None})
+            return httpx.Response(500)
+
+        extension._client = _mock_client(httpx.MockTransport(_handler))
         with (
             patch("common.decorator.asyncio.sleep", AsyncMock()),
             caplog.at_level(logging.WARNING),
@@ -340,10 +559,10 @@ async def test_a_poll_failure_logs_a_warning_and_keeps_previously_confirmed_date
 
     theme = await extension.resolve(_FIXED_NOW)
     assert theme is not None
-    assert theme.effect_name == "saints_fc_matchday"
+    assert theme.effect_name == "saints_fc"
     # common.decorator.retry logs its own warning per retry attempt (already
     # covered by its own tests) -- what matters here is exactly one warning
-    # from saints_fc itself, once retries are exhausted.
+    # from saints_fc itself, once retries for the failing date are exhausted.
     _own_records = [r for r in caplog.records if "poll failed" in r.message]
     assert len(_own_records) == 1
     await extension.stop()
@@ -405,10 +624,11 @@ async def test_a_single_transient_failure_is_retried_and_does_not_log_a_saints_f
 
     theme = await extension.resolve(_FIXED_NOW + timedelta(days=1))
     assert theme is not None
-    # 3 calls: the first eventsnext attempt fails, then the whole
-    # _fetch_has_match_on_date (both eventsnext and eventslast) is retried
-    # once and succeeds.
-    assert _calls["count"] == 3
+    # 5 calls: today's check fails its first eventsnext attempt, retries the
+    # whole _fetch_kickoffs_on_date once (eventsnext + eventslast) and finds
+    # no fixture for today; tomorrow's check is then two more calls and
+    # succeeds first try.
+    assert _calls["count"] == 5
     # The retry succeeded within the retry budget, so saints_fc's own
     # poll-failed warning (logged only once retries are exhausted) must not
     # fire -- only common.decorator.retry's own per-attempt warning does.
