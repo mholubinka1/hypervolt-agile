@@ -1,5 +1,7 @@
 # Issues: chore-simplify-dayofweek
 
+> Work complete — PR ready to merge.
+
 ## Simplify DayOfWeek enum and add its missing test coverage
 
 **GitHub issue**: #122
@@ -18,14 +20,14 @@ Add `tests/hypervolt/test_hypervolt_model.py` (a new file — this module curren
 
 ### Acceptance criteria
 
-- [ ] `DayOfWeek` members use `auto()`; `all` member is removed
-- [ ] `weekday_to_dayofweek` uses direct dict indexing (`mapping[weekday]`)
-- [ ] `weekday_to_dayofweek` returns the correct `DayOfWeek` member for all 7 weekday indices (0–6)
-- [ ] `parse_from_response` returns the correct `day_of_week` for a valid single-day session
-- [ ] `parse_from_response` still raises `ValueError` when `days` has zero or more than one entry
-- [ ] `create_from_charge_session` produces the correct `day_of_week` for a session within a single local day
-- [ ] `create_from_charge_session` produces the correct `day_of_week` for both halves of a session that splits at local midnight
-- [ ] No test or production code reads `DayOfWeek.<member>.value`
-- [ ] `FEATURES.md` Feature 20 marked complete and moved to `FEATURES_ARCHIVE.md` (local-only, not committed)
+- [x] `DayOfWeek` members use `auto()`; `all` member is removed
+- [x] `weekday_to_dayofweek` uses direct dict indexing (`mapping[weekday]`)
+- [x] `weekday_to_dayofweek` returns the correct `DayOfWeek` member for all 7 weekday indices (0–6)
+- [x] `parse_from_response` returns the correct `day_of_week` for a valid single-day session
+- [x] `parse_from_response` still raises `ValueError` when `days` has zero or more than one entry
+- [x] `create_from_charge_session` produces the correct `day_of_week` for a session within a single local day
+- [x] `create_from_charge_session` produces the correct `day_of_week` for both halves of a session that splits at local midnight
+- [x] No test or production code reads `DayOfWeek.<member>.value`
+- [x] `FEATURES.md` Feature 20 marked complete and moved to `FEATURES_ARCHIVE.md` (local-only, not committed) — no-op: these files don't exist anywhere in this repo
 
 ---
