@@ -154,10 +154,11 @@ Then the existing defensive copy runs on whichever pass produced the match.
   is not structurally required — and reached via `hasattr`. Only the Saints extension
   implements it.
 - `ExtensionWrapper` gains a `resolve_fallback` method mirroring its `resolve`: the same
-  `try` / `except` isolation, the same `_last_exception` dedup of repeated warning lines,
-  the same "raise `TypeError` if the return is neither `None` nor an `LedTheme`" guard, and
-  the same "recovered" info log. An extension without the hook makes `resolve_fallback`
-  return `None`.
+  `try` / `except` isolation, the same dedup of a repeated identical warning line (tracked
+  per method under `_last_exception`, so `resolve` and `resolve_fallback` don't reset each
+  other's state), the same "raise `TypeError` if the return is neither `None` nor an
+  `LedTheme`" guard, and the same "recovered" info log. An extension without the hook makes
+  `resolve_fallback` return `None`.
 
 This is what lets the Saints strip sit *below* custom/built-in themes outside the match
 window while `resolve()` keeps it *above* them inside the window.

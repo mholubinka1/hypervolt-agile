@@ -21,12 +21,15 @@ copy (deep-copied `leds`, `always_on` carried through), so both passes return th
 `resolve_fallback` is declared the way `start` / `stop` already are (ADR 0005) — a comment on
 the `LedThemeProvider` Protocol, not a Protocol member, so it is not structurally required —
 and reached via `hasattr`. `ExtensionWrapper` exposes its own `resolve_fallback` that shares
-one body (and one `self._last_exception`) with `resolve`: the same exception isolation, the
-same de-duplication of a repeated identical warning, the same "raise `TypeError` if the
-return is neither `None` nor an `LedTheme`" guard, and the same "recovered" info log. An
-extension without the hook makes `ExtensionWrapper.resolve_fallback` return `None`, so it
-contributes nothing to the second pass. A failure in one extension's `resolve_fallback` is
-isolated and the next extension is still consulted, mirroring the primary walk.
+one body (`_invoke`) with `resolve`: the same exception isolation, the same de-duplication of
+a repeated identical warning, the same "raise `TypeError` if the return is neither `None` nor
+an `LedTheme`" guard, and the same "recovered" info log. Each method tracks its own entry in
+`self._last_exception` (keyed by method name), so a `resolve()` that fails every cycle keeps
+its warning de-duplicated even while a `resolve_fallback()` that succeeds every cycle runs
+alongside it — one path's recovery never masks or resets the other's. An extension without
+the hook makes `ExtensionWrapper.resolve_fallback` return `None`, so it contributes nothing
+to the second pass. A failure in one extension's `resolve_fallback` is isolated and the next
+extension is still consulted, mirroring the primary walk.
 
 The Saints FC extension (issue #117) is the first and only planned implementer: `resolve()`
 returns the strip (`always_on=True`) inside the match window and `None` otherwise;
