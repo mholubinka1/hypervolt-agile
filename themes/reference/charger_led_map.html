@@ -383,6 +383,9 @@
     return out;
   }
 
+  var MAP_JSON_FILENAME = "charger_led_map.json";
+  var MAP_HTML_FILENAME = "charger_led_map.html";
+
   function mapJsonText() {
     return JSON.stringify(serialiseModel(), null, 2) + "\n";
   }
@@ -390,12 +393,18 @@
   // Regenerates the whole page (see PAGE_TEMPLATE above) with only the
   // embedded seed swapped for the current in-memory positions -- the
   // downloaded/saved charger_led_map.html always shows what's on screen now.
+  // Throws rather than silently returning the stale template if the seed
+  // script block can't be found, so a save never reports success while
+  // writing out-of-date positions.
   function mapHtmlText() {
     var json = mapJsonText();
-    return PAGE_TEMPLATE.replace(
+    var matched = false;
+    var html = PAGE_TEMPLATE.replace(
       /(<script type="application\/json" id="charger-led-map">)[\s\S]*?(<\/script>)/,
-      function (match, open, close) { return open + "\n" + json + close; }
+      function (match, open, close) { matched = true; return open + "\n" + json + close; }
     );
+    if (!matched) throw new Error("could not find the charger-led-map seed block to update");
+    return html;
   }
 
   function downloadFile(filename, content, mime) {
@@ -412,13 +421,16 @@
   function saveViaDownload() {
     var jsonText = mapJsonText();
     var htmlText = mapHtmlText();
-    downloadFile("charger_led_map.json", jsonText, "application/json");
-    setTimeout(function () {
-      downloadFile("charger_led_map.html", htmlText, "text/html");
-      readout.textContent = "This browser can't write files in place, so both were " +
-        "downloaded — move charger_led_map.json and charger_led_map.html into " +
-        "themes/reference/ to update the reference.";
-    }, 150);
+    downloadFile(MAP_JSON_FILENAME, jsonText, "application/json");
+    return new Promise(function (resolve) {
+      setTimeout(function () {
+        downloadFile(MAP_HTML_FILENAME, htmlText, "text/html");
+        readout.textContent = "This browser can't write files in place, so both were " +
+          "downloaded — move " + MAP_JSON_FILENAME + " and " + MAP_HTML_FILENAME + " into " +
+          "themes/reference/ to update the reference.";
+        resolve();
+      }, 150);
+    });
   }
 
   // ---- save in place (File System Access API) ----
@@ -438,36 +450,35 @@
     });
   }
 
-  function idbGet(key) {
+  // Shared request/transaction plumbing for the three IndexedDB operations
+  // below -- each just supplies what to do with the object store and, for
+  // reads, how to capture the request's result before the transaction
+  // completes.
+  function idbTransaction(mode, run) {
     return openHandleDb().then(function (db) {
       return new Promise(function (resolve, reject) {
-        var req = db.transaction(HANDLE_STORE, "readonly").objectStore(HANDLE_STORE).get(key);
-        req.onsuccess = function () { resolve(req.result || null); };
-        req.onerror = function () { reject(req.error); };
+        var tx = db.transaction(HANDLE_STORE, mode);
+        var result;
+        run(tx.objectStore(HANDLE_STORE), function (value) { result = value; });
+        tx.oncomplete = function () { resolve(result); };
+        tx.onerror = function () { reject(tx.error); };
       });
+    });
+  }
+
+  function idbGet(key) {
+    return idbTransaction("readonly", function (store, setResult) {
+      var req = store.get(key);
+      req.onsuccess = function () { setResult(req.result || null); };
     });
   }
 
   function idbSet(key, value) {
-    return openHandleDb().then(function (db) {
-      return new Promise(function (resolve, reject) {
-        var tx = db.transaction(HANDLE_STORE, "readwrite");
-        tx.objectStore(HANDLE_STORE).put(value, key);
-        tx.oncomplete = function () { resolve(); };
-        tx.onerror = function () { reject(tx.error); };
-      });
-    });
+    return idbTransaction("readwrite", function (store) { store.put(value, key); });
   }
 
   function idbDelete(key) {
-    return openHandleDb().then(function (db) {
-      return new Promise(function (resolve, reject) {
-        var tx = db.transaction(HANDLE_STORE, "readwrite");
-        tx.objectStore(HANDLE_STORE).delete(key);
-        tx.oncomplete = function () { resolve(); };
-        tx.onerror = function () { reject(tx.error); };
-      });
-    });
+    return idbTransaction("readwrite", function (store) { store.delete(key); });
   }
 
   function ensureWritePermission(handle) {
@@ -516,25 +527,49 @@
 
   // Both handles (and their permission) are secured before either file is
   // written, so cancelling or denying either one leaves neither file touched.
+  // If the json write succeeds but the html write then fails, the error
+  // names which file did land so a retry isn't a guessing game.
   function saveInPlace() {
     var jsonText = mapJsonText();
     var htmlText = mapHtmlText();
-    return getOrPickHandle("charger_led_map.json").then(function (jsonHandle) {
-      return getOrPickHandle("charger_led_map.html").then(function (htmlHandle) {
-        return writeHandle(jsonHandle, jsonText)
-          .then(function () { return writeHandle(htmlHandle, htmlText); })
-          .then(function () {
-            readout.textContent = "Saved charger_led_map.json and charger_led_map.html.";
+    return getOrPickHandle(MAP_JSON_FILENAME).then(function (jsonHandle) {
+      return getOrPickHandle(MAP_HTML_FILENAME).then(function (htmlHandle) {
+        return writeHandle(jsonHandle, jsonText).then(function () {
+          return writeHandle(htmlHandle, htmlText).catch(function (err) {
+            throw new Error(MAP_JSON_FILENAME + " saved, but " + MAP_HTML_FILENAME +
+              " failed: " + err.message + " — click Save again to retry");
           });
+        }).then(function () {
+          readout.textContent = "Saved " + MAP_JSON_FILENAME + " and " + MAP_HTML_FILENAME + ".";
+        });
       });
     });
   }
 
+  function reportSaveError(err) {
+    if (err && err.name === "AbortError") { readout.textContent = "Save cancelled."; return; }
+    readout.textContent = "Save failed: " + err.message;
+  }
+
+  // A single in-flight guard covers both paths (including saveViaDownload's
+  // staggered second download) so a rapid double-click can't fire overlapping
+  // pickers or races.
+  var saveInFlight = false;
+
   function saveMap() {
-    if (typeof window.showSaveFilePicker !== "function") { saveViaDownload(); return; }
-    saveInPlace().catch(function (err) {
-      if (err && err.name === "AbortError") { readout.textContent = "Save cancelled."; return; }
-      readout.textContent = "Save failed: " + err.message;
+    if (saveInFlight) return;
+    saveInFlight = true;
+    var result;
+    try {
+      result = typeof window.showSaveFilePicker === "function" ? saveInPlace() : saveViaDownload();
+    } catch (err) {
+      saveInFlight = false;
+      reportSaveError(err);
+      return;
+    }
+    result.then(function () { saveInFlight = false; }, function (err) {
+      saveInFlight = false;
+      reportSaveError(err);
     });
   }
 
