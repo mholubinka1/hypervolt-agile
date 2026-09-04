@@ -1,3 +1,5 @@
+> Work complete — PR ready to merge.
+
 # Issues: chore-themes-and-charger-led-map
 
 ## 1. Vendor the Saints colour map and theme runner into themes/
@@ -25,13 +27,13 @@ are superseded by the reference page (issue #4).
 
 ### Acceptance criteria
 
-- [ ] `themes/saints_fc.yaml` exists and `hypervolt.led.load_custom_effect` parses it to 51 LEDs
+- [x] `themes/saints_fc.yaml` exists and `hypervolt.led.load_custom_effect` parses it to 51 LEDs
       with red at indices `1,2,5,6,21,22,24,25,39,40,42,43,44,48,49,50`.
-- [ ] `scripts/show_led_theme.py` resolves `themes/<effect>.yaml` (default effect `saints_fc`),
+- [x] `scripts/show_led_theme.py` resolves `themes/<effect>.yaml` (default effect `saints_fc`),
       not `led_effects/`.
-- [ ] No `config/led_effects/` directory is introduced on this branch.
-- [ ] Pre-commit passes on both files.
-- [ ] Existing test suite still passes (no app code touched yet).
+- [x] No `config/led_effects/` directory is introduced on this branch.
+- [x] Pre-commit passes on both files.
+- [x] Existing test suite still passes (no app code touched yet).
 
 ---
 
@@ -66,16 +68,16 @@ Move custom-theme colour-map resolution off the operator's config directory and 
 
 ### Acceptance criteria
 
-- [ ] Given a `custom_themes` entry `effect: saints_fc`, the app resolves and loads
+- [x] Given a `custom_themes` entry `effect: saints_fc`, the app resolves and loads
       `themes/saints_fc.yaml`.
-- [ ] Given a `custom_themes` entry whose `<effect>.yaml` is absent from `themes/`, the entry is
+- [x] Given a `custom_themes` entry whose `<effect>.yaml` is absent from `themes/`, the entry is
       logged and skipped (behaviour unchanged, just the directory changed).
-- [ ] No code path reads a `led_effects/` directory.
-- [ ] `load_custom_themes` / `load_custom_themes_for_config` expose `themes_dir`; existing tests
+- [x] No code path reads a `led_effects/` directory.
+- [x] `load_custom_themes` / `load_custom_themes_for_config` expose `themes_dir`; existing tests
       updated for the rename and still pass.
-- [ ] `config/config.yml.template` and `README.md` no longer reference `led_effects/`.
-- [ ] `tests/test_config.py` still loads a config carrying a `custom_themes` entry.
-- [ ] ADR 1 committed under `.agent-docs/adr/`.
+- [x] `config/config.yml.template` and `README.md` no longer reference `led_effects/`.
+- [x] `tests/test_config.py` still loads a config carrying a `custom_themes` entry.
+- [x] ADR 1 committed under `.agent-docs/adr/`.
 
 ---
 
@@ -109,15 +111,15 @@ New test `tests/themes/test_charger_led_map.py`.
 
 ### Acceptance criteria
 
-- [ ] `themes/reference/charger_led_map.json` exists and is valid JSON.
-- [ ] It has exactly 51 entries keyed `"0"`–`"50"` with no gaps.
-- [ ] Every entry has numeric `x_mm` in `[0, 243]` and `y_mm` in `[0, 328]`.
-- [ ] Every `region` is one of the allowed nine.
-- [ ] `bolt_segment` is present exactly when `region == "bolt"` and is one of the allowed three;
+- [x] `themes/reference/charger_led_map.json` exists and is valid JSON.
+- [x] It has exactly 51 entries keyed `"0"`–`"50"` with no gaps.
+- [x] Every entry has numeric `x_mm` in `[0, 243]` and `y_mm` in `[0, 328]`.
+- [x] Every `region` is one of the allowed nine.
+- [x] `bolt_segment` is present exactly when `region == "bolt"` and is one of the allowed three;
       indices 39–41 → `lower-blade`, 42–44 → `hook`, 45–50 → `upper-blade`.
-- [ ] Indices 20–26 have `live == false`; every other index has `live == true`.
-- [ ] No two `live` entries share the same `(x_mm, y_mm)`.
-- [ ] `tests/themes/test_charger_led_map.py` asserts all of the above and passes.
+- [x] Indices 20–26 have `live == false`; every other index has `live == true`.
+- [x] No two `live` entries share the same `(x_mm, y_mm)`.
+- [x] `tests/themes/test_charger_led_map.py` asserts all of the above and passes.
 
 ---
 
@@ -153,18 +155,18 @@ framework, no build) that is both the geometry editor and the theme previewer.
 
 ### Acceptance criteria
 
-- [ ] Opens from `file://` with no console errors; all 51 handles render at true scale, numbered,
+- [x] Opens from `file://` with no console errors; all 51 handles render at true scale, numbered,
       region-coloured; 20–26 visibly distinct (hollow).
-- [ ] Dragging a handle moves it, clamps at the body edge, and updates the mm read-out; a focused
+- [x] Dragging a handle moves it, clamps at the body edge, and updates the mm read-out; a focused
       handle nudges 1 mm per arrow-key press.
-- [ ] Export downloads `charger_led_map.json`; Load of that file restores the exact positions
+- [x] Export downloads `charger_led_map.json`; Load of that file restores the exact positions
       (round-trip).
-- [ ] Loading `themes/saints_fc.yaml` colours indices `1,2,5,6,21,22,24,25,39,40,42,43,44,48,49,50`
+- [x] Loading `themes/saints_fc.yaml` colours indices `1,2,5,6,21,22,24,25,39,40,42,43,44,48,49,50`
       red and the rest white on the map.
-- [ ] The regenerated `segments` read-out for the shown Saints colours reproduces the
+- [x] The regenerated `segments` read-out for the shown Saints colours reproduces the
       `[1,2] [5,6] [21,22] [24,25] [39,40] [42,44] [48,50]` red ranges.
-- [ ] `scripts/led_map_geometry_review.html` / `scripts/saints_fc_theme.html` are absent from the
+- [x] `scripts/led_map_geometry_review.html` / `scripts/saints_fc_theme.html` are absent from the
       branch.
-- [ ] ADR 2 committed.
+- [x] ADR 2 committed.
 
 ---
