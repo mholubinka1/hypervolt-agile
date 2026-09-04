@@ -418,6 +418,11 @@
     URL.revokeObjectURL(a.href);
   }
 
+  // Staggering the two downloads dodges the browser's "this site is trying
+  // to download multiple files" block, which otherwise silently drops the
+  // second one.
+  var DOWNLOAD_STAGGER_MS = 150;
+
   function saveViaDownload() {
     var jsonText = mapJsonText();
     var htmlText = mapHtmlText();
@@ -429,7 +434,7 @@
           "downloaded — move " + MAP_JSON_FILENAME + " and " + MAP_HTML_FILENAME + " into " +
           "themes/reference/ to update the reference.";
         resolve();
-      }, 150);
+      }, DOWNLOAD_STAGGER_MS);
     });
   }
 
@@ -460,8 +465,8 @@
         var tx = db.transaction(HANDLE_STORE, mode);
         var result;
         run(tx.objectStore(HANDLE_STORE), function (value) { result = value; });
-        tx.oncomplete = function () { resolve(result); };
-        tx.onerror = function () { reject(tx.error); };
+        tx.oncomplete = function () { db.close(); resolve(result); };
+        tx.onerror = function () { db.close(); reject(tx.error); };
       });
     });
   }
@@ -479,6 +484,20 @@
 
   function idbDelete(key) {
     return idbTransaction("readwrite", function (store) { store.delete(key); });
+  }
+
+  // Named so reportSaveError can show these messages verbatim instead of
+  // wrapping them in a generic "Save failed: " prefix.
+  function permissionDeniedError(filename) {
+    var err = new Error("permission denied for " + filename + " — click Save again to choose it");
+    err.name = "PermissionDeniedError";
+    return err;
+  }
+
+  function partialSaveError(message) {
+    var err = new Error(message);
+    err.name = "PartialSaveError";
+    return err;
   }
 
   function ensureWritePermission(handle) {
@@ -513,15 +532,22 @@
       return ensureWritePermission(stored).then(function (ok) {
         if (ok) return stored;
         return idbDelete(filename).then(function () {
-          throw new Error("permission denied for " + filename + " — click Save again to choose it");
+          throw permissionDeniedError(filename);
         });
       });
     });
   }
 
-  function writeHandle(handle, content) {
+  // A write failure (permission revoked mid-session, the target file moved
+  // or deleted, disk error) clears the remembered handle for `filename` too
+  // -- otherwise every later Save would keep reusing the same broken handle
+  // and failing the same way forever, with no path back to the native
+  // picker.
+  function writeHandle(filename, handle, content) {
     return handle.createWritable().then(function (writable) {
       return writable.write(content).then(function () { return writable.close(); });
+    }).catch(function (err) {
+      return idbDelete(filename).then(function () { throw err; });
     });
   }
 
@@ -534,9 +560,9 @@
     var htmlText = mapHtmlText();
     return getOrPickHandle(MAP_JSON_FILENAME).then(function (jsonHandle) {
       return getOrPickHandle(MAP_HTML_FILENAME).then(function (htmlHandle) {
-        return writeHandle(jsonHandle, jsonText).then(function () {
-          return writeHandle(htmlHandle, htmlText).catch(function (err) {
-            throw new Error(MAP_JSON_FILENAME + " saved, but " + MAP_HTML_FILENAME +
+        return writeHandle(MAP_JSON_FILENAME, jsonHandle, jsonText).then(function () {
+          return writeHandle(MAP_HTML_FILENAME, htmlHandle, htmlText).catch(function (err) {
+            throw partialSaveError(MAP_JSON_FILENAME + " saved, but " + MAP_HTML_FILENAME +
               " failed: " + err.message + " — click Save again to retry");
           });
         }).then(function () {
@@ -546,8 +572,17 @@
     });
   }
 
+  // AbortError, PermissionDeniedError, and PartialSaveError each already
+  // carry a complete, specific message -- shown verbatim rather than
+  // wrapped in a generic "Save failed: " prefix, so the designer sees
+  // exactly which outcome happened.
   function reportSaveError(err) {
-    if (err && err.name === "AbortError") { readout.textContent = "Save cancelled."; return; }
+    if (!err) { readout.textContent = "Save failed."; return; }
+    if (err.name === "AbortError") { readout.textContent = "Save cancelled."; return; }
+    if (err.name === "PermissionDeniedError" || err.name === "PartialSaveError") {
+      readout.textContent = err.message;
+      return;
+    }
     readout.textContent = "Save failed: " + err.message;
   }
 
@@ -557,7 +592,7 @@
   var saveInFlight = false;
 
   function saveMap() {
-    if (saveInFlight) return;
+    if (saveInFlight) { readout.textContent = "Save already in progress…"; return; }
     saveInFlight = true;
     var result;
     try {
