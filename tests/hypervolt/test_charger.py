@@ -1,13 +1,15 @@
+from datetime import time
 from unittest.mock import AsyncMock, Mock
 
 from hypervolt.charger import HypervoltChargerClient
-from hypervolt.model import HypervoltCharger
+from hypervolt.model import DayOfWeek, HypervoltCharger, HypervoltSession
 
 
 def _charger_client(
-    led_brightness: float | None,
+    led_brightness: float | None = None,
     current_led_effect: str | None = None,
     current_leds: list[dict[str, float]] | None = None,
+    current_schedule: list[HypervoltSession] | None = None,
 ) -> tuple[HypervoltChargerClient, Mock]:
     charger = HypervoltCharger(id="charger-1", maj_version=3)
     rest_client = Mock(charger=charger)
@@ -15,11 +17,13 @@ def _charger_client(
     client._charger_state.led_brightness = led_brightness
     client._current_led_effect = current_led_effect
     client._current_leds = current_leds
+    client._charger_state.current_schedule = current_schedule
 
     ws_client = Mock()
     ws_client.is_connected = True
     ws_client.set_led_brightness = AsyncMock()
     ws_client.set_led_effect = AsyncMock()
+    ws_client.set_charging_schedule = AsyncMock()
     client._ws_client = ws_client
 
     return client, ws_client
@@ -138,3 +142,44 @@ async def test_apply_led_state_pushes_when_leds_differ_despite_unchanged_effect_
     await client.apply_led_state(0.5, "saints_fc_matchday", leds=new_leds)
 
     ws_client.set_led_effect.assert_awaited_once_with("steady_array", leds=new_leds)
+
+
+async def test_apply_schedule_treats_a_reordered_but_equal_schedule_as_unchanged() -> (
+    None
+):
+    # Comparing sessions requires sorting them into a stable order, and that
+    # order is keyed in part by day_of_week -- proposed and stored schedules
+    # arrive in whatever order their source produced, not necessarily the
+    # same one, so ordering by day must not depend on member declaration
+    # matching call-site order.
+    monday_session = HypervoltSession(
+        start=time(8, 0), end=time(16, 0), day_of_week=DayOfWeek.monday
+    )
+    friday_session = HypervoltSession(
+        start=time(8, 0), end=time(16, 0), day_of_week=DayOfWeek.friday
+    )
+    client, ws_client = _charger_client(
+        current_schedule=[friday_session, monday_session]
+    )
+
+    pushed_again = await client.apply_schedule([monday_session, friday_session])
+
+    assert pushed_again is False
+    ws_client.set_charging_schedule.assert_not_awaited()
+
+
+async def test_apply_schedule_pushes_when_a_session_day_of_week_actually_changes() -> (
+    None
+):
+    monday_session = HypervoltSession(
+        start=time(8, 0), end=time(16, 0), day_of_week=DayOfWeek.monday
+    )
+    tuesday_session = HypervoltSession(
+        start=time(8, 0), end=time(16, 0), day_of_week=DayOfWeek.tuesday
+    )
+    client, ws_client = _charger_client(current_schedule=[monday_session])
+
+    pushed_again = await client.apply_schedule([tuesday_session])
+
+    assert pushed_again is True
+    ws_client.set_charging_schedule.assert_awaited_once()

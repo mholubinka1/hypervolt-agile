@@ -134,21 +134,14 @@ class HypervoltChargerClient:
         if not self.is_connected:
             return False
         _current_schedule = self._charger_state.current_schedule
-        _proposed_sorted = sorted(
-            schedule, key=lambda s: (s.start, s.day_of_week.value[0])
-        )
+        _proposed_sorted = sorted(schedule, key=HypervoltSession.sort_key)
         if _current_schedule is not None:
-            _current_sorted = sorted(
-                _current_schedule, key=lambda s: (s.start, s.day_of_week.value[0])
-            )
+            _current_sorted = sorted(_current_schedule, key=HypervoltSession.sort_key)
             if _proposed_sorted == _current_sorted:
                 logger.debug("Schedule unchanged, skipping apply.")
                 return False
         _last_sorted = (
-            sorted(
-                self._last_pushed_sessions,
-                key=lambda s: (s.start, s.day_of_week.value[0]),
-            )
+            sorted(self._last_pushed_sessions, key=HypervoltSession.sort_key)
             if self._last_pushed_sessions is not None
             else None
         )
