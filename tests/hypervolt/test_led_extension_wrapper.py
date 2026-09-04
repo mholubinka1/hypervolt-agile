@@ -125,6 +125,55 @@ async def test_extension_wrapper_treats_a_non_ledtheme_result_as_a_failure(
     assert "saints_fc" in caplog.records[0].message
 
 
+class _BothEntryPointsProvider:
+    """resolve() and resolve_fallback() both fail with the same exception until
+    told to recover, so a test can observe that the wrapper's warning de-dup and
+    recovery log are shared across the two entry points."""
+
+    def __init__(self, exception: Exception, theme: LedTheme) -> None:
+        self._exception: Exception | None = exception
+        self._theme = theme
+
+    def recover(self) -> None:
+        self._exception = None
+
+    async def resolve(self, now: datetime) -> LedTheme | None:
+        if self._exception is not None:
+            raise self._exception
+        return self._theme
+
+    async def resolve_fallback(self, now: datetime) -> LedTheme | None:
+        if self._exception is not None:
+            raise self._exception
+        return self._theme
+
+
+async def test_extension_wrapper_shares_failure_dedup_between_resolve_and_resolve_fallback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    provider = _BothEntryPointsProvider(
+        ValueError("fixtures API unreachable"), LedTheme(effect_name="saints_fc")
+    )
+    wrapper = ExtensionWrapper(name="saints_fc", provider=provider)
+    _now = datetime(2026, 8, 25, 12, 0, tzinfo=_LONDON)
+
+    with caplog.at_level(logging.INFO):
+        await wrapper.resolve(_now)
+        caplog.clear()
+        # Same exception via the other entry point -- suppressed, not re-logged.
+        assert await wrapper.resolve_fallback(_now) is None
+        assert len(caplog.records) == 0
+
+        provider.recover()
+        result = await wrapper.resolve_fallback(_now)
+
+    assert result == LedTheme(effect_name="saints_fc")
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelname == "INFO"
+    assert "saints_fc" in caplog.records[0].message
+    assert "recovered" in caplog.records[0].message
+
+
 class _StoppableProvider:
     def __init__(self) -> None:
         self.stopped = False

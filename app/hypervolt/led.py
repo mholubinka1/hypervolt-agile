@@ -169,6 +169,11 @@ async def resolve_theme(
     if _match is None:
         _match = _resolve_from(now, built_in_themes)
     if _match is None:
+        for _extension in extensions:
+            _match = await _extension.resolve_fallback(now)
+            if _match is not None:
+                break
+    if _match is None:
         return None
     # _match above is the stored/cached LedTheme itself -- from the caller's
     # custom_themes, built_in_themes, or an extension's own internal cache --
@@ -191,6 +196,13 @@ class LedThemeProvider(Protocol):
     # start() and stop() are optional lifecycle hooks (ADR 0005) -- deliberately
     # not declared here, since a Protocol member would make them structurally
     # required. Callers check `hasattr` instead of relying on isinstance.
+    #
+    # `async def resolve_fallback(self, now: datetime) -> LedTheme | None` is an
+    # optional second-pass hook (ADR 0015), declared the same way -- a comment,
+    # not a Protocol member -- and reached via `hasattr`. resolve_theme consults
+    # it only when the primary walk (extensions -> custom -> built-in themes)
+    # found nothing, so an extension implementing it can rank *below* the theme
+    # tiers on a fallback pass while its resolve() still ranks above them.
 
 
 class ExtensionWrapper:
@@ -200,15 +212,29 @@ class ExtensionWrapper:
         self._last_exception: Exception | None = None
 
     async def resolve(self, now: datetime) -> LedTheme | None:
+        return await self._invoke("resolve", now)
+
+    async def resolve_fallback(self, now: datetime) -> LedTheme | None:
+        # Optional second-pass hook (ADR 0015) -- absent on most providers, so
+        # guarded like stop() rather than assumed present.
+        if not hasattr(self._provider, "resolve_fallback"):
+            return None
+        return await self._invoke("resolve_fallback", now)
+
+    async def _invoke(self, method_name: str, now: datetime) -> LedTheme | None:
+        # resolve() and resolve_fallback() share this body -- and the one
+        # self._last_exception -- so a provider that misbehaves the same way
+        # through either entry point is warned about once, and a success
+        # through either clears the other's recorded failure.
         try:
-            _result = await self._provider.resolve(now)
+            _result = await getattr(self._provider, method_name)(now)
             # Raised inside this try so a misbehaving extension's bad return
             # value is funnelled through the same isolation/dedup handling
-            # below as any other resolve() failure, rather than propagating
-            # to crash resolve_theme's own .effect_name access.
+            # below as any other failure, rather than propagating to crash
+            # resolve_theme's own .effect_name access.
             if _result is not None and not isinstance(_result, LedTheme):
                 raise TypeError(
-                    f"resolve() returned {type(_result).__name__}, expected "
+                    f"{method_name}() returned {type(_result).__name__}, expected "
                     "LedTheme or None"
                 )
         except Exception as e:
