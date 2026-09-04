@@ -39,9 +39,10 @@ Three new LED themes, each landing through the mechanism that actually fits it:
 
 Alongside this, `extensions/` gains two subfolders — `extensions/themes/` for every
 `LedThemeProvider` (Saints, England, Bonfire) and `extensions/vehicles/` reserved for the
-separate, already-planned Volvo `VehicleProvider` work (ADR 0017) — so the one shared
-extension loader's two provider kinds are visible in the directory layout, at the cost of a
-documented hard rename for the one already-shipped extension.
+separate, already-planned Volvo `VehicleProvider` work (ADR 0017) — so the directory layout
+already reflects the two provider kinds ADR 0017 decided the extension loader will
+distinguish once it's generalised, at the cost of a documented hard rename for the one
+already-shipped extension.
 
 ## User Stories
 
