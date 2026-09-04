@@ -132,15 +132,16 @@
   <h1>Charger LED Map</h1>
   <p class="sub">
     True-scale map of the Hypervolt Home 3 face (243&nbsp;&times;&nbsp;328&nbsp;mm). Drag any LED to
-    its real position, or nudge a focused one with the arrow keys (1&nbsp;mm). <b>Export</b> writes
-    <code>charger_led_map.json</code> &mdash; the golden record every theme is designed against.
-    Load a <code>themes/*.yaml</code> colour map to preview it here and read its segment ranges back.
+    its real position, or nudge a focused one with the arrow keys (1&nbsp;mm). <b>Save</b> writes
+    <code>charger_led_map.json</code> and this page itself back to disk &mdash; the golden record
+    every theme is designed against. Load a <code>themes/*.yaml</code> colour map to preview it
+    here and read its segment ranges back.
   </p>
 
   <div class="layout">
     <div class="card">
       <div class="row">
-        <button class="primary" id="export">Export JSON</button>
+        <button class="primary" id="save">Save</button>
         <label class="file">Load map&hellip;<input type="file" id="load-map" accept=".json,application/json"></label>
         <button id="reset">Reset to seed</button>
       </div>
@@ -234,6 +235,11 @@
 
   var BODY_W = 243, BODY_H = 328;
   var SVGNS = "http://www.w3.org/2000/svg";
+
+  // Captured before any drag or theme preview touches the DOM, so Save can
+  // regenerate a pristine copy of this page with only the JSON payload
+  // changed -- see ADR 0018.
+  var PAGE_TEMPLATE = "<!doctype html>\n" + document.documentElement.outerHTML;
 
   function el(id) {
     var node = document.getElementById(id);
@@ -364,8 +370,8 @@
     g.addEventListener("focus", function () { showReadout(k); });
   }
 
-  // ---- export / load ----
-  function exportJson() {
+  // ---- save / load ----
+  function serialiseModel() {
     var out = {};
     Object.keys(model).forEach(function (k) {
       var m = model[k];
@@ -374,14 +380,44 @@
       row.live = m.live;
       out[k] = row;
     });
-    var blob = new Blob([JSON.stringify(out, null, 2) + "\n"], { type: "application/json" });
+    return out;
+  }
+
+  function mapJsonText() {
+    return JSON.stringify(serialiseModel(), null, 2) + "\n";
+  }
+
+  // Regenerates the whole page (see PAGE_TEMPLATE above) with only the
+  // embedded seed swapped for the current in-memory positions -- the
+  // downloaded/saved charger_led_map.html always shows what's on screen now.
+  function mapHtmlText() {
+    var json = mapJsonText();
+    return PAGE_TEMPLATE.replace(
+      /(<script type="application\/json" id="charger-led-map">)[\s\S]*?(<\/script>)/,
+      function (match, open, close) { return open + "\n" + json + close; }
+    );
+  }
+
+  function downloadFile(filename, content, mime) {
+    var blob = new Blob([content], { type: mime });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "charger_led_map.json";
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(a.href);
+  }
+
+  function saveMap() {
+    var jsonText = mapJsonText();
+    var htmlText = mapHtmlText();
+    downloadFile("charger_led_map.json", jsonText, "application/json");
+    setTimeout(function () {
+      downloadFile("charger_led_map.html", htmlText, "text/html");
+      readout.textContent = "Saved charger_led_map.json and charger_led_map.html to your " +
+        "Downloads folder — move both into themes/reference/ to update the reference.";
+    }, 150);
   }
 
   function loadMap(file) {
@@ -542,7 +578,7 @@
   }
 
   // ---- wire up ----
-  el("export").addEventListener("click", exportJson);
+  el("save").addEventListener("click", saveMap);
   el("reset").addEventListener("click", function () {
     seedModel(); buildHandles();
     readout.textContent = "Reset to the committed seed.";
