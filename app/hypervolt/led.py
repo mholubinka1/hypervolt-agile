@@ -249,12 +249,13 @@ class ExtensionWrapper:
         except Exception as e:
             if type(e) is not type(_previous) or str(e) != str(_previous):
                 logger.warning(
-                    f"LED theme extension {self.name!r} failed: {type(e).__name__}: {e}."
+                    f"LED theme extension {self.name!r} {_name}() failed: "
+                    f"{type(e).__name__}: {e}."
                 )
             self._last_exception[_name] = e
             return None
         if _previous is not None:
-            logger.info(f"LED theme extension {self.name!r} recovered.")
+            logger.info(f"LED theme extension {self.name!r} {_name}() recovered.")
             del self._last_exception[_name]
         return _result
 
