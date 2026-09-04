@@ -20,3 +20,8 @@ global app configuration only. Each extension entry's `config:` dict in `config.
 to that extension alone; there is no shared or inherited configuration between extensions, and
 none is read from anywhere outside an extension's own entry. Every extension must be able to
 operate correctly from its own config block in total isolation.
+
+(**Narrowed by ADR 0016**: "self-contained" means no shared mutable state and no
+cross-extension coupling. A *shipped* extension may read a versioned repo asset — e.g. a
+`themes/*.yaml` colour map — through `hypervolt.led`'s public API; it still reads no other
+extension's config or state.)

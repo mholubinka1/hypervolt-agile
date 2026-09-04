@@ -1,9 +1,16 @@
+from collections.abc import Sequence
 from datetime import date, datetime
 from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
 from hypervolt.charger import HypervoltChargerClient
-from hypervolt.led import THEMES_DIR, ExtensionWrapper, LedTheme, load_custom_effect
+from hypervolt.led import (
+    THEMES_DIR,
+    ExtensionWrapper,
+    LedTheme,
+    Window,
+    load_custom_effect,
+)
 from octopus.client import AgileClient
 from saints_fc import SaintsFcExtension
 from schedule import Scheduler
@@ -60,8 +67,8 @@ def _saints_extension_on_a_fixture_date() -> ExtensionWrapper:
 def _real_resolve_coordinator(
     *,
     is_charging: bool | None,
-    extensions: object = (),
-    custom_themes: object = (),
+    extensions: Sequence[ExtensionWrapper] = (),
+    custom_themes: Sequence[tuple[LedTheme, Window, Window]] = (),
 ) -> tuple[ScheduleCoordinator, Mock]:
     # Like _coordinator() but leaves schedule.coordinator.resolve_theme real,
     # so the extension / custom-theme priority is exercised end to end.

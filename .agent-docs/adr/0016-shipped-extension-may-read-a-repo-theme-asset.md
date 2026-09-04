@@ -13,7 +13,12 @@ the map is re-tuned.
 `hypervolt.led` and calls `load_custom_effect(THEMES_DIR / "saints_fc.yaml")` once in its
 constructor, storing the parsed LEDs on the instance. A missing or malformed file raises from
 `__init__`, so `load_extensions` logs it and the extension is treated as absent (ADR 0007),
-exactly as for any other construction failure. ADR 0006's "self-contained" is narrowed to its
+exactly as for any other construction failure. This is a deliberate, bounded exception to the
+"no I/O in `__init__`" guideline: the extension constructor already opens an
+`httpx.AsyncClient`, the read is a single small startup YAML, and doing it here is what makes a
+bad file a clean "extension absent" outcome rather than a per-poll failure. The alternative — a
+lazy first-use load inside `resolve()` — would turn a static, knowable-at-startup problem into
+a recurring runtime one. ADR 0006's "self-contained" is narrowed to its
 real intent: **no shared mutable state, and no cross-extension coupling.** A shipped extension
 reading a versioned repo asset through `hypervolt.led`'s documented public API is fine — it
 ships in the same repo, is released together, and cannot desynchronise from the app it is built

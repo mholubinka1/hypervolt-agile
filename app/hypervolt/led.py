@@ -4,7 +4,7 @@ import importlib.util
 import inspect
 import logging.config
 import sys
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from logging import Logger, getLogger
@@ -209,46 +209,53 @@ class ExtensionWrapper:
     def __init__(self, name: str, provider: LedThemeProvider) -> None:
         self.name = name
         self._provider = provider
-        self._last_exception: Exception | None = None
+        # Keyed by the provider method that failed -- resolve() and
+        # resolve_fallback() are independent code paths (a live-API resolve()
+        # can fail every cycle while a cached resolve_fallback() succeeds), so
+        # each dedups its own repeated warning and clears its own record
+        # without the other's success spuriously logging "recovered".
+        self._last_exception: dict[str, Exception] = {}
 
     async def resolve(self, now: datetime) -> LedTheme | None:
-        return await self._invoke("resolve", now)
+        return await self._invoke(self._provider.resolve, now)
 
     async def resolve_fallback(self, now: datetime) -> LedTheme | None:
         # Optional second-pass hook (ADR 0015) -- absent on most providers, so
         # guarded like stop() rather than assumed present.
         if not hasattr(self._provider, "resolve_fallback"):
             return None
-        return await self._invoke("resolve_fallback", now)
+        return await self._invoke(self._provider.resolve_fallback, now)
 
-    async def _invoke(self, method_name: str, now: datetime) -> LedTheme | None:
-        # resolve() and resolve_fallback() share this body -- and the one
-        # self._last_exception -- so a provider that misbehaves the same way
-        # through either entry point is warned about once, and a success
-        # through either clears the other's recorded failure.
+    async def _invoke(
+        self,
+        method: Callable[[datetime], Awaitable[LedTheme | None]],
+        now: datetime,
+    ) -> LedTheme | None:
+        # resolve() and resolve_fallback() share this isolation/dedup body,
+        # each tracked separately under its own name (see __init__).
+        _name = method.__name__
+        _previous = self._last_exception.get(_name)
         try:
-            _result = await getattr(self._provider, method_name)(now)
+            _result = await method(now)
             # Raised inside this try so a misbehaving extension's bad return
             # value is funnelled through the same isolation/dedup handling
             # below as any other failure, rather than propagating to crash
             # resolve_theme's own .effect_name access.
             if _result is not None and not isinstance(_result, LedTheme):
                 raise TypeError(
-                    f"{method_name}() returned {type(_result).__name__}, expected "
+                    f"{_name}() returned {type(_result).__name__}, expected "
                     "LedTheme or None"
                 )
         except Exception as e:
-            if type(e) is not type(self._last_exception) or str(e) != str(
-                self._last_exception
-            ):
+            if type(e) is not type(_previous) or str(e) != str(_previous):
                 logger.warning(
                     f"LED theme extension {self.name!r} failed: {type(e).__name__}: {e}."
                 )
-            self._last_exception = e
+            self._last_exception[_name] = e
             return None
-        if self._last_exception is not None:
+        if _previous is not None:
             logger.info(f"LED theme extension {self.name!r} recovered.")
-            self._last_exception = None
+            del self._last_exception[_name]
         return _result
 
     async def stop(self) -> None:

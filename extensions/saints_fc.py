@@ -70,7 +70,7 @@ def _kickoff_from_local_fields(date_local: str, time_local: str) -> datetime | N
         return None
 
 
-def _parse_kickoff(event: dict[str, Any]) -> datetime | None:
+def _parse_kickoff(event: dict[str, object]) -> datetime | None:
     # Always returns an aware datetime, or None when no field yields one (the
     # date is still recorded, with an empty kick-off list).
     _timestamp = str(event.get("strTimestamp") or "").strip()
@@ -191,11 +191,12 @@ class SaintsFcExtension:
         ]
         if not _events_on_date:
             return None
-        return [
-            _kickoff
-            for _kickoff in (_parse_kickoff(_event) for _event in _events_on_date)
-            if _kickoff is not None
-        ]
+        _kickoffs: list[datetime] = []
+        for _event in _events_on_date:
+            _kickoff = _parse_kickoff(_event)
+            if _kickoff is not None:
+                _kickoffs.append(_kickoff)
+        return _kickoffs
 
     async def _check_and_record(self, target_date: date) -> None:
         try:
@@ -224,6 +225,10 @@ class SaintsFcExtension:
         return LedTheme(effect_name="saints_fc", leds=self._leds, always_on=always_on)
 
     def _in_match_window(self, now: datetime) -> bool:
+        # Keyed by local date: a real kick-off (12:00-20:00) plus the 3h window
+        # and 30m lead-in never crosses local midnight, so the fixture's date
+        # and every instant of its window share one local date. A hypothetical
+        # kick-off near midnight would need the neighbouring date's entry too.
         _kickoffs = self._matches.get(now.astimezone(_LOCAL_TZ).date(), None)
         if not _kickoffs:
             # None -> not a match date at all; [] -> match that day, kick-off
