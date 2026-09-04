@@ -54,8 +54,8 @@ Whether a vehicle is currently connected to the charger; combined with release s
 ## LED Theme Control
 
 **LED Theme**:
-The resolved outcome for "what should the LEDs show right now" — a brightness plus an optional LED Effect — chosen once per poll cycle by walking the priority stack whenever the car is plugged in, independent of whether it's actively charging.
-_Avoid_: LED state, lighting mode
+The resolved outcome for "what should the LEDs show right now" — an LED Effect to display, or nothing — chosen once per poll cycle by walking the priority stack (primary pass then fallback pass). A displayed theme is always shown at full brightness (1.0); when nothing displays the LEDs are fully off (0.0) — there is no dimmed state and no plain-white-while-charging state. Whether a resolved theme displays depends on its display gate (see Always-on theme).
+_Avoid_: LED state, lighting mode, brightness
 
 **LED Effect**:
 The visual pattern applied to the charger's LEDs: either a built-in effect the charger firmware already knows how to render by name (e.g. `halloween_mode`), or a `steady_array` — an explicit 51-value RGB array the app constructs and sends itself.
@@ -66,7 +66,7 @@ An LED Effect backed by a static colour YAML file in the repo's `themes/` direct
 _Avoid_: custom effect, theme file, led_effects
 
 **LED Theme Extension**:
-An operator-registered Python module implementing the `LedThemeProvider` protocol, resolving a theme dynamically (e.g. from a sports fixtures API) rather than from a fixed calendar window. Fully self-contained — each extension operates from its own isolated config, with nothing shared or inherited between extensions.
+An operator-registered Python module implementing the `LedThemeProvider` protocol, resolving a theme dynamically (e.g. from a sports fixtures API) rather than from a fixed calendar window. Each extension operates from its own isolated config, with no shared mutable state and no coupling between extensions; a _shipped_ extension may read a repo asset (such as a `themes/` colour map) through `hypervolt.led`'s public API.
 _Avoid_: LED plugin, dynamic theme
 
 **Charger LED map**:
@@ -74,8 +74,16 @@ The canonical record of where each of the 51 LEDs sits on the charger face — m
 _Avoid_: LED layout, position file, calibration map
 
 **Priority stack**:
-The fixed authority order used to resolve which LED Theme applies when multiple sources could match at once: registered extensions (config list order) beat custom themes (config list order) beat built-in presets.
+The authority order used to resolve which LED Theme applies when multiple sources could match at once: registered extensions (config list order) beat custom themes (config list order) beat built-in presets. Resolution runs a second, fallback pass — extensions' `resolve_fallback` — only when the first pass finds nothing, which is how the Saints FC extension sits _above_ everything inside its Match window and _below_ everything outside it.
 _Avoid_: resolution order, precedence
+
+**Always-on theme**:
+A resolved LED Theme whose display gate is "display for the whole active window regardless of charge or plug state" — an empty, unplugged charge point still lights up (always at full brightness). The opposite is a charging-gated theme, which displays only while a car is actively charging and is otherwise fully off. Custom and built-in themes carry an `always_on` flag (default false — charging-gated) choosing between the two for their whole date window; the Saints FC extension is always-on within its Match window and charging-gated outside it. Plug state gates nothing — `car_plugged` is not consulted for LED display.
+_Avoid_: persistent theme, forced theme
+
+**Match window**:
+The interval a Saints FC match-day theme outranks all other themes: 30 minutes before kick-off until three hours after, unioned across every Southampton fixture that local date (a rare double-header covers both). A fixture whose kick-off time is still unknown contributes no Match window — it is only a charging-gated fallback that day; kick-off times are polled hourly so an unknown kick-off is rare. Outside the window on a match day the strip becomes a charging-gated fallback below every custom and built-in theme; off a match day the extension contributes nothing.
+_Avoid_: fixture window, game window
 
 ## Boundaries
 

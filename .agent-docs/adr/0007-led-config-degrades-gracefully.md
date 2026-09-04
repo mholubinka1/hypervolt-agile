@@ -31,3 +31,12 @@ feedback loop they already have for the rest of the file.
 **Path superseded by ADR 0012**: the missing/malformed external file this ADR describes is now a
 `themes/<effect>.yaml` under the repo's `themes/` directory, not `<config dir>/led_effects/*.yaml`.
 The graceful-degradation behaviour itself is unchanged.
+
+**Example updated by ADR 0014**: `led.brightness` no longer exists — ADR 0014 removed it and set
+`LedConfig` (and `_WindowedLedTheme`) to `extra="forbid"`. The fail-fast-config-values half of
+this ADR now reads on `enabled`, the `custom_themes` / `built_in_themes` `start`/`end` strings,
+`always_on: bool`, and any stray/misspelled key under `led:` — all of which raise at load via
+`ConfigLoader._load_config` exactly as an out-of-range `brightness` used to. The
+external-resources-degrade half (a missing `themes/<effect>.yaml`, an extension `.py` failing to
+construct — now including the Saints extension's own `load_custom_effect` call in `__init__`,
+ADR 0016) is unchanged.

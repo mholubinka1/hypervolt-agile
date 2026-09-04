@@ -16,3 +16,7 @@ ever be visible during that narrow overnight slot rather than for the week it's 
 Decoupling from charging (while still requiring the car plugged in, so an empty charger point
 doesn't light up) makes the themed window mean what it says — visible for the whole window,
 whenever there's a car present to show it on.
+
+**Superseded by ADR 0014** — plug state no longer gates LED display either; the per-theme
+`always_on` flag now governs the charge-state decoupling, and an always-on theme lights an
+empty, unplugged charge point.

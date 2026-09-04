@@ -17,6 +17,21 @@ async def test_resolve_theme_returns_custom_theme_during_its_window() -> None:
     assert theme == _PEACE
 
 
+async def test_resolve_theme_preserves_always_on_through_the_defensive_copy() -> None:
+    now = datetime(2026, 3, 15, 12, 0, tzinfo=_LONDON)
+    _always_on = LedTheme(
+        effect_name="peace",
+        leds=[{"r": 0.0, "g": 0.34, "b": 0.72}],
+        always_on=True,
+    )
+    custom_themes = [(_always_on, (3, 14, 0, 0), (3, 16, 0, 0))]
+
+    theme = await resolve_theme(now, custom_themes=custom_themes)
+
+    assert theme is not None
+    assert theme.always_on is True
+
+
 async def test_resolve_theme_prefers_custom_theme_over_built_in_on_same_date() -> None:
     # halloween_mode's window is 31 Oct 00:00 -> 1 Nov 06:00; overlap it deliberately.
     now = datetime(2026, 10, 31, 12, 0, tzinfo=_LONDON)

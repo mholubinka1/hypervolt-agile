@@ -4,7 +4,7 @@ import importlib.util
 import inspect
 import logging.config
 import sys
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from logging import Logger, getLogger
@@ -45,6 +45,10 @@ class LedTheme:
     # what stops nested `leds` list mutation from reaching them, see below).
     effect_name: str
     leds: list[dict[str, float]] | None = None
+    # Per-theme display gate (ADR 0014). True: light the charger for the theme's
+    # whole active window regardless of charge *or* plug state. False
+    # (default): light only while the car is actively charging.
+    always_on: bool = False
 
 
 def _hex_to_rgb(hex_colour: str) -> dict[str, float]:
@@ -165,6 +169,11 @@ async def resolve_theme(
     if _match is None:
         _match = _resolve_from(now, built_in_themes)
     if _match is None:
+        for _extension in extensions:
+            _match = await _extension.resolve_fallback(now)
+            if _match is not None:
+                break
+    if _match is None:
         return None
     # _match above is the stored/cached LedTheme itself -- from the caller's
     # custom_themes, built_in_themes, or an extension's own internal cache --
@@ -175,6 +184,7 @@ async def resolve_theme(
     return LedTheme(
         effect_name=_match.effect_name,
         leds=[dict(led) for led in _match.leds] if _match.leds is not None else None,
+        always_on=_match.always_on,
     )
 
 
@@ -186,38 +196,67 @@ class LedThemeProvider(Protocol):
     # start() and stop() are optional lifecycle hooks (ADR 0005) -- deliberately
     # not declared here, since a Protocol member would make them structurally
     # required. Callers check `hasattr` instead of relying on isinstance.
+    #
+    # `async def resolve_fallback(self, now: datetime) -> LedTheme | None` is an
+    # optional second-pass hook (ADR 0015), declared the same way -- a comment,
+    # not a Protocol member -- and reached via `hasattr`. resolve_theme consults
+    # it only when the primary walk (extensions -> custom -> built-in themes)
+    # found nothing, so an extension implementing it can rank *below* the theme
+    # tiers on a fallback pass while its resolve() still ranks above them.
 
 
 class ExtensionWrapper:
     def __init__(self, name: str, provider: LedThemeProvider) -> None:
         self.name = name
         self._provider = provider
-        self._last_exception: Exception | None = None
+        # Keyed by the provider method that failed -- resolve() and
+        # resolve_fallback() are independent code paths (a live-API resolve()
+        # can fail every cycle while a cached resolve_fallback() succeeds), so
+        # each dedups its own repeated warning and clears its own record
+        # without the other's success spuriously logging "recovered".
+        self._last_exception: dict[str, Exception] = {}
 
     async def resolve(self, now: datetime) -> LedTheme | None:
+        return await self._invoke(self._provider.resolve, now)
+
+    async def resolve_fallback(self, now: datetime) -> LedTheme | None:
+        # Optional second-pass hook (ADR 0015) -- absent on most providers, so
+        # guarded like stop() rather than assumed present.
+        if not hasattr(self._provider, "resolve_fallback"):
+            return None
+        return await self._invoke(self._provider.resolve_fallback, now)
+
+    async def _invoke(
+        self,
+        method: Callable[[datetime], Awaitable[LedTheme | None]],
+        now: datetime,
+    ) -> LedTheme | None:
+        # resolve() and resolve_fallback() share this isolation/dedup body,
+        # each tracked separately under its own name (see __init__).
+        _name = method.__name__
+        _previous = self._last_exception.get(_name)
         try:
-            _result = await self._provider.resolve(now)
+            _result = await method(now)
             # Raised inside this try so a misbehaving extension's bad return
             # value is funnelled through the same isolation/dedup handling
-            # below as any other resolve() failure, rather than propagating
-            # to crash resolve_theme's own .effect_name access.
+            # below as any other failure, rather than propagating to crash
+            # resolve_theme's own .effect_name access.
             if _result is not None and not isinstance(_result, LedTheme):
                 raise TypeError(
-                    f"resolve() returned {type(_result).__name__}, expected "
+                    f"{_name}() returned {type(_result).__name__}, expected "
                     "LedTheme or None"
                 )
         except Exception as e:
-            if type(e) is not type(self._last_exception) or str(e) != str(
-                self._last_exception
-            ):
+            if type(e) is not type(_previous) or str(e) != str(_previous):
                 logger.warning(
-                    f"LED theme extension {self.name!r} failed: {type(e).__name__}: {e}."
+                    f"LED theme extension {self.name!r} {_name}() failed: "
+                    f"{type(e).__name__}: {e}."
                 )
-            self._last_exception = e
+            self._last_exception[_name] = e
             return None
-        if self._last_exception is not None:
-            logger.info(f"LED theme extension {self.name!r} recovered.")
-            self._last_exception = None
+        if _previous is not None:
+            logger.info(f"LED theme extension {self.name!r} {_name}() recovered.")
+            del self._last_exception[_name]
         return _result
 
     async def stop(self) -> None:
@@ -311,7 +350,9 @@ def load_custom_themes(
                 f"Failed to load custom LED theme {entry.effect!r}: {type(e).__name__}: {e}."
             )
             continue
-        _theme = LedTheme(effect_name=entry.effect, leds=_leds)
+        _theme = LedTheme(
+            effect_name=entry.effect, leds=_leds, always_on=entry.always_on
+        )
         _loaded.append(
             (_theme, parse_window_date(entry.start), parse_window_date(entry.end))
         )
@@ -331,7 +372,7 @@ def load_built_in_themes(
 ) -> list[tuple[LedTheme, Window, Window]]:
     return [
         (
-            LedTheme(effect_name=entry.effect),
+            LedTheme(effect_name=entry.effect, always_on=entry.always_on),
             parse_window_date(entry.start),
             parse_window_date(entry.end),
         )

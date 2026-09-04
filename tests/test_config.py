@@ -93,18 +93,45 @@ def test_schedule_rejects_out_of_range_values(field: str, value: float) -> None:
         Schedule(**values)
 
 
-def test_led_config_defaults_brightness_to_half_when_omitted() -> None:
-    assert LedConfig().brightness == 0.5
-
-
-def test_led_config_accepts_full_brightness() -> None:
-    assert LedConfig(brightness=1.0).brightness == 1.0
-
-
-@pytest.mark.parametrize("brightness", [0, -0.1, 1.1])
-def test_led_config_rejects_out_of_range_brightness(brightness: float) -> None:
+def test_led_config_rejects_the_removed_brightness_field() -> None:
+    # brightness is gone entirely (ADR 0014); a config still carrying it must
+    # fail loudly at load rather than be silently ignored.
     with pytest.raises(ValidationError):
-        LedConfig(brightness=brightness)
+        LedConfig(brightness=0.5)
+
+
+def test_led_config_rejects_an_unknown_key() -> None:
+    with pytest.raises(ValidationError):
+        LedConfig(enabled=True, wibble=1)
+
+
+@pytest.mark.parametrize(
+    "model", [CustomLedTheme, BuiltInLedTheme], ids=["custom", "built_in"]
+)
+def test_theme_entry_defaults_always_on_to_false_when_omitted(model: type) -> None:
+    kwargs = (
+        {"effect": "peace", "start": "03-14", "end": "03-16"}
+        if model is CustomLedTheme
+        else {"effect": "christmas_mode", "start": "12-24", "end": "12-31"}
+    )
+
+    assert model(**kwargs).always_on is False
+
+
+def test_custom_led_theme_accepts_always_on_true() -> None:
+    theme = CustomLedTheme(effect="peace", start="03-14", end="03-16", always_on=True)
+
+    assert theme.always_on is True
+
+
+def test_custom_led_theme_rejects_a_non_bool_always_on() -> None:
+    with pytest.raises(ValidationError):
+        CustomLedTheme(effect="peace", start="03-14", end="03-16", always_on=["nope"])
+
+
+def test_custom_led_theme_rejects_a_misspelled_key() -> None:
+    with pytest.raises(ValidationError):
+        CustomLedTheme(effect="peace", start="03-14", end="03-16", alwyas_on=True)
 
 
 def test_custom_led_theme_accepts_valid_date_strings() -> None:
