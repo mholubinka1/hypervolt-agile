@@ -52,9 +52,9 @@ on Chromium.
 
 ## Implementation Decisions
 
-- `themes/reference/charger_led_map.html`: the `#export` button's label changes from
-  "Export JSON" to "Save"; its handler is replaced with a save routine (see below). `#load-map`
-  and `#reset` are unchanged.
+- `themes/reference/charger_led_map.html`: the `#export` button is renamed `#save`, its label
+  changes from "Export JSON" to "Save", and its handler is replaced with a save routine (see
+  below). `#load-map` and `#reset` are unchanged.
 - **File handle acquisition and persistence**: on Save, if no remembered, permitted
   `FileSystemFileHandle` exists for a given target file (`charger_led_map.json`,
   `charger_led_map.html`), call `window.showSaveFilePicker` (suggested name matching the target)
