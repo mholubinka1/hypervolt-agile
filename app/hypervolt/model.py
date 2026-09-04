@@ -39,6 +39,11 @@ class DayOfWeek(Enum):
     sunday = auto()
 
 
+# DayOfWeek members carry no meaningful `.value` (Monday..Sunday just get auto()'d
+# ints) -- declaration order is the only thing that encodes weekday order.
+_DAY_OF_WEEK_ORDER: tuple[DayOfWeek, ...] = tuple(DayOfWeek)
+
+
 def weekday_to_dayofweek(weekday: int) -> DayOfWeek:
     mapping = {
         0: DayOfWeek.monday,
@@ -64,6 +69,9 @@ class HypervoltSession:
     end: time
     day_of_week: DayOfWeek
     charge_mode: ChargingMode = ChargingMode.boost
+
+    def sort_key(self) -> tuple[time, int]:
+        return (self.start, _DAY_OF_WEEK_ORDER.index(self.day_of_week))
 
     def __str__(self) -> str:
         return (
