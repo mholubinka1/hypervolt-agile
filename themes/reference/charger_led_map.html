@@ -132,15 +132,17 @@
   <h1>Charger LED Map</h1>
   <p class="sub">
     True-scale map of the Hypervolt Home 3 face (243&nbsp;&times;&nbsp;328&nbsp;mm). Drag any LED to
-    its real position, or nudge a focused one with the arrow keys (1&nbsp;mm). <b>Export</b> writes
-    <code>charger_led_map.json</code> &mdash; the golden record every theme is designed against.
-    Load a <code>themes/*.yaml</code> colour map to preview it here and read its segment ranges back.
+    its real position, or nudge a focused one with the arrow keys (1&nbsp;mm). <b>Save</b> writes
+    <code>charger_led_map.json</code> and this page itself back to disk in Chromium browsers
+    (elsewhere it downloads both instead) &mdash; the golden record every theme is designed
+    against. Load a <code>themes/*.yaml</code> colour map to preview it here and read its
+    segment ranges back.
   </p>
 
   <div class="layout">
     <div class="card">
       <div class="row">
-        <button class="primary" id="export">Export JSON</button>
+        <button class="primary" id="save">Save</button>
         <label class="file">Load map&hellip;<input type="file" id="load-map" accept=".json,application/json"></label>
         <button id="reset">Reset to seed</button>
       </div>
@@ -234,6 +236,11 @@
 
   var BODY_W = 243, BODY_H = 328;
   var SVGNS = "http://www.w3.org/2000/svg";
+
+  // Captured before any drag or theme preview touches the DOM, so Save can
+  // regenerate a pristine copy of this page with only the JSON payload
+  // changed -- see ADR 0018.
+  var PAGE_TEMPLATE = "<!doctype html>\n" + document.documentElement.outerHTML;
 
   function el(id) {
     var node = document.getElementById(id);
@@ -364,8 +371,8 @@
     g.addEventListener("focus", function () { showReadout(k); });
   }
 
-  // ---- export / load ----
-  function exportJson() {
+  // ---- save / load ----
+  function serialiseModel() {
     var out = {};
     Object.keys(model).forEach(function (k) {
       var m = model[k];
@@ -374,14 +381,291 @@
       row.live = m.live;
       out[k] = row;
     });
-    var blob = new Blob([JSON.stringify(out, null, 2) + "\n"], { type: "application/json" });
+    return out;
+  }
+
+  var MAP_JSON_FILENAME = "charger_led_map.json";
+  var MAP_HTML_FILENAME = "charger_led_map.html";
+
+  function mapJsonText() {
+    return JSON.stringify(serialiseModel(), null, 2) + "\n";
+  }
+
+  // Regenerates the whole page (see PAGE_TEMPLATE above) with only the
+  // embedded seed swapped for the current in-memory LED positions -- other
+  // on-screen state (e.g. an active theme colour preview) is not part of
+  // this seed and is not reflected in the saved file.
+  // Throws rather than silently returning the stale template if the seed
+  // script block can't be found, so a save never reports success while
+  // writing out-of-date positions.
+  function mapHtmlText() {
+    var json = mapJsonText();
+    var matched = false;
+    var html = PAGE_TEMPLATE.replace(
+      /(<script type="application\/json" id="charger-led-map">)[\s\S]*?(<\/script>)/,
+      function (match, open, close) { matched = true; return open + "\n" + json + close; }
+    );
+    if (!matched) throw new Error("could not find the charger-led-map seed block to update");
+    return html;
+  }
+
+  function downloadFile(filename, content, mime) {
+    var blob = new Blob([content], { type: mime });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "charger_led_map.json";
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(a.href);
+  }
+
+  // Staggering the two downloads dodges the browser's "this site is trying
+  // to download multiple files" block, which otherwise silently drops the
+  // second one.
+  var DOWNLOAD_STAGGER_MS = 150;
+
+  function saveViaDownload() {
+    var jsonText = mapJsonText();
+    var htmlText = mapHtmlText();
+    downloadFile(MAP_JSON_FILENAME, jsonText, "application/json");
+    return new Promise(function (resolve, reject) {
+      setTimeout(function () {
+        try {
+          downloadFile(MAP_HTML_FILENAME, htmlText, "text/html");
+          readout.textContent = "This browser can't write files in place, so both were " +
+            "downloaded — move " + MAP_JSON_FILENAME + " and " + MAP_HTML_FILENAME + " into " +
+            "themes/reference/ to update the reference.";
+          resolve();
+        } catch (err) {
+          // A throw inside setTimeout would otherwise leave this promise
+          // (and saveInFlight) hanging forever with no status message.
+          reject(err);
+        }
+      }, DOWNLOAD_STAGGER_MS);
+    });
+  }
+
+  // ---- save in place (File System Access API) ----
+  // Chromium only (Chrome, Edge) -- Firefox and Safari have no
+  // showSaveFilePicker, so saveMap() below falls back to saveViaDownload().
+  // See ADR 0018 for why: it's the only static, no-server way to write the
+  // committed reference files directly, at the cost of browser support.
+  var HANDLE_DB_NAME = "charger-led-map-handles";
+  var HANDLE_STORE = "handles";
+
+  function openHandleDb() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(HANDLE_DB_NAME, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(HANDLE_STORE); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  // Shared request/transaction plumbing for the three IndexedDB operations
+  // below -- each just supplies what to do with the object store and, for
+  // reads, how to capture the request's result before the transaction
+  // completes.
+  function idbTransaction(mode, run) {
+    return openHandleDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(HANDLE_STORE, mode);
+        var result;
+        var settled = false;
+        // onerror and onabort can both fire for the same failure (an
+        // unhandled request error aborts its transaction) -- the settled
+        // guard makes sure db.close()/reject only happen once either way,
+        // so this promise can never hang unresolved.
+        function fail(err) {
+          if (settled) return;
+          settled = true;
+          db.close();
+          reject(err || new Error("IndexedDB transaction aborted"));
+        }
+        // A synchronous throw from `run` (e.g. an invalid key) would
+        // otherwise escape the Promise executor without closing `db` --
+        // route it through `fail` so the connection is always released.
+        try {
+          run(tx.objectStore(HANDLE_STORE), function (value) { result = value; });
+        } catch (err) {
+          fail(err);
+          return;
+        }
+        tx.oncomplete = function () {
+          if (settled) return;
+          settled = true;
+          db.close();
+          resolve(result);
+        };
+        tx.onerror = function () { fail(tx.error); };
+        tx.onabort = function () { fail(tx.error); };
+      });
+    });
+  }
+
+  function idbGet(key) {
+    return idbTransaction("readonly", function (store, setResult) {
+      var req = store.get(key);
+      req.onsuccess = function () { setResult(req.result || null); };
+    });
+  }
+
+  function idbSet(key, value) {
+    return idbTransaction("readwrite", function (store) { store.put(value, key); });
+  }
+
+  function idbDelete(key) {
+    return idbTransaction("readwrite", function (store) { store.delete(key); });
+  }
+
+  // Named so reportSaveError can show these messages verbatim instead of
+  // wrapping them in a generic "Save failed: " prefix.
+  function permissionDeniedError(filename) {
+    var err = new Error("permission denied for " + filename + " — click Save again to choose it");
+    err.name = "PermissionDeniedError";
+    return err;
+  }
+
+  function partialSaveError(message) {
+    var err = new Error(message);
+    err.name = "PartialSaveError";
+    return err;
+  }
+
+  function ensureWritePermission(handle) {
+    var opts = { mode: "readwrite" };
+    return handle.queryPermission(opts).then(function (state) {
+      if (state === "granted") return true;
+      return handle.requestPermission(opts).then(function (state2) {
+        return state2 === "granted";
+      });
+    });
+  }
+
+  function pickerOptsFor(filename) {
+    if (filename.slice(-5) === ".json") {
+      return { suggestedName: filename, types: [{ description: "JSON", accept: { "application/json": [".json"] } }] };
+    }
+    return { suggestedName: filename, types: [{ description: "HTML", accept: { "text/html": [".html"] } }] };
+  }
+
+  // suggestedName is only a suggestion -- the native picker lets the user
+  // navigate to and pick (or type) a different filename entirely. Caching
+  // that handle under the *expected* key would make every later Save write
+  // silently to the wrong file, so a mismatch is rejected outright rather
+  // than cached. (showSaveFilePicker's result already carries granted
+  // readwrite permission, so no separate permission check is needed here.)
+  function pickAndStoreHandle(filename) {
+    return window.showSaveFilePicker(pickerOptsFor(filename)).then(function (handle) {
+      if (handle.name !== filename) {
+        throw new Error("expected to save as " + filename + ", but " + handle.name +
+          " was chosen — click Save again and pick " + filename);
+      }
+      return idbSet(filename, handle).then(function () { return handle; });
+    });
+  }
+
+  // Best-effort cleanup: if idbDelete itself fails, that failure must not
+  // displace the real error the caller is already throwing.
+  function forgetHandle(filename) {
+    return idbDelete(filename).catch(function () {});
+  }
+
+  // Reuses a remembered handle (re-confirming permission) so only the very
+  // first Save per browser profile needs the native picker; a denied
+  // permission clears the stale handle so the next Save re-prompts cleanly.
+  function getOrPickHandle(filename) {
+    return idbGet(filename).then(function (stored) {
+      if (!stored) return pickAndStoreHandle(filename);
+      return ensureWritePermission(stored).then(function (ok) {
+        if (ok) return stored;
+        return forgetHandle(filename).then(function () {
+          throw permissionDeniedError(filename);
+        });
+      });
+    });
+  }
+
+  // A write failure (permission revoked mid-session, the target file moved
+  // or deleted, disk error) clears the remembered handle for `filename` too
+  // -- otherwise every later Save would keep reusing the same broken handle
+  // and failing the same way forever, with no path back to the native
+  // picker.
+  function writeHandle(filename, handle, content) {
+    return handle.createWritable().then(function (writable) {
+      return writable.write(content).then(function () {
+        return writable.close();
+      }).catch(function (err) {
+        // A rejected write() or close() leaves the stream open, which can
+        // hold a file lock in Chromium and make later saves unreliable --
+        // aborting it (best-effort; the abort itself failing shouldn't mask
+        // the original error) releases that lock before the failure
+        // propagates.
+        return writable.abort().catch(function () {}).then(function () { throw err; });
+      });
+    }).catch(function (err) {
+      return forgetHandle(filename).then(function () { throw err; });
+    });
+  }
+
+  // Both handles (and their permission) are secured before either file is
+  // written, so cancelling or denying either one leaves neither file touched.
+  // If the json write succeeds but the html write then fails, the error
+  // names which file did land so a retry isn't a guessing game.
+  function saveInPlace() {
+    var jsonText = mapJsonText();
+    var htmlText = mapHtmlText();
+    return getOrPickHandle(MAP_JSON_FILENAME).then(function (jsonHandle) {
+      return getOrPickHandle(MAP_HTML_FILENAME).then(function (htmlHandle) {
+        return writeHandle(MAP_JSON_FILENAME, jsonHandle, jsonText).catch(function (err) {
+          throw partialSaveError(MAP_JSON_FILENAME + " failed: " + err.message + " — click Save again to retry");
+        }).then(function () {
+          return writeHandle(MAP_HTML_FILENAME, htmlHandle, htmlText).catch(function (err) {
+            throw partialSaveError(MAP_JSON_FILENAME + " saved, but " + MAP_HTML_FILENAME +
+              " failed: " + err.message + " — click Save again to retry");
+          });
+        }).then(function () {
+          readout.textContent = "Saved to " + MAP_JSON_FILENAME + " and " + MAP_HTML_FILENAME + ".";
+        });
+      });
+    });
+  }
+
+  // AbortError, PermissionDeniedError, and PartialSaveError each already
+  // carry a complete, specific message -- shown verbatim rather than
+  // wrapped in a generic "Save failed: " prefix, so the designer sees
+  // exactly which outcome happened.
+  function reportSaveError(err) {
+    if (!err) { readout.textContent = "Save failed."; return; }
+    if (err.name === "AbortError") { readout.textContent = "Save cancelled."; return; }
+    if (err.name === "PermissionDeniedError" || err.name === "PartialSaveError") {
+      readout.textContent = err.message;
+      return;
+    }
+    readout.textContent = "Save failed: " + err.message;
+  }
+
+  // A single in-flight guard covers both paths (including saveViaDownload's
+  // staggered second download) so a rapid double-click can't fire overlapping
+  // pickers or races.
+  var saveInFlight = false;
+
+  function saveMap() {
+    if (saveInFlight) { readout.textContent = "Save already in progress…"; return; }
+    saveInFlight = true;
+    var result;
+    try {
+      result = typeof window.showSaveFilePicker === "function" ? saveInPlace() : saveViaDownload();
+    } catch (err) {
+      saveInFlight = false;
+      reportSaveError(err);
+      return;
+    }
+    result.then(function () { saveInFlight = false; }, function (err) {
+      saveInFlight = false;
+      reportSaveError(err);
+    });
   }
 
   function loadMap(file) {
@@ -542,7 +826,7 @@
   }
 
   // ---- wire up ----
-  el("export").addEventListener("click", exportJson);
+  el("save").addEventListener("click", saveMap);
   el("reset").addEventListener("click", function () {
     seedModel(); buildHandles();
     readout.textContent = "Reset to the committed seed.";
