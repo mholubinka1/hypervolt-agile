@@ -568,9 +568,12 @@
   function verifyReferenceDirectory(dirHandle) {
     return dirHandle.getFileHandle(MAP_JSON_FILENAME).then(function () {
       return dirHandle;
-    }, function () {
-      throw new Error("expected the themes/reference folder, but " + MAP_JSON_FILENAME +
-        " isn't there — click Save again and pick the folder containing it");
+    }, function (err) {
+      if (err && err.name === "NotFoundError") {
+        throw new Error("expected the themes/reference folder, but " + MAP_JSON_FILENAME +
+          " isn't there — click Save again and pick the folder containing it");
+      }
+      throw err;
     });
   }
 

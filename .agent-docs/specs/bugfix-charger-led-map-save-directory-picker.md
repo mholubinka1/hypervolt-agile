@@ -68,10 +68,16 @@ does.
   original in-place-save design carries over unchanged — the directory handle (and its
   permission) is fully secured before any write starts, so a cancelled or denied directory
   picker still leaves neither file touched.
-- **Write and error paths unchanged**: `writeHandle()`, `partialSaveError()`,
-  `permissionDeniedError()`, and `reportSaveError()` all operate on `FileSystemFileHandle`s
-  exactly as before — nothing about writing or naming which file failed needs to change,
-  since both files are still written individually via their own derived file handle.
+- **Write and error-message paths unchanged**: `partialSaveError()`, `permissionDeniedError()`,
+  and `reportSaveError()` are untouched, and both files are still written individually via
+  their own derived file handle, so the messages naming which file failed don't change.
+  `writeHandle()`'s failure-cleanup *scope* does change, though: it used to forget only the
+  one file's handle that failed to write; now, since there's a single shared directory handle
+  instead of two independent file handles, any single write failure forgets that shared
+  handle — a transient failure writing the HTML file now forces a full directory re-pick on
+  the next Save even though the JSON write (and the directory handle itself) may have been
+  fine. This is an accepted, inherent consequence of moving to one cached handle, not a
+  regression in the error *messages* themselves.
 - **No migration needed**: the old two-file-handle IndexedDB entries become orphaned once
   this ships. This feature is not yet released to real end users (still on an unmerged
   branch), so no cleanup or migration path is needed — the new code simply never reads the
