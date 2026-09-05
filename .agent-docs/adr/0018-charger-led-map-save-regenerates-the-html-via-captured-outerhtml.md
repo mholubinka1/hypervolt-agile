@@ -9,13 +9,19 @@ branch or machine — sees the saved layout with no manual "Load map…" step. T
 `file://`-only, no-server constraint (`charger_led_map.html`'s own comment: fetching a sibling file
 is blocked from `file://`).
 
-Writing happens through the File System Access API (`window.showSaveFilePicker`,
-`FileSystemFileHandle.createWritable`). The first Save on a given browser profile opens the
-native picker for each file — the user must navigate to and select the existing
-`charger_led_map.json` / `.html` once, since the page cannot address that path directly — after
-which both `FileSystemFileHandle`s are stored in IndexedDB and reused on every later Save; each
-new page load only needs a one-click native permission re-grant per handle (a browser security
+Writing happens through the File System Access API (`window.showDirectoryPicker`,
+`FileSystemFileHandle.createWritable`). The first Save on a given browser profile opens one
+native directory picker — the user navigates to and selects the existing `themes/reference/`
+folder once, since the page cannot address that path directly — after which the single
+`FileSystemDirectoryHandle` is stored in IndexedDB and reused on every later Save; each new page
+load only needs a one-click native permission re-grant for that one handle (a browser security
 requirement — the API never allows silent, unprompted disk writes), not re-navigating the picker.
+Both `charger_led_map.json` and `.html`'s file handles are then derived from the cached directory
+handle via `getFileHandle`, which needs no further user activation. This directory-picker design
+replaced an earlier one that called `showSaveFilePicker` once per file: Chromium consumes
+transient user activation as soon as the first `showSaveFilePicker` call is made (not when it
+resolves), so two sequential calls in the same click cannot both succeed — the second always threw
+a `SecurityError` on a first-ever Save, before either file handle was cached.
 The regenerated HTML content is produced the same way considered previously: capture
 `document.documentElement.outerHTML` (plus `<!doctype html>`) once, at script start, before any
 drag mutates the DOM, then string-replace only the JSON payload inside that captured markup.

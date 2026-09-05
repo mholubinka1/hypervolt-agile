@@ -448,7 +448,7 @@
 
   // ---- save in place (File System Access API) ----
   // Chromium only (Chrome, Edge) -- Firefox and Safari have no
-  // showSaveFilePicker, so saveMap() below falls back to saveViaDownload().
+  // showDirectoryPicker, so saveMap() below falls back to saveViaDownload().
   // See ADR 0018 for why: it's the only static, no-server way to write the
   // committed reference files directly, at the cost of browser support.
   var HANDLE_DB_NAME = "charger-led-map-handles";
@@ -543,56 +543,69 @@
     });
   }
 
-  function pickerOptsFor(filename) {
-    if (filename.slice(-5) === ".json") {
-      return { suggestedName: filename, types: [{ description: "JSON", accept: { "application/json": [".json"] } }] };
-    }
-    return { suggestedName: filename, types: [{ description: "HTML", accept: { "text/html": [".html"] } }] };
+  // Best-effort cleanup: if idbDelete itself fails, that failure must not
+  // displace the real error the caller is already throwing.
+  function forgetHandle(key) {
+    return idbDelete(key).catch(function () {});
   }
 
-  // suggestedName is only a suggestion -- the native picker lets the user
-  // navigate to and pick (or type) a different filename entirely. Caching
-  // that handle under the *expected* key would make every later Save write
-  // silently to the wrong file, so a mismatch is rejected outright rather
-  // than cached. (showSaveFilePicker's result already carries granted
-  // readwrite permission, so no separate permission check is needed here.)
-  function pickAndStoreHandle(filename) {
-    return window.showSaveFilePicker(pickerOptsFor(filename)).then(function (handle) {
-      if (handle.name !== filename) {
-        throw new Error("expected to save as " + filename + ", but " + handle.name +
-          " was chosen — click Save again and pick " + filename);
-      }
-      return idbSet(filename, handle).then(function () { return handle; });
+  // Both files live in the same directory, so a single directory handle
+  // covers both -- this also sidesteps a Chromium limitation where a
+  // second showSaveFilePicker() call in the same click throws a
+  // SecurityError (the first call consumes transient user activation as
+  // soon as it's made, not when it resolves), which made two sequential
+  // per-file pickers impossible to satisfy in one click on a fresh profile.
+  var DIR_HANDLE_KEY = "themes-reference-dir";
+
+  // A directory picked at random (or the wrong one entirely) would silently
+  // create charger_led_map.json/.html wherever the user happened to browse
+  // to, and every later Save would keep writing there -- requiring the
+  // expected file to already exist confirms this is actually the
+  // themes/reference folder before it's cached. getFileHandle without
+  // `create` rejects for a missing file, which is the only outcome treated
+  // as a wrong-folder signal; any other rejection (e.g. a transient
+  // permission hiccup) propagates as-is rather than being reinterpreted.
+  function verifyReferenceDirectory(dirHandle) {
+    return dirHandle.getFileHandle(MAP_JSON_FILENAME).then(function () {
+      return dirHandle;
+    }, function () {
+      throw new Error("expected the themes/reference folder, but " + MAP_JSON_FILENAME +
+        " isn't there — click Save again and pick the folder containing it");
     });
   }
 
-  // Best-effort cleanup: if idbDelete itself fails, that failure must not
-  // displace the real error the caller is already throwing.
-  function forgetHandle(filename) {
-    return idbDelete(filename).catch(function () {});
+  // showDirectoryPicker's result already carries granted readwrite
+  // permission (mode: "readwrite" was requested), so no separate permission
+  // check is needed here.
+  function pickAndStoreDirectoryHandle() {
+    return window.showDirectoryPicker({ mode: "readwrite" }).then(function (dirHandle) {
+      return verifyReferenceDirectory(dirHandle).then(function () {
+        return idbSet(DIR_HANDLE_KEY, dirHandle).then(function () { return dirHandle; });
+      });
+    });
   }
 
-  // Reuses a remembered handle (re-confirming permission) so only the very
-  // first Save per browser profile needs the native picker; a denied
-  // permission clears the stale handle so the next Save re-prompts cleanly.
-  function getOrPickHandle(filename) {
-    return idbGet(filename).then(function (stored) {
-      if (!stored) return pickAndStoreHandle(filename);
+  // Reuses a remembered directory handle (re-confirming permission) so only
+  // the very first Save per browser profile needs the native picker; a
+  // denied permission clears the stale handle so the next Save re-prompts
+  // cleanly.
+  function getOrPickDirectoryHandle() {
+    return idbGet(DIR_HANDLE_KEY).then(function (stored) {
+      if (!stored) return pickAndStoreDirectoryHandle();
       return ensureWritePermission(stored).then(function (ok) {
         if (ok) return stored;
-        return forgetHandle(filename).then(function () {
-          throw permissionDeniedError(filename);
+        return forgetHandle(DIR_HANDLE_KEY).then(function () {
+          throw permissionDeniedError("the themes/reference folder");
         });
       });
     });
   }
 
-  // A write failure (permission revoked mid-session, the target file moved
-  // or deleted, disk error) clears the remembered handle for `filename` too
-  // -- otherwise every later Save would keep reusing the same broken handle
-  // and failing the same way forever, with no path back to the native
-  // picker.
-  function writeHandle(filename, handle, content) {
+  // A write failure (permission revoked mid-session, the directory moved,
+  // disk error) forgets the shared directory handle too -- otherwise every
+  // later Save would keep reusing the same broken handle and failing the
+  // same way forever, with no path back to the native picker.
+  function writeHandle(handle, content) {
     return handle.createWritable().then(function (writable) {
       return writable.write(content).then(function () {
         return writable.close();
@@ -605,28 +618,33 @@
         return writable.abort().catch(function () {}).then(function () { throw err; });
       });
     }).catch(function (err) {
-      return forgetHandle(filename).then(function () { throw err; });
+      return forgetHandle(DIR_HANDLE_KEY).then(function () { throw err; });
     });
   }
 
-  // Both handles (and their permission) are secured before either file is
-  // written, so cancelling or denying either one leaves neither file touched.
-  // If the json write succeeds but the html write then fails, the error
-  // names which file did land so a retry isn't a guessing game.
+  // The directory handle (and its permission) is secured, and both file
+  // handles derived from it, before either file is written -- so cancelling
+  // or denying the directory picker leaves neither file touched. Deriving
+  // both file handles from one already-authorized directory needs no
+  // further user activation, unlike two independent showSaveFilePicker()
+  // calls. If the json write succeeds but the html write then fails, the
+  // error names which file did land so a retry isn't a guessing game.
   function saveInPlace() {
     var jsonText = mapJsonText();
     var htmlText = mapHtmlText();
-    return getOrPickHandle(MAP_JSON_FILENAME).then(function (jsonHandle) {
-      return getOrPickHandle(MAP_HTML_FILENAME).then(function (htmlHandle) {
-        return writeHandle(MAP_JSON_FILENAME, jsonHandle, jsonText).catch(function (err) {
-          throw partialSaveError(MAP_JSON_FILENAME + " failed: " + err.message + " — click Save again to retry");
-        }).then(function () {
-          return writeHandle(MAP_HTML_FILENAME, htmlHandle, htmlText).catch(function (err) {
-            throw partialSaveError(MAP_JSON_FILENAME + " saved, but " + MAP_HTML_FILENAME +
-              " failed: " + err.message + " — click Save again to retry");
+    return getOrPickDirectoryHandle().then(function (dirHandle) {
+      return dirHandle.getFileHandle(MAP_JSON_FILENAME, { create: true }).then(function (jsonHandle) {
+        return dirHandle.getFileHandle(MAP_HTML_FILENAME, { create: true }).then(function (htmlHandle) {
+          return writeHandle(jsonHandle, jsonText).catch(function (err) {
+            throw partialSaveError(MAP_JSON_FILENAME + " failed: " + err.message + " — click Save again to retry");
+          }).then(function () {
+            return writeHandle(htmlHandle, htmlText).catch(function (err) {
+              throw partialSaveError(MAP_JSON_FILENAME + " saved, but " + MAP_HTML_FILENAME +
+                " failed: " + err.message + " — click Save again to retry");
+            });
+          }).then(function () {
+            readout.textContent = "Saved to " + MAP_JSON_FILENAME + " and " + MAP_HTML_FILENAME + ".";
           });
-        }).then(function () {
-          readout.textContent = "Saved to " + MAP_JSON_FILENAME + " and " + MAP_HTML_FILENAME + ".";
         });
       });
     });
@@ -656,7 +674,7 @@
     saveInFlight = true;
     var result;
     try {
-      result = typeof window.showSaveFilePicker === "function" ? saveInPlace() : saveViaDownload();
+      result = typeof window.showDirectoryPicker === "function" ? saveInPlace() : saveViaDownload();
     } catch (err) {
       saveInFlight = false;
       reportSaveError(err);
