@@ -133,9 +133,10 @@
   <p class="sub">
     True-scale map of the Hypervolt Home 3 face (243&nbsp;&times;&nbsp;328&nbsp;mm). Drag any LED to
     its real position, or nudge a focused one with the arrow keys (1&nbsp;mm). <b>Save</b> writes
-    <code>charger_led_map.json</code> and this page itself back to disk &mdash; the golden record
-    every theme is designed against. Load a <code>themes/*.yaml</code> colour map to preview it
-    here and read its segment ranges back.
+    <code>charger_led_map.json</code> and this page itself back to disk in Chromium browsers
+    (elsewhere it downloads both instead) &mdash; the golden record every theme is designed
+    against. Load a <code>themes/*.yaml</code> colour map to preview it here and read its
+    segment ranges back.
   </p>
 
   <div class="layout">
@@ -391,8 +392,9 @@
   }
 
   // Regenerates the whole page (see PAGE_TEMPLATE above) with only the
-  // embedded seed swapped for the current in-memory positions -- the
-  // downloaded/saved charger_led_map.html always shows what's on screen now.
+  // embedded seed swapped for the current in-memory LED positions -- other
+  // on-screen state (e.g. an active theme colour preview) is not part of
+  // this seed and is not reflected in the saved file.
   // Throws rather than silently returning the stale template if the seed
   // script block can't be found, so a save never reports success while
   // writing out-of-date positions.
@@ -470,9 +472,34 @@
       return new Promise(function (resolve, reject) {
         var tx = db.transaction(HANDLE_STORE, mode);
         var result;
-        run(tx.objectStore(HANDLE_STORE), function (value) { result = value; });
-        tx.oncomplete = function () { db.close(); resolve(result); };
-        tx.onerror = function () { db.close(); reject(tx.error); };
+        var settled = false;
+        // onerror and onabort can both fire for the same failure (an
+        // unhandled request error aborts its transaction) -- the settled
+        // guard makes sure db.close()/reject only happen once either way,
+        // so this promise can never hang unresolved.
+        function fail(err) {
+          if (settled) return;
+          settled = true;
+          db.close();
+          reject(err || new Error("IndexedDB transaction aborted"));
+        }
+        // A synchronous throw from `run` (e.g. an invalid key) would
+        // otherwise escape the Promise executor without closing `db` --
+        // route it through `fail` so the connection is always released.
+        try {
+          run(tx.objectStore(HANDLE_STORE), function (value) { result = value; });
+        } catch (err) {
+          fail(err);
+          return;
+        }
+        tx.oncomplete = function () {
+          if (settled) return;
+          settled = true;
+          db.close();
+          resolve(result);
+        };
+        tx.onerror = function () { fail(tx.error); };
+        tx.onabort = function () { fail(tx.error); };
       });
     });
   }
@@ -523,8 +550,18 @@
     return { suggestedName: filename, types: [{ description: "HTML", accept: { "text/html": [".html"] } }] };
   }
 
+  // suggestedName is only a suggestion -- the native picker lets the user
+  // navigate to and pick (or type) a different filename entirely. Caching
+  // that handle under the *expected* key would make every later Save write
+  // silently to the wrong file, so a mismatch is rejected outright rather
+  // than cached. (showSaveFilePicker's result already carries granted
+  // readwrite permission, so no separate permission check is needed here.)
   function pickAndStoreHandle(filename) {
     return window.showSaveFilePicker(pickerOptsFor(filename)).then(function (handle) {
+      if (handle.name !== filename) {
+        throw new Error("expected to save as " + filename + ", but " + handle.name +
+          " was chosen — click Save again and pick " + filename);
+      }
       return idbSet(filename, handle).then(function () { return handle; });
     });
   }
@@ -557,7 +594,16 @@
   // picker.
   function writeHandle(filename, handle, content) {
     return handle.createWritable().then(function (writable) {
-      return writable.write(content).then(function () { return writable.close(); });
+      return writable.write(content).then(function () {
+        return writable.close();
+      }).catch(function (err) {
+        // A rejected write() or close() leaves the stream open, which can
+        // hold a file lock in Chromium and make later saves unreliable --
+        // aborting it (best-effort; the abort itself failing shouldn't mask
+        // the original error) releases that lock before the failure
+        // propagates.
+        return writable.abort().catch(function () {}).then(function () { throw err; });
+      });
     }).catch(function (err) {
       return forgetHandle(filename).then(function () { throw err; });
     });
@@ -572,13 +618,15 @@
     var htmlText = mapHtmlText();
     return getOrPickHandle(MAP_JSON_FILENAME).then(function (jsonHandle) {
       return getOrPickHandle(MAP_HTML_FILENAME).then(function (htmlHandle) {
-        return writeHandle(MAP_JSON_FILENAME, jsonHandle, jsonText).then(function () {
+        return writeHandle(MAP_JSON_FILENAME, jsonHandle, jsonText).catch(function (err) {
+          throw partialSaveError(MAP_JSON_FILENAME + " failed: " + err.message + " — click Save again to retry");
+        }).then(function () {
           return writeHandle(MAP_HTML_FILENAME, htmlHandle, htmlText).catch(function (err) {
             throw partialSaveError(MAP_JSON_FILENAME + " saved, but " + MAP_HTML_FILENAME +
               " failed: " + err.message + " — click Save again to retry");
           });
         }).then(function () {
-          readout.textContent = "Saved " + MAP_JSON_FILENAME + " and " + MAP_HTML_FILENAME + ".";
+          readout.textContent = "Saved to " + MAP_JSON_FILENAME + " and " + MAP_HTML_FILENAME + ".";
         });
       });
     });
