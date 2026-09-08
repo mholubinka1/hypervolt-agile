@@ -81,12 +81,12 @@ Custom-theme colour maps are YAML files in this repo's `themes/` directory (`the
 Create the required host directories on your Pi:
 
 ```bash
-mkdir -p /home/pi/.config/hypervolt-agile
-mkdir -p /home/pi/.log/hypervolt-agile
-mkdir -p /home/pi/.config/hypervolt-agile-extensions
+mkdir -p /mnt/media/pi-media/containers/hypervolt-agile-scheduler/config
+mkdir -p /mnt/media/pi-media/containers/hypervolt-agile-scheduler/log
+mkdir -p /mnt/media/pi-media/containers/hypervolt-agile-scheduler/extensions
 ```
 
-Place your `config.yml` in `/home/pi/.config/hypervolt-agile/`, then run:
+Place your `config.yml` in `/mnt/media/pi-media/containers/hypervolt-agile-scheduler/config/`, then run:
 
 ```bash
 docker-compose up -d
@@ -97,17 +97,17 @@ directory and are **baked into the Docker image**. The shipped maps work out of 
 your own means forking the repo, dropping `themes/<name>.yaml` in, and rebuilding the image.
 
 > **Upgrading from a version that read `led_effects/`:** custom-theme YAMLs are no longer read
-> from `/home/pi/.config/hypervolt-agile/led_effects/`. Move any you rely on into the repo's
+> from the `/config` bind mount's `led_effects/` directory. Move any you rely on into the repo's
 > `themes/` directory and rebuild. There is no fallback — a `custom_themes` entry with no
 > matching `themes/<name>.yaml` is logged and skipped.
 
 If you're using LED theme extensions (`led.extensions` in `config.yml`), place each extension's
-`*.py` file in `/home/pi/.config/hypervolt-agile-extensions/` — this is a separate mount from
-`/config` (extensions are executable code, not declarative data). A `saints_fc` reference
-extension ships with the app; copy `extensions/saints_fc.py` there to use it. This directory can
-stay empty if you're not using extensions.
+`*.py` file in `/mnt/media/pi-media/containers/hypervolt-agile-scheduler/extensions/` — this is a
+separate mount from `/config` (extensions are executable code, not declarative data). A
+`saints_fc` reference extension ships with the app; copy `extensions/saints_fc.py` there to use
+it. This directory can stay empty if you're not using extensions.
 
-The container pulls `mholubinka1/hypervolt-agile:latest` from Docker Hub, restarts automatically on failure, and writes rotating log files to `/home/pi/.log/hypervolt-agile/`.
+The container pulls `mholubinka1/hypervolt-agile:latest` from Docker Hub, restarts automatically on failure, and writes rotating log files to `/mnt/media/pi-media/containers/hypervolt-agile-scheduler/log/`.
 
 ### Local Development
 
