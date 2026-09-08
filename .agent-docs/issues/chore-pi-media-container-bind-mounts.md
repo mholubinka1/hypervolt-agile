@@ -1,5 +1,8 @@
 # Issues: chore/pi-media-container-bind-mounts
 
+> Slice 1 (#145) complete — PR #147 ready to merge. Slice 2 (#146), the operational Pi
+> cutover, is done separately over SSH and stays open until then.
+
 ## Update declared host bind-mount paths in the repo
 
 **Issue**: #145
@@ -28,18 +31,18 @@ ADR 0019 (already written) is committed as part of this slice.
 
 ### Acceptance criteria
 
-- [ ] `docker compose -f docker-compose.yml config` succeeds and its rendered output shows the
+- [x] `docker compose -f docker-compose.yml config` succeeds and its rendered output shows the
       three new host paths bound to `/config`, `/logs`, `/extensions` respectively.
-- [ ] No file under the repo root — excluding `.agent-docs/adr/`, `.agent-docs/specs/`, and
+- [x] No file under the repo root — excluding `.agent-docs/adr/`, `.agent-docs/specs/`, and
       `.agent-docs/issues/`, which are dated historical records (and include this branch's own
       issue file, which necessarily names the old paths) — references
       `/home/pi/.config/hypervolt-agile`, `/home/pi/.log/hypervolt-agile`, or
       `/home/pi/.config/hypervolt-agile-extensions`.
-- [ ] The README "Docker (Raspberry Pi)" section reads coherently end-to-end with the new
+- [x] The README "Docker (Raspberry Pi)" section reads coherently end-to-end with the new
       paths.
-- [ ] ADR 0019 is present in `.agent-docs/adr/` and explains the per-container layout, the
+- [x] ADR 0019 is present in `.agent-docs/adr/` and explains the per-container layout, the
       `log` → `/logs` name asymmetry, and the deliberate non-migration of `octopus-monitoring`.
-- [ ] `pre-commit` passes on all changed files.
+- [x] `pre-commit` passes on all changed files.
 
 ---
 
