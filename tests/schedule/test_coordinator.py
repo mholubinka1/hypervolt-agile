@@ -248,6 +248,32 @@ async def test_a_fresh_coordinator_logs_an_activation_on_its_first_display(
     assert _lines == ["LED theme 'peace' active"]
 
 
+async def test_a_failed_ring_push_is_not_recorded_as_an_active_theme(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The log tracks what reached the ring, not what merely resolved: if the
+    # wire push raises, no transition line is logged and the tracker does not
+    # advance, so the next cycle retries and logs it.
+    coordinator, charger_client = _coordinator(
+        led=LedConfig(enabled=True), is_charging=True
+    )
+    charger_client.apply_led_state.side_effect = RuntimeError("websocket down")
+
+    with (
+        patch(
+            "schedule.coordinator.resolve_theme",
+            return_value=LedTheme(effect_name="peace", always_on=True),
+        ),
+        caplog.at_level(logging.INFO),
+        pytest.raises(RuntimeError),
+    ):
+        await coordinator._apply_led_state()
+
+    assert not any(r.message.startswith("LED theme '") for r in caplog.records)
+    assert coordinator._active_theme_name is None
+    assert coordinator._active_theme_since is None
+
+
 @pytest.mark.parametrize(
     "led, is_charging",
     [

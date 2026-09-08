@@ -16,7 +16,8 @@ hours".
 `resolve_theme` then walk each extension's optional
 `async def resolve_fallback(self, now) -> LedTheme | None` in config list order and take the
 first non-`None`. Whichever pass produced the match then goes through the existing defensive
-copy (deep-copied `leds`, `always_on` carried through), so both passes return the same shape.
+copy (deep-copied `leds`, `always_on` and `active_until` carried through), so both passes
+return the same shape.
 
 `resolve_fallback` is declared the way `start` / `stop` already are (ADR 0005) — a comment on
 the `LedThemeProvider` Protocol, not a Protocol member, so it is not structurally required —

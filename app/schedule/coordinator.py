@@ -99,42 +99,50 @@ class ScheduleCoordinator:
             built_in_themes=self._built_in_themes,
         )
         if _target is not None and (_target.always_on or _state.is_charging):
-            self._note_led_theme(_target.effect_name, _target.active_until, _now)
             await self._charger_client.apply_led_state(
                 1.0, _target.effect_name, leds=_target.leds
             )
+            # After the wire push, not before: the log tracks what reached the
+            # ring, so a push that raises leaves the tracker unadvanced and the
+            # next cycle retries and logs it.
+            self._log_theme_transition(_target.effect_name, _target.active_until, _now)
             return
-        self._note_led_theme(None, None, _now)
         await self._charger_client.apply_led_state(0.0, None)
+        self._log_theme_transition(None, None, _now)
 
-    def _note_led_theme(
+    def _log_theme_transition(
         self, new_name: str | None, active_until: datetime | None, now: datetime
     ) -> None:
-        # Log one INFO line per theme transition; identity is the effect name
-        # alone, so an unchanged name is silent (ADR 0020).
+        # One INFO line per change of the displayed theme; identity is the
+        # effect name alone, so an unchanged name is silent (ADR 0020).
         _previous = self._active_theme_name
         if new_name == _previous:
             return
         if new_name is not None:
-            _line = (
-                f"LED theme '{new_name}' active{self._predicted_end(active_until, now)}"
+            _line = f"LED theme '{new_name}' active" + self._predicted_end_clause(
+                active_until, now
             )
             if _previous is not None:
-                _line += f" — replaced '{_previous}' after {self._time_lit(now)}"
+                _line += f" — replaced '{_previous}' after {self._lit_duration(now)}"
             logger.info(_line)
         else:
-            logger.info(f"LED theme '{_previous}' cleared after {self._time_lit(now)}")
+            logger.info(
+                f"LED theme '{_previous}' cleared after {self._lit_duration(now)}"
+            )
         self._active_theme_name = new_name
         self._active_theme_since = now if new_name is not None else None
 
     @staticmethod
-    def _predicted_end(active_until: datetime | None, now: datetime) -> str:
+    def _predicted_end_clause(active_until: datetime | None, now: datetime) -> str:
+        # The " until <local time> (~<time to go>)" fragment, or "" when the
+        # matching source reported no firm end.
         if active_until is None:
             return ""
         _when = active_until.astimezone(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d %H:%M")
         return f" until {_when} (~{format_duration(active_until - now)})"
 
-    def _time_lit(self, now: datetime) -> str:
+    def _lit_duration(self, now: datetime) -> str:
+        # How long the currently-tracked theme has been displayed, formatted.
         # Defensive: _active_theme_since is always set when a name is tracked,
         # but never crash the run loop over a formatting detail.
         if self._active_theme_since is None:
