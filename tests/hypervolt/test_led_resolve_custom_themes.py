@@ -1,3 +1,4 @@
+import dataclasses
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -14,7 +15,34 @@ async def test_resolve_theme_returns_custom_theme_during_its_window() -> None:
 
     theme = await resolve_theme(now, custom_themes=custom_themes)
 
-    assert theme == _PEACE
+    assert theme == dataclasses.replace(
+        _PEACE, active_until=datetime(2026, 3, 16, 0, 0, tzinfo=_LONDON)
+    )
+
+
+async def test_resolve_theme_reports_the_window_end_as_the_custom_theme_active_until() -> (
+    None
+):
+    now = datetime(2026, 3, 15, 12, 0, tzinfo=_LONDON)
+    custom_themes = [(_PEACE, (3, 14, 0, 0), (3, 16, 0, 0))]
+
+    theme = await resolve_theme(now, custom_themes=custom_themes)
+
+    assert theme is not None
+    assert theme.active_until == datetime(2026, 3, 16, 0, 0, tzinfo=_LONDON)
+
+
+async def test_resolve_theme_reports_the_window_end_as_the_built_in_theme_active_until() -> (
+    None
+):
+    # halloween_mode's window is 31 Oct 00:00 -> 1 Nov 06:00.
+    now = datetime(2026, 10, 31, 12, 0, tzinfo=_LONDON)
+
+    theme = await resolve_theme(now, built_in_themes=DEFAULT_BUILT_IN_THEMES)
+
+    assert theme is not None
+    assert theme.effect_name == "halloween_mode"
+    assert theme.active_until == datetime(2026, 11, 1, 6, 0, tzinfo=_LONDON)
 
 
 async def test_resolve_theme_preserves_always_on_through_the_defensive_copy() -> None:
@@ -41,7 +69,9 @@ async def test_resolve_theme_prefers_custom_theme_over_built_in_on_same_date() -
         now, custom_themes=custom_themes, built_in_themes=DEFAULT_BUILT_IN_THEMES
     )
 
-    assert theme == _PEACE
+    assert theme == dataclasses.replace(
+        _PEACE, active_until=datetime(2026, 11, 2, 0, 0, tzinfo=_LONDON)
+    )
 
 
 async def test_resolve_theme_falls_through_to_built_in_when_no_custom_theme_matches() -> (
@@ -72,4 +102,6 @@ async def test_resolve_theme_uses_config_list_order_when_custom_windows_overlap(
 
     theme = await resolve_theme(now, custom_themes=custom_themes)
 
-    assert theme == _PEACE
+    assert theme == dataclasses.replace(
+        _PEACE, active_until=datetime(2026, 3, 16, 0, 0, tzinfo=_LONDON)
+    )

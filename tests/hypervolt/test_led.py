@@ -121,6 +121,19 @@ async def test_resolve_theme_returns_none_just_after_party_window_ends() -> None
     assert await resolve_theme(now, built_in_themes=DEFAULT_BUILT_IN_THEMES) is None
 
 
+def test_led_theme_defaults_active_until_to_none() -> None:
+    # ADR 0020: active_until is meaningful only on a resolve_theme() result --
+    # a bare LedTheme (a catalogue entry) constructs without it and carries
+    # None.
+    assert LedTheme(effect_name="peace").active_until is None
+
+
+def test_built_in_catalogue_entries_carry_no_active_until() -> None:
+    # The field must stay absent on the shipped catalogue -- it is stamped on
+    # only by resolve_theme, from the window that matched.
+    assert all(theme.active_until is None for theme, _, _ in DEFAULT_BUILT_IN_THEMES)
+
+
 async def test_resolve_theme_returns_none_during_built_in_window_when_not_configured() -> (
     None
 ):

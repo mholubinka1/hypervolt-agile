@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from common.constants import APP_NAME, SESSION_CLOCK_OFFSET_MINS, TIMEZONE
 from common.logging import config
+from common.utils import format_duration
 from hypervolt.charger import HypervoltChargerClient
 from hypervolt.led import ExtensionWrapper, LedTheme, Window, resolve_theme
 from hypervolt.model import HypervoltSession, LockStatus, ReleaseState
@@ -35,6 +36,8 @@ class ScheduleCoordinator:
         self._car_was_plugged: bool | None = None
         self._was_connected: bool | None = None
         self._disconnected_at: datetime | None = None
+        self._active_theme_name: str | None = None
+        self._active_theme_since: datetime | None = None
 
     async def close(self) -> None:
         if self._charger_client:
@@ -88,8 +91,9 @@ class ScheduleCoordinator:
         _state = self._charger_client.charger_state
         if _state.is_charging is None:
             return
+        _now = datetime.now(ZoneInfo(TIMEZONE))
         _target = await resolve_theme(
-            datetime.now(ZoneInfo(TIMEZONE)),
+            _now,
             extensions=self._extensions,
             custom_themes=self._custom_themes,
             built_in_themes=self._built_in_themes,
@@ -98,8 +102,56 @@ class ScheduleCoordinator:
             await self._charger_client.apply_led_state(
                 1.0, _target.effect_name, leds=_target.leds
             )
+            # After the wire push, not before: the log tracks what reached the
+            # ring, so a push that raises leaves the tracker unadvanced and the
+            # next cycle retries and logs it.
+            self._log_theme_transition(_target.effect_name, _target.active_until, _now)
             return
         await self._charger_client.apply_led_state(0.0, None)
+        self._log_theme_transition(None, None, _now)
+
+    def _log_theme_transition(
+        self, new_name: str | None, active_until: datetime | None, now: datetime
+    ) -> None:
+        # One INFO line per change of the displayed theme; identity is the
+        # effect name alone, so an unchanged name is silent (ADR 0020).
+        _previous = self._active_theme_name
+        if new_name == _previous:
+            return
+        if new_name is not None:
+            _line = f"LED theme '{new_name}' active" + self._predicted_end_clause(
+                active_until, now
+            )
+            if _previous is not None:
+                _line += (
+                    f" — replaced '{_previous}' after {self._lit_duration_str(now)}"
+                )
+            logger.info(_line)
+        else:
+            logger.info(
+                f"LED theme '{_previous}' cleared after {self._lit_duration_str(now)}"
+            )
+        self._active_theme_name = new_name
+        self._active_theme_since = now if new_name is not None else None
+
+    @staticmethod
+    def _predicted_end_clause(active_until: datetime | None, now: datetime) -> str:
+        # The " until <local time> (~<time to go>)" fragment, or "" when the
+        # matching source reported no firm end -- or reported a naive datetime,
+        # which a third-party extension could, and which can't be compared to
+        # the aware `now`. Drop the clause rather than let it raise here.
+        if active_until is None or active_until.tzinfo is None:
+            return ""
+        _when = active_until.astimezone(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d %H:%M")
+        return f" until {_when} (~{format_duration(active_until - now)})"
+
+    def _lit_duration_str(self, now: datetime) -> str:
+        # How long the currently-tracked theme has been displayed, formatted.
+        # Defensive: _active_theme_since is always set when a name is tracked,
+        # but never crash the run loop over a formatting detail.
+        if self._active_theme_since is None:
+            return format_duration(timedelta())
+        return format_duration(now - self._active_theme_since)
 
     def _can_push(self) -> bool:
         if self._charger_client is None:

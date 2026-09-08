@@ -61,6 +61,10 @@ _Avoid_: LED state, lighting mode, brightness
 The visual pattern applied to the charger's LEDs: either a built-in effect the charger firmware already knows how to render by name (e.g. `halloween_mode`), or a `steady_array` — an explicit 51-value RGB array the app constructs and sends itself.
 _Avoid_: LED pattern, colour scheme
 
+**Active-until**:
+The instant a resolved LED Theme is expected to stop applying, supplied by whichever source matched — the window end for a calendar theme, kick-off plus three hours for a Saints FC Match window. Carried on the resolved theme; `None` when the matching source has no firm end (a charging-gated fallback). Advisory only — a higher-priority theme can still preempt it — and used solely for the coordinator's theme-transition log, never for display or wire state.
+_Avoid_: expiry, deadline, TTL
+
 **Custom theme**:
 An LED Effect backed by a static colour YAML file in the repo's `themes/` directory, mapped to a year-agnostic date window via a `custom_themes` entry in `config.yml`. Shipped maps and operator-added maps sit together in `themes/`; each is opt-in — listing it in `config.yml` is what activates it. Pure data — no logic.
 _Avoid_: custom effect, theme file, led_effects
