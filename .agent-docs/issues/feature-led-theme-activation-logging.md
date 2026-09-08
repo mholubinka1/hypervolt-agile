@@ -1,5 +1,7 @@
 # Issues: feature-led-theme-activation-logging
 
+> Work complete — PR ready to merge.
+
 ## Resolved LED theme carries an `active_until` — [#149](https://github.com/mholubinka1/hypervolt-agile/issues/149)
 
 **Blocked by**: None
@@ -20,24 +22,24 @@ is never read for display or wire state. ADR 0020 records the decision.
 
 ### Acceptance criteria
 
-- [ ] Given a custom or built-in theme matches, when `resolve_theme` returns, then the
+- [x] Given a custom or built-in theme matches, when `resolve_theme` returns, then the
       returned theme's `active_until` is the matched window's end datetime
-- [ ] Given the Saints extension's `resolve()` returns a strip inside a match window, when
+- [x] Given the Saints extension's `resolve()` returns a strip inside a match window, when
       it is resolved, then `active_until` is that fixture's kick-off + 3h
-- [ ] Given two Southampton fixtures on one local date whose windows both contain `now`,
+- [x] Given two Southampton fixtures on one local date whose windows both contain `now`,
       when `resolve()` is resolved, then `active_until` is the later of the two window ends
-- [ ] Given the Saints extension's `resolve_fallback()` returns the rest-of-day strip, when
+- [x] Given the Saints extension's `resolve_fallback()` returns the rest-of-day strip, when
       it is resolved, then `active_until` is `None`
-- [ ] Given an extension whose returned theme sets no `active_until`, when `resolve_theme`
+- [x] Given an extension whose returned theme sets no `active_until`, when `resolve_theme`
       returns it, then `active_until` is `None`
-- [ ] `LedTheme()` still constructs with no `active_until` argument, defaulting to `None`;
+- [x] `LedTheme()` still constructs with no `active_until` argument, defaulting to `None`;
       `DEFAULT_BUILT_IN_THEMES` entries and the `(LedTheme, Window, Window)` tuples are
       unaffected
-- [ ] The existing `resolve_theme` equality assertions in
+- [x] The existing `resolve_theme` equality assertions in
       `tests/hypervolt/test_led_resolve_custom_themes.py` are updated to account for the
       populated `active_until` on the returned copy (field assertions or
       `dataclasses.replace`)
-- [ ] `resolve_theme`'s defensive copy still deep-copies `leds` and carries `always_on`
+- [x] `resolve_theme`'s defensive copy still deep-copies `leds` and carries `always_on`
       through unchanged
 
 ---
@@ -74,27 +76,27 @@ exact hour `2h00m`, zero or negative `0s` — used for both the measured lit dur
 
 ### Acceptance criteria
 
-- [ ] Given no theme is displayed, when a theme with a known `active_until` first lights the
+- [x] Given no theme is displayed, when a theme with a known `active_until` first lights the
       ring, then one INFO line is logged naming the effect, the local predicted-end
       timestamp, and the approximate time-to-go
-- [ ] Given the resolved theme's `active_until` is `None`, when it first lights the ring,
+- [x] Given the resolved theme's `active_until` is `None`, when it first lights the ring,
       then the line is `LED theme '<name>' active` with no `until` clause and no `(~…)`
-- [ ] Given a theme is displayed, when the ring goes dark on a later cycle and no theme
+- [x] Given a theme is displayed, when the ring goes dark on a later cycle and no theme
       replaces it, then one INFO line is logged naming the effect and the measured elapsed
       time it was lit
-- [ ] Given theme A is displayed, when theme B lights the ring on the same cycle A leaves,
+- [x] Given theme A is displayed, when theme B lights the ring on the same cycle A leaves,
       then exactly one INFO line is logged — naming B, B's predicted end if known, and
       `replaced 'A' after <duration>` — and no separate "cleared" line for A
-- [ ] Given a theme stays displayed unchanged, when many poll cycles run, then exactly one
+- [x] Given a theme stays displayed unchanged, when many poll cycles run, then exactly one
       INFO line was logged for that theme across all of them
-- [ ] Given a freshly constructed coordinator (post-restart) whose first cycle displays a
+- [x] Given a freshly constructed coordinator (post-restart) whose first cycle displays a
       theme, when that cycle runs, then an activation line is logged
-- [ ] Given `_apply_led_state` returns early because `is_charging` is `None` or LED config
+- [x] Given `_apply_led_state` returns early because `is_charging` is `None` or LED config
       is disabled/absent, when the cycle runs, then no theme-transition line is logged and
       the tracked active theme is unchanged
-- [ ] `format_duration` renders `2h58m`, `47m`, `38s`, an exact hour as `2h00m`, and a zero
+- [x] `format_duration` renders `2h58m`, `47m`, `38s`, an exact hour as `2h00m`, and a zero
       or negative delta as `0s`
-- [ ] The `Setting LED brightness` / `Setting LED effect` lines in `charger.py` and what
+- [x] The `Setting LED brightness` / `Setting LED effect` lines in `charger.py` and what
       the ring displays are unchanged
 
 ---
