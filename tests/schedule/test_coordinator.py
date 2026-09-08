@@ -248,6 +248,43 @@ async def test_a_fresh_coordinator_logs_an_activation_on_its_first_display(
     assert _lines == ["LED theme 'peace' active"]
 
 
+async def test_a_dark_ring_that_stays_dark_logs_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Transition table, none -> none: nothing is displayed and nothing was
+    # displayed, so no line is logged and the tracker stays empty.
+    coordinator, _ = _coordinator(led=LedConfig(enabled=True), is_charging=True)
+
+    with (
+        patch("schedule.coordinator.resolve_theme", return_value=None),
+        caplog.at_level(logging.INFO),
+    ):
+        await coordinator._apply_led_state()
+
+    assert not any(r.message.startswith("LED theme '") for r in caplog.records)
+    assert coordinator._active_theme_name is None
+
+
+async def test_a_cleared_theme_with_no_recorded_start_reports_a_zero_duration(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Defensive: if a theme name is tracked without a start instant (should not
+    # happen), clearing it still logs a well-formed line rather than crashing
+    # the run loop.
+    coordinator, _ = _coordinator(led=LedConfig(enabled=True), is_charging=True)
+    coordinator._active_theme_name = "saints_fc"
+    coordinator._active_theme_since = None
+
+    with (
+        patch("schedule.coordinator.resolve_theme", return_value=None),
+        caplog.at_level(logging.INFO),
+    ):
+        await coordinator._apply_led_state()
+
+    _lines = [r.message for r in caplog.records if r.message.startswith("LED theme '")]
+    assert _lines == ["LED theme 'saints_fc' cleared after 0s"]
+
+
 async def test_a_failed_ring_push_is_not_recorded_as_an_active_theme(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

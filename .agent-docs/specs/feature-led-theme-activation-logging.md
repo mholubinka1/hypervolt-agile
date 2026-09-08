@@ -79,11 +79,15 @@ While the same theme stays on the ring, nothing is logged — only transitions.
 - `ScheduleCoordinator` gains `_active_theme_name: str | None` and
   `_active_theme_since: datetime | None`, both starting empty. No persistence across
   process restarts.
-- A helper — `_note_led_theme(new_name, active_until, now)` — is called on both outcomes of
-  `_apply_led_state`: with `_target.effect_name` on the branch that applies brightness 1.0,
-  and with `None` on the branch that clears to 0.0. It reuses the single
-  `datetime.now(TIMEZONE)` already taken for `resolve_theme` (lifted into a local so both
-  callers share one instant).
+- A helper — `_log_theme_transition(new_name, active_until, now)` — is called on both
+  outcomes of `_apply_led_state`, immediately *after* the `apply_led_state` wire call: with
+  `_target.effect_name` on the branch that applies brightness 1.0, and with `None` on the
+  branch that clears to 0.0. Logging after the push (not before) keeps the log a record of
+  what reached the ring — a push that raises propagates out of `_apply_led_state` before the
+  helper runs, so the tracker stays unadvanced and the next cycle retries and logs it. The
+  helper reuses the single `datetime.now(TIMEZONE)` already taken for `resolve_theme` (lifted
+  into a local so both callers share one instant). It delegates the ` until <ts> (~<dur>)`
+  fragment to `_predicted_end_clause` and the elapsed-time rendering to `_lit_duration_str`.
 - Transition rules, keyed on `new_name` vs `_active_theme_name` (identity is `effect_name`
   only):
 
@@ -104,10 +108,11 @@ While the same theme stays on the ring, nothing is logged — only transitions.
 
 ### `format_duration`
 
-- `format_duration(td: timedelta) -> str` added to `common/utils.py`: `2h58m`, `47m`,
-  `38s`; a zero or negative delta renders as `0s`. Used for both the measured lit duration
-  and the `(~…)` time-to-go. Minutes and seconds are always two digits when a larger unit
-  precedes them.
+- `format_duration(td: timedelta) -> str` added to `common/utils.py`. It emits the two
+  largest non-zero units at most, and never a smaller unit once a larger one is shown:
+  `2h58m` (seconds dropped), an exact hour as `2h00m` (minutes always two digits after an
+  hour), `47m`, `38s`; a zero or negative delta renders as `0s`. Used for both the measured
+  lit duration and the `(~…)` time-to-go.
 
 ## Testing Decisions
 

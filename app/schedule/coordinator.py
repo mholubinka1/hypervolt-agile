@@ -123,11 +123,13 @@ class ScheduleCoordinator:
                 active_until, now
             )
             if _previous is not None:
-                _line += f" — replaced '{_previous}' after {self._lit_duration(now)}"
+                _line += (
+                    f" — replaced '{_previous}' after {self._lit_duration_str(now)}"
+                )
             logger.info(_line)
         else:
             logger.info(
-                f"LED theme '{_previous}' cleared after {self._lit_duration(now)}"
+                f"LED theme '{_previous}' cleared after {self._lit_duration_str(now)}"
             )
         self._active_theme_name = new_name
         self._active_theme_since = now if new_name is not None else None
@@ -141,7 +143,7 @@ class ScheduleCoordinator:
         _when = active_until.astimezone(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d %H:%M")
         return f" until {_when} (~{format_duration(active_until - now)})"
 
-    def _lit_duration(self, now: datetime) -> str:
+    def _lit_duration_str(self, now: datetime) -> str:
         # How long the currently-tracked theme has been displayed, formatted.
         # Defensive: _active_theme_since is always set when a name is tracked,
         # but never crash the run loop over a formatting detail.
