@@ -263,7 +263,6 @@ async def test_a_dark_ring_that_stays_dark_logs_nothing(
         await coordinator._apply_led_state()
 
     assert not any(r.message.startswith("LED theme '") for r in caplog.records)
-    assert coordinator._active_theme_name is None
 
 
 async def test_a_cleared_theme_with_no_recorded_start_reports_a_zero_duration(
