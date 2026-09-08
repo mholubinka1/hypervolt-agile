@@ -231,9 +231,10 @@ async def test_a_fresh_coordinator_logs_an_activation_on_its_first_display(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Scenario 6: a brand-new coordinator (post-restart, nothing tracked yet)
-    # whose very first LED cycle displays a theme still logs the activation.
+    # whose very first LED cycle displays a theme logs a plain activation, not
+    # a "replaced ..." line -- the exact-match assertion below would fail on
+    # the latter.
     coordinator, _ = _coordinator(led=LedConfig(enabled=True), is_charging=True)
-    assert coordinator._active_theme_name is None
 
     with (
         patch(

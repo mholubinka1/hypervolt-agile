@@ -214,8 +214,10 @@ class LedThemeProvider(Protocol):
 
     async def resolve(self, now: datetime) -> LedTheme | None: ...
 
-    # A returned LedTheme's `active_until`, when set, must be a timezone-aware
+    # A returned LedTheme's `active_until`, when set, should be a timezone-aware
     # datetime (ADR 0020) -- the coordinator compares it against an aware `now`.
+    # A naive value is tolerated, not required: the coordinator drops the
+    # predicted-end portion of its log line rather than raising.
     #
     # start() and stop() are optional lifecycle hooks (ADR 0005) -- deliberately
     # not declared here, since a Protocol member would make them structurally
