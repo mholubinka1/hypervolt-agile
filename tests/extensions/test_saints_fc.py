@@ -279,6 +279,33 @@ async def _seeded(matches: dict[date, list[datetime]]) -> SaintsFcExtension:
     return extension
 
 
+async def test_resolve_reports_kickoff_plus_three_hours_as_active_until() -> None:
+    # Issue #149: the always-on strip carries when it is expected to stop --
+    # kick-off + 3h, the far edge of the match window.
+    _ko = datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)
+    extension = await _seeded({date(2026, 8, 25): [_ko]})
+
+    _in_window = await extension.resolve(_ko + timedelta(minutes=30))
+
+    assert _in_window is not None
+    assert _in_window.active_until == _ko + timedelta(hours=3)
+
+
+async def test_resolve_reports_the_later_end_when_two_windows_both_contain_now() -> (
+    None
+):
+    # Issue #149: overlapping double-header -- `now` sits inside both fixtures'
+    # windows, so active_until is the further of the two KO+3h edges.
+    _early_ko = datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)
+    _late_ko = datetime(2026, 8, 25, 16, 30, tzinfo=_UTC)
+    extension = await _seeded({date(2026, 8, 25): [_early_ko, _late_ko]})
+
+    _both = await extension.resolve(datetime(2026, 8, 25, 16, 45, tzinfo=_UTC))
+
+    assert _both is not None
+    assert _both.active_until == _late_ko + timedelta(hours=3)
+
+
 async def test_resolve_is_none_one_second_after_the_window_closes() -> None:
     # Scenario 2: KO+3h is the inclusive upper bound; one second past it is out.
     _ko = datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)
@@ -349,6 +376,18 @@ async def test_resolve_fallback_offers_the_strip_outside_a_known_window() -> Non
         assert _theme is not None
         assert _theme.effect_name == "saints_fc"
         assert _theme.always_on is False
+
+
+async def test_resolve_fallback_reports_no_active_until() -> None:
+    # Issue #149: the rest-of-day charging-gated strip has no firm end, so it
+    # carries active_until=None ("unknown").
+    _ko = datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)
+    extension = await _seeded({date(2026, 8, 25): [_ko]})
+
+    _fallback = await extension.resolve_fallback(_ko - timedelta(hours=1))
+
+    assert _fallback is not None
+    assert _fallback.active_until is None
 
 
 async def test_resolve_fallback_is_none_inside_the_window() -> None:

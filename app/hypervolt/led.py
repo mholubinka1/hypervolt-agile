@@ -49,6 +49,13 @@ class LedTheme:
     # whole active window regardless of charge *or* plug state. False
     # (default): light only while the car is actively charging.
     always_on: bool = False
+    # When the resolved theme is expected to stop applying (ADR 0020) -- the
+    # matched window's end for a calendar theme, kick-off + 3h for the Saints
+    # extension, None when the matching source has no firm end (a charge-gated
+    # fallback). Meaningful only on a resolve_theme() result, never on a
+    # catalogue entry, so it defaults to None and stays absent on
+    # DEFAULT_BUILT_IN_THEMES and the (LedTheme, Window, Window) tuples.
+    active_until: datetime | None = None
 
 
 def _hex_to_rgb(hex_colour: str) -> dict[str, float]:
@@ -144,12 +151,15 @@ def window_for_year(
 
 def _resolve_from(
     now: datetime, entries: Sequence[tuple[LedTheme, Window, Window]]
-) -> LedTheme | None:
+) -> tuple[LedTheme, datetime] | None:
+    # Returns the matched theme together with the end of the window that
+    # matched -- resolve_theme stamps that end onto the copy it hands back as
+    # the theme's active_until (ADR 0020).
     for theme, start, end in entries:
         for anchor_year in (now.year, now.year - 1):
             _start, _end = window_for_year(start, end, anchor_year)
             if _start <= now < _end:
-                return theme
+                return theme, _end
     return None
 
 
@@ -160,14 +170,20 @@ async def resolve_theme(
     built_in_themes: Sequence[tuple[LedTheme, Window, Window]] = (),
 ) -> LedTheme | None:
     _match: LedTheme | None = None
+    # Set only on a calendar (custom / built-in) match -- the end of the window
+    # that matched. An extension match reports its own end via the active_until
+    # already on the LedTheme it returned (see below).
+    _window_end: datetime | None = None
     for _extension in extensions:
         _match = await _extension.resolve(now)
         if _match is not None:
             break
     if _match is None:
-        _match = _resolve_from(now, custom_themes)
-    if _match is None:
-        _match = _resolve_from(now, built_in_themes)
+        _calendar_match = _resolve_from(now, custom_themes)
+        if _calendar_match is None:
+            _calendar_match = _resolve_from(now, built_in_themes)
+        if _calendar_match is not None:
+            _match, _window_end = _calendar_match
     if _match is None:
         for _extension in extensions:
             _match = await _extension.resolve_fallback(now)
@@ -175,6 +191,10 @@ async def resolve_theme(
                 break
     if _match is None:
         return None
+    # When the resolved theme is expected to stop applying (ADR 0020): the
+    # matched window's end for a calendar theme, else whatever active_until the
+    # matching extension stamped on the theme it returned (may be None).
+    _active_until = _window_end if _window_end is not None else _match.active_until
     # _match above is the stored/cached LedTheme itself -- from the caller's
     # custom_themes, built_in_themes, or an extension's own internal cache --
     # not a copy -- freezing the dataclass only stops field reassignment, not
@@ -185,6 +205,7 @@ async def resolve_theme(
         effect_name=_match.effect_name,
         leds=[dict(led) for led in _match.leds] if _match.leds is not None else None,
         always_on=_match.always_on,
+        active_until=_active_until,
     )
 
 

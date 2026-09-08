@@ -1,3 +1,4 @@
+import dataclasses
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -34,6 +35,45 @@ async def test_resolve_theme_prefers_extension_over_matching_custom_theme() -> N
     assert theme == _SAINTS
 
 
+async def test_resolve_theme_carries_the_extensions_active_until_through_the_copy() -> (
+    None
+):
+    # ADR 0020: whatever active_until the provider stamped on its LedTheme
+    # survives resolve_theme's defensive copy.
+    now = datetime(2026, 3, 15, 12, 0, tzinfo=_LONDON)
+    _ends_at = datetime(2026, 3, 15, 18, 0, tzinfo=_LONDON)
+    _with_end = LedTheme(
+        effect_name="saints_fc",
+        leds=[{"r": 1.0, "g": 0.0, "b": 0.0}],
+        always_on=True,
+        active_until=_ends_at,
+    )
+    extensions = [
+        ExtensionWrapper(name="saints_fc", provider=_StaticProvider(_with_end))
+    ]
+
+    theme = await resolve_theme(now, extensions=extensions)
+
+    assert theme is not None
+    assert theme.active_until == _ends_at
+
+
+async def test_resolve_theme_leaves_active_until_none_when_the_extension_sets_none() -> (
+    None
+):
+    # ADR 0020: a provider that reports no predicted end (its LedTheme carries
+    # active_until=None) resolves to a theme whose active_until is still None
+    # -- resolve_theme lifts the provider's value verbatim, it does not invent
+    # one.
+    now = datetime(2026, 3, 15, 12, 0, tzinfo=_LONDON)
+    extensions = [ExtensionWrapper(name="saints_fc", provider=_StaticProvider(_SAINTS))]
+
+    theme = await resolve_theme(now, extensions=extensions)
+
+    assert theme is not None
+    assert theme.active_until is None
+
+
 async def test_resolve_theme_uses_config_list_order_when_extensions_both_match() -> (
     None
 ):
@@ -58,7 +98,9 @@ async def test_resolve_theme_falls_through_to_custom_themes_when_no_extension_ma
 
     theme = await resolve_theme(now, extensions=extensions, custom_themes=custom_themes)
 
-    assert theme == _PEACE
+    assert theme == dataclasses.replace(
+        _PEACE, active_until=datetime(2026, 3, 16, 0, 0, tzinfo=_LONDON)
+    )
 
 
 async def test_resolve_theme_falls_through_to_custom_themes_when_extension_raises() -> (
@@ -74,4 +116,6 @@ async def test_resolve_theme_falls_through_to_custom_themes_when_extension_raise
 
     theme = await resolve_theme(now, extensions=extensions, custom_themes=custom_themes)
 
-    assert theme == _PEACE
+    assert theme == dataclasses.replace(
+        _PEACE, active_until=datetime(2026, 3, 16, 0, 0, tzinfo=_LONDON)
+    )

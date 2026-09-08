@@ -222,29 +222,49 @@ class SaintsFcExtension:
         # can't grow without bound.
         self._matches = {d: v for d, v in self._matches.items() if d >= _today}
 
-    def _strip(self, *, always_on: bool) -> LedTheme:
+    def _strip(
+        self, *, always_on: bool, active_until: datetime | None = None
+    ) -> LedTheme:
         # The one place the wire effect name and the shipped colour map are
         # tied together -- both resolution passes hand back this strip, only
-        # the display gate differs.
-        return LedTheme(effect_name="saints_fc", leds=self._leds, always_on=always_on)
+        # the display gate and (in-window only) the predicted end differ.
+        return LedTheme(
+            effect_name="saints_fc",
+            leds=self._leds,
+            always_on=always_on,
+            active_until=active_until,
+        )
+
+    def _kickoffs_around(self, now: datetime) -> list[datetime]:
+        # The kick-offs whose match window (KO-30m .. KO+3h) currently contains
+        # `now`. Keyed by local date: a real kick-off (12:00-20:00) plus the 3h
+        # window and 30m lead-in never crosses local midnight, so the fixture's
+        # date and every instant of its window share one local date. A
+        # hypothetical kick-off near midnight would need the neighbouring
+        # date's entry too. An empty list means either not a match date at all
+        # or a match date whose kick-off is not yet known.
+        _kickoffs = self._matches.get(now.astimezone(_LOCAL_TZ).date(), None) or []
+        return [
+            ko for ko in _kickoffs if ko - _MATCH_LEADIN <= now <= ko + _MATCH_WINDOW
+        ]
 
     def _in_match_window(self, now: datetime) -> bool:
-        # Keyed by local date: a real kick-off (12:00-20:00) plus the 3h window
-        # and 30m lead-in never crosses local midnight, so the fixture's date
-        # and every instant of its window share one local date. A hypothetical
-        # kick-off near midnight would need the neighbouring date's entry too.
-        _kickoffs = self._matches.get(now.astimezone(_LOCAL_TZ).date(), None)
-        if not _kickoffs:
-            # None -> not a match date at all; [] -> match that day, kick-off
-            # unknown, so no window either.
-            return False
-        return any(ko - _MATCH_LEADIN <= now <= ko + _MATCH_WINDOW for ko in _kickoffs)
+        return bool(self._kickoffs_around(now))
 
     async def resolve(self, now: datetime) -> LedTheme | None:
         # Top priority (primary pass): inside the match window the strip is
         # always-on and outranks every other theme; outside it, nothing -- the
         # charging-gated fallback is resolve_fallback's job.
-        return self._strip(always_on=True) if self._in_match_window(now) else None
+        _kickoffs = self._kickoffs_around(now)
+        if not _kickoffs:
+            return None
+        # active_until (issue #149): the latest KO+3h across every window that
+        # currently contains `now` -- so an overlapping double-header reports
+        # the further edge, not the nearer one.
+        return self._strip(
+            always_on=True,
+            active_until=max(ko + _MATCH_WINDOW for ko in _kickoffs),
+        )
 
     async def resolve_fallback(self, now: datetime) -> LedTheme | None:
         # Second pass (ADR 0015): the rest of a match day, the strip sits
