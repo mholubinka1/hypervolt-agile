@@ -23,7 +23,7 @@ shows — logs a line each time the displayed LED Theme changes:
   after 2h58m` — the effect name and how long it was actually lit.
 - When one theme replaces another in the same cycle: a single line for the incoming theme
   carrying both its own predicted end and what it displaced — `LED theme 'nye' active until
-  2026-09-09 06:00 (~9h) — replaced 'saints_fc' after 3h01m`.
+  2026-09-09 06:00 (~9h00m) — replaced 'saints_fc' after 3h01m`.
 
 "Displayed" is the trigger, not "resolved": a charging-gated theme that is resolved but
 dark because the car is idle is not active and logs nothing until it actually lights.
