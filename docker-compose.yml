@@ -6,7 +6,7 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     volumes:
-      - /home/pi/.config/hypervolt-agile:/config
-      - /home/pi/.log/hypervolt-agile:/logs
-      - /home/pi/.config/hypervolt-agile-extensions:/extensions
+      - /mnt/media/pi-media/containers/hypervolt-agile-scheduler/config:/config
+      - /mnt/media/pi-media/containers/hypervolt-agile-scheduler/log:/logs
+      - /mnt/media/pi-media/containers/hypervolt-agile-scheduler/extensions:/extensions
     restart: unless-stopped

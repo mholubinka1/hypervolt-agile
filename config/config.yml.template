@@ -28,11 +28,11 @@ schedule:
 #       start: "MM-DD"
 #       end: "MM-DD"
 #       always_on: false              # Optional, default false (see built_in_themes above).
-#   extensions:                     # Dynamic themes resolved by a Python module you register, priority over custom_themes and built-ins. A saints_fc reference implementation ships in this repo's extensions/ -- to use it, copy extensions/saints_fc.py into a SEPARATE directory from config.yml (in Docker: /home/pi/.config/hypervolt-agile-extensions/, mounted to /extensions -- see --extensions-dir) and uncomment the entry below.
+#   extensions:                     # Dynamic themes resolved by a Python module you register, priority over custom_themes and built-ins. A saints_fc reference implementation ships in this repo's extensions/ -- to use it, copy extensions/saints_fc.py into a SEPARATE directory from config.yml (in Docker: /mnt/media/pi-media/containers/hypervolt-agile-scheduler/extensions/, mounted to /extensions -- see --extensions-dir) and uncomment the entry below.
 #     - name: saints_fc                # extensions/saints_fc.py -- shows the tuned Southampton FC strip from 30 min before kick-off until 3 h after (always-on, outranks every theme); the rest of a match day it's a charging-only fallback below your custom/built-in themes.
 #       config:
 #         api_key: "3"                   # Optional, default "3" -- TheSportsDB's free shared key, no signup needed. Swap for a personal key (thesportsdb.com Patreon) for dedicated rate limits.
 #         team_id: 134778                # Optional, default 134778 (Southampton FC) -- a TheSportsDB team ID, NOT football-data.org's
 #         poll_interval_hours: 1         # Optional, default 1 -- how often (in hours, a positive number) to poll TheSportsDB for today's and tomorrow's fixtures. Today is also checked once on startup, so a same-day deploy/restart doesn't miss a match happening that day.
-# log_file: /logs/hypervolt-agile-scheduler.log   # Omit to log to console only. In Docker, /logs is bind-mounted from /home/pi/.log/hypervolt-agile.
+# log_file: /logs/hypervolt-agile-scheduler.log   # Omit to log to console only. In Docker, /logs is bind-mounted from /mnt/media/pi-media/containers/hypervolt-agile-scheduler/log.
 # log_level: INFO                # Console log level (default: INFO). File log level is always INFO.
