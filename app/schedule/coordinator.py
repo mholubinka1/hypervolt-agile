@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from common.constants import APP_NAME, SESSION_CLOCK_OFFSET_MINS, TIMEZONE
 from common.logging import config
+from common.utils import format_duration
 from hypervolt.charger import HypervoltChargerClient
 from hypervolt.led import ExtensionWrapper, LedTheme, Window, resolve_theme
 from hypervolt.model import HypervoltSession, LockStatus, ReleaseState
@@ -35,6 +36,8 @@ class ScheduleCoordinator:
         self._car_was_plugged: bool | None = None
         self._was_connected: bool | None = None
         self._disconnected_at: datetime | None = None
+        self._active_theme_name: str | None = None
+        self._active_theme_since: datetime | None = None
 
     async def close(self) -> None:
         if self._charger_client:
@@ -88,18 +91,55 @@ class ScheduleCoordinator:
         _state = self._charger_client.charger_state
         if _state.is_charging is None:
             return
+        _now = datetime.now(ZoneInfo(TIMEZONE))
         _target = await resolve_theme(
-            datetime.now(ZoneInfo(TIMEZONE)),
+            _now,
             extensions=self._extensions,
             custom_themes=self._custom_themes,
             built_in_themes=self._built_in_themes,
         )
         if _target is not None and (_target.always_on or _state.is_charging):
+            self._note_led_theme(_target.effect_name, _target.active_until, _now)
             await self._charger_client.apply_led_state(
                 1.0, _target.effect_name, leds=_target.leds
             )
             return
+        self._note_led_theme(None, None, _now)
         await self._charger_client.apply_led_state(0.0, None)
+
+    def _note_led_theme(
+        self, new_name: str | None, active_until: datetime | None, now: datetime
+    ) -> None:
+        # Log one INFO line per theme transition; identity is the effect name
+        # alone, so an unchanged name is silent (ADR 0020).
+        _previous = self._active_theme_name
+        if new_name == _previous:
+            return
+        if new_name is not None:
+            _line = (
+                f"LED theme '{new_name}' active{self._predicted_end(active_until, now)}"
+            )
+            if _previous is not None:
+                _line += f" — replaced '{_previous}' after {self._time_lit(now)}"
+            logger.info(_line)
+        else:
+            logger.info(f"LED theme '{_previous}' cleared after {self._time_lit(now)}")
+        self._active_theme_name = new_name
+        self._active_theme_since = now if new_name is not None else None
+
+    @staticmethod
+    def _predicted_end(active_until: datetime | None, now: datetime) -> str:
+        if active_until is None:
+            return ""
+        _when = active_until.astimezone(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d %H:%M")
+        return f" until {_when} (~{format_duration(active_until - now)})"
+
+    def _time_lit(self, now: datetime) -> str:
+        # Defensive: _active_theme_since is always set when a name is tracked,
+        # but never crash the run loop over a formatting detail.
+        if self._active_theme_since is None:
+            return format_duration(timedelta())
+        return format_duration(now - self._active_theme_since)
 
     def _can_push(self) -> bool:
         if self._charger_client is None:

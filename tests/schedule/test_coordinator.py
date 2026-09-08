@@ -1,8 +1,10 @@
+import logging
 from collections.abc import Sequence
 from datetime import date, datetime
 from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
+import pytest
 from hypervolt.charger import HypervoltChargerClient
 from hypervolt.led import (
     THEMES_DIR,
@@ -92,6 +94,186 @@ def _frozen_now(instant: datetime) -> object:
     _clock = Mock(wraps=datetime)
     _clock.now.return_value = instant
     return patch("schedule.coordinator.datetime", _clock)
+
+
+async def test_activation_logs_the_theme_name_its_predicted_end_and_time_to_go(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Scenario 1: nothing lit -> the Saints strip lights the ring inside the
+    # match window. KO 15:00 UTC (16:00 London BST) + 3h window end = 18:00 UTC
+    # / 19:00 London; `now` frozen at 15:30 UTC leaves ~2h30m to go.
+    coordinator, _ = _real_resolve_coordinator(
+        is_charging=False, extensions=[_saints_extension_on_a_fixture_date()]
+    )
+
+    with (
+        _frozen_now(datetime(2026, 8, 25, 15, 30, tzinfo=_UTC)),
+        caplog.at_level(logging.INFO),
+    ):
+        await coordinator._apply_led_state()
+
+    assert "LED theme 'saints_fc' active until 2026-08-25 19:00 (~2h30m)" in caplog.text
+
+
+async def test_activation_line_omits_the_end_when_the_predicted_end_is_unknown(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Scenario 2: an always_on theme with no active_until -> the line names the
+    # theme and stops there, with no ` until ` clause and no time-to-go.
+    coordinator, _ = _coordinator(led=LedConfig(enabled=True), is_charging=False)
+
+    with (
+        patch(
+            "schedule.coordinator.resolve_theme",
+            return_value=LedTheme(effect_name="peace", always_on=True),
+        ),
+        caplog.at_level(logging.INFO),
+    ):
+        await coordinator._apply_led_state()
+
+    _lines = [r.message for r in caplog.records if r.message.startswith("LED theme '")]
+    assert _lines == ["LED theme 'peace' active"]
+
+
+async def test_deactivation_logs_how_long_the_theme_was_lit(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Scenario 3: a theme lights the ring on cycle 1, nothing resolves on cycle 2
+    # -> a single line names the theme and the time it stayed lit (the gap
+    # between the two frozen cycles).
+    coordinator, _ = _coordinator(led=LedConfig(enabled=True), is_charging=True)
+
+    with (
+        patch(
+            "schedule.coordinator.resolve_theme",
+            side_effect=[LedTheme(effect_name="peace", always_on=True), None],
+        ),
+        caplog.at_level(logging.INFO),
+    ):
+        with _frozen_now(datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)):
+            await coordinator._apply_led_state()
+        with _frozen_now(datetime(2026, 8, 25, 15, 47, tzinfo=_UTC)):
+            await coordinator._apply_led_state()
+
+    _lines = [r.message for r in caplog.records if r.message.startswith("LED theme '")]
+    assert _lines == [
+        "LED theme 'peace' active",
+        "LED theme 'peace' cleared after 47m",
+    ]
+
+
+async def test_a_swap_is_recorded_as_one_line_naming_both_themes(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Scenario 4: theme A lights the ring on cycle 1, a different theme B takes
+    # over on cycle 2 -> exactly one new line, naming B (with its predicted end)
+    # and the theme it replaced with how long that ran. No separate cleared line.
+    coordinator, _ = _coordinator(led=LedConfig(enabled=True), is_charging=True)
+
+    with (
+        patch(
+            "schedule.coordinator.resolve_theme",
+            side_effect=[
+                LedTheme(effect_name="valentines", always_on=True),
+                LedTheme(
+                    effect_name="bonfire",
+                    always_on=True,
+                    active_until=datetime(2026, 8, 25, 19, 0, tzinfo=_UTC),
+                ),
+            ],
+        ),
+        caplog.at_level(logging.INFO),
+    ):
+        with _frozen_now(datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)):
+            await coordinator._apply_led_state()
+        with _frozen_now(datetime(2026, 8, 25, 15, 47, tzinfo=_UTC)):
+            await coordinator._apply_led_state()
+
+    _lines = [r.message for r in caplog.records if r.message.startswith("LED theme '")]
+    assert _lines == [
+        "LED theme 'valentines' active",
+        (
+            "LED theme 'bonfire' active until 2026-08-25 20:00 (~3h13m) "
+            "— replaced 'valentines' after 47m"
+        ),
+    ]
+    assert not any("cleared" in message for message in _lines)
+
+
+async def test_a_steady_theme_logs_one_transition_line_across_many_cycles(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Scenario 5: the same theme resolves and displays on cycle after cycle
+    # (clock advancing) -> exactly one activation line, nothing on the repeats.
+    coordinator, _ = _coordinator(led=LedConfig(enabled=True), is_charging=True)
+
+    with (
+        patch(
+            "schedule.coordinator.resolve_theme",
+            return_value=LedTheme(effect_name="saints_fc", always_on=True),
+        ),
+        caplog.at_level(logging.INFO),
+    ):
+        for _minute in (0, 15, 30, 45):
+            with _frozen_now(datetime(2026, 8, 25, 15, _minute, tzinfo=_UTC)):
+                await coordinator._apply_led_state()
+
+    _transitions = [
+        r.message
+        for r in caplog.records
+        if r.message.startswith("LED theme '")
+        and (" active" in r.message or " cleared" in r.message)
+    ]
+    assert _transitions == ["LED theme 'saints_fc' active"]
+
+
+async def test_a_fresh_coordinator_logs_an_activation_on_its_first_display(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Scenario 6: a brand-new coordinator (post-restart, nothing tracked yet)
+    # whose very first LED cycle displays a theme still logs the activation.
+    coordinator, _ = _coordinator(led=LedConfig(enabled=True), is_charging=True)
+    assert coordinator._active_theme_name is None
+
+    with (
+        patch(
+            "schedule.coordinator.resolve_theme",
+            return_value=LedTheme(effect_name="peace", always_on=True),
+        ),
+        caplog.at_level(logging.INFO),
+    ):
+        await coordinator._apply_led_state()
+
+    _lines = [r.message for r in caplog.records if r.message.startswith("LED theme '")]
+    assert _lines == ["LED theme 'peace' active"]
+
+
+@pytest.mark.parametrize(
+    "led, is_charging",
+    [
+        (LedConfig(enabled=True), None),  # 7(a): charge state unknown
+        (None, True),  # 7(b): no led block
+        (LedConfig(enabled=False), True),  # 7(b): led disabled
+    ],
+)
+async def test_an_early_return_cycle_leaves_the_tracked_theme_untouched(
+    led: LedConfig | None,
+    is_charging: bool | None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Scenario 7: when _apply_led_state bails before resolving a theme, whatever
+    # was on the ring is still on it -- the tracker must not move.
+    coordinator, _ = _coordinator(led=led, is_charging=is_charging)
+    _since = datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)
+    coordinator._active_theme_name = "saints_fc"
+    coordinator._active_theme_since = _since
+
+    with caplog.at_level(logging.INFO):
+        await coordinator._apply_led_state()
+
+    assert not any(r.message.startswith("LED theme '") for r in caplog.records)
+    assert coordinator._active_theme_name == "saints_fc"
+    assert coordinator._active_theme_since == _since
 
 
 async def test_saints_window_outranks_a_custom_theme_only_during_the_match() -> None:
