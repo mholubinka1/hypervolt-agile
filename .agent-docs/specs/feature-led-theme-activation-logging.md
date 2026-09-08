@@ -108,11 +108,11 @@ While the same theme stays on the ring, nothing is logged — only transitions.
 
 ### `format_duration`
 
-- `format_duration(td: timedelta) -> str` added to `common/utils.py`. It emits the two
-  largest non-zero units at most, and never a smaller unit once a larger one is shown:
-  `2h58m` (seconds dropped), an exact hour as `2h00m` (minutes always two digits after an
-  hour), `47m`, `38s`; a zero or negative delta renders as `0s`. Used for both the measured
-  lit duration and the `(~…)` time-to-go.
+- `format_duration(td: timedelta) -> str` added to `common/utils.py`. It emits hours and
+  minutes when there is at least an hour (`2h58m`, seconds dropped; an exact hour as
+  `2h00m`, minutes always two digits after an hour), otherwise a single lesser unit (`47m`,
+  or `38s` under a minute); a zero or negative delta renders as `0s`. Used for both the
+  measured lit duration and the `(~…)` time-to-go.
 
 ## Testing Decisions
 

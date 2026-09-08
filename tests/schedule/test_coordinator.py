@@ -285,6 +285,30 @@ async def test_a_cleared_theme_with_no_recorded_start_reports_a_zero_duration(
     assert _lines == ["LED theme 'saints_fc' cleared after 0s"]
 
 
+async def test_a_naive_active_until_is_logged_without_a_predicted_end(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A third-party extension could hand back a naive active_until, which can't
+    # be compared to the aware `now`. The activation line still logs -- just
+    # without the ` until ...` clause -- rather than raising mid-cycle.
+    _naive_end = datetime(2026, 8, 25, 19, 0)  # noqa: DTZ001 -- naive on purpose
+    coordinator, _ = _coordinator(led=LedConfig(enabled=True), is_charging=True)
+
+    with (
+        patch(
+            "schedule.coordinator.resolve_theme",
+            return_value=LedTheme(
+                effect_name="rogue", always_on=True, active_until=_naive_end
+            ),
+        ),
+        caplog.at_level(logging.INFO),
+    ):
+        await coordinator._apply_led_state()
+
+    _lines = [r.message for r in caplog.records if r.message.startswith("LED theme '")]
+    assert _lines == ["LED theme 'rogue' active"]
+
+
 async def test_a_failed_ring_push_is_not_recorded_as_an_active_theme(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

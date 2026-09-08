@@ -137,8 +137,10 @@ class ScheduleCoordinator:
     @staticmethod
     def _predicted_end_clause(active_until: datetime | None, now: datetime) -> str:
         # The " until <local time> (~<time to go>)" fragment, or "" when the
-        # matching source reported no firm end.
-        if active_until is None:
+        # matching source reported no firm end -- or reported a naive datetime,
+        # which a third-party extension could, and which can't be compared to
+        # the aware `now`. Drop the clause rather than let it raise here.
+        if active_until is None or active_until.tzinfo is None:
             return ""
         _when = active_until.astimezone(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d %H:%M")
         return f" until {_when} (~{format_duration(active_until - now)})"
