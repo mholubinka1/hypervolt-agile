@@ -171,3 +171,6 @@ FEATURES.md
 FEATURES_ARCHIVE.md
 /CONTEXT.md
 volvo-api-integration.md
+
+# macOS Finder metadata
+.DS_Store
