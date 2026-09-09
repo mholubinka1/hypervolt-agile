@@ -3,15 +3,12 @@ repos:
     rev: 0.12.9
     hooks:
       - id: uv-lock
-      - id: uv-export
-        # No args override -- the hook's own defaults (--frozen
-        # --output-file=requirements.txt --quiet) are already correct. The
-        # old Poetry-era args here ("-f", "requirements.txt", "-o", "requirements.txt")
-        # were carried over from poetry-export's flag names without checking
-        # uv export's: -f there means --find-links, not --format, so
-        # "requirements.txt" was silently being passed as a bogus package
-        # index search path. Only -o (--output-file, coincidentally the same
-        # short flag in both tools) was doing anything -- masking the bug.
+        # uv-export is deliberately not run here. uv.lock is the single
+        # lockfile of record -- Docker, CI and Dependabot all use it. A
+        # committed requirements.txt only drifted against it (Dependabot's
+        # pip updater kept editing the export, never the lock). Run
+        # `uv export --frozen -o requirements.txt` by hand if you ever need
+        # a pip-style file; it is git-ignored.
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v2.3.1
     hooks:

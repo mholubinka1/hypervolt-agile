@@ -174,3 +174,7 @@ volvo-api-integration.md
 
 # macOS Finder metadata
 .DS_Store
+
+# Derived from uv.lock via `uv export`; not a source of truth. Generate on
+# demand with `uv export --frozen -o requirements.txt`.
+requirements.txt
