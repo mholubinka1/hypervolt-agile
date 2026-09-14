@@ -155,6 +155,10 @@ async def test_load_extensions_drops_entry_with_missing_file(
     assert result[0].name == "fake_ext"
     assert len(caplog.records) == 1
     assert "does-not-exist" in caplog.records[0].message
+    # Regression guard for the "LED theme extension" discriminator (ADR 0017)
+    # on the load-failure log line specifically, distinct from the
+    # invoke()/stop() log lines already covered in test_led_extension_wrapper.py.
+    assert "LED theme extension" in caplog.records[0].message
 
 
 async def test_load_extensions_drops_entry_with_no_valid_provider_class(
