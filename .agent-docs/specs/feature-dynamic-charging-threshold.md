@@ -117,18 +117,37 @@ marker method:
 
 ### Fuel price source: GOV.UK Fuel Finder API
 
-- Confirmed live (as of this planning session) at `fuel-finder.service.gov.uk`, OAuth 2.0
-  client-credentials grant, requiring the operator's own app registration via GOV.UK One Login (not
-  a shared credential — matches the Volvo spec's reasoning for per-operator credentials, and this
-  API's own terms). Free to use.
-- Two relevant endpoints: station lookup/details and per-station fuel prices by type. The client
-  looks up stations near the configured postcode, filters to those reporting the configured
-  `fuel_type`, takes the nearest `station_count` (or those within `radius_miles`), and averages
-  their price for that fuel type.
-- Exact endpoint paths, request/response shapes, and OAuth token endpoint details are an
-  implementation-time lookup against the Fuel Finder API's own published reference — not confirmed
-  during this planning session, matching the same treatment already given to not-yet-confirmed wire
-  formats elsewhere in this backlog (e.g. the Volvo spec's Further Notes).
+Confirmed live against the operator's own registered credentials during implementation (not just
+docs) — base URL `https://www.fuel-finder.service.gov.uk`, free to use.
+
+- **Auth is not RFC 6749 client-credentials despite the name** — it's a bespoke JSON token
+  endpoint: `POST /api/v1/oauth/generate_access_token` with JSON body `{"client_id",
+  "client_secret"}` returns `{"success", "data": {"access_token", "token_type": "Bearer",
+  "expires_in": 3600, "refresh_token", "refresh_token_expires_in": 172800}, "message"}`.
+  `POST /api/v1/oauth/regenerate_access_token` with `{"client_id", "refresh_token"}` gets a new
+  access token without re-sending the secret (sample response has no new `refresh_token` — treat
+  the refresh token as not rotating; re-run `generate_access_token` once *it* expires at 48h). The
+  API's own guidance: reuse a valid token until near expiry, don't fetch a fresh one per call.
+  Requests authenticate via `Authorization: Bearer <access_token>`; a missing/expired/invalid token
+  gets a 401.
+- **No location query parameter exists at all.** `GET /api/v1/pfs?batch-number=N` (station
+  info) and `GET /api/v1/pfs/fuel-prices?batch-number=N` (prices) each return up to 500 records
+  per batch of the *entire UK national dataset* — there is no postcode/radius filter server-side.
+  "Nearest N stations" has to be computed client-side: page through `/pfs` to get every station's
+  `node_id` + `location.{postcode, latitude, longitude}`, geocode the operator's configured
+  postcode (via `postcodes.io`, free/unauthenticated, confirmed working — `GET
+  api.postcodes.io/postcodes/{postcode}` → `result.{latitude, longitude}`), rank stations by
+  distance, then page through `/pfs/fuel-prices` to fetch prices and join by `node_id`. An
+  incremental variant (`GET /api/v1/pfs/fuel-prices?batch-number=N&effective-start-timestamp=...`)
+  fetches only prices changed since a timestamp — cheap re-polling once a baseline is cached,
+  since re-fetching the full national dataset every `update_every_mins` cycle would be wasteful
+  even though the 100 req/min rate limit technically allows it.
+- **Station records carry a `fuel_types` list, and price records carry a `fuel_type` code per
+  entry** — observed values `E5`, `E10` (petrol grades), `B7_STANDARD`, `B7_PREMIUM` (diesel
+  grades), each with its own `price` (pence/litre) and `price_last_updated` timestamp. The
+  extension's `fuel_type: petrol | diesel` config maps to the *standard* grade of each —
+  `petrol → E10`, `diesel → B7_STANDARD` — not the premium variants, matching what most UK pumps
+  mean by "petrol"/"diesel" without qualification.
 - Client-credentials tokens are short-lived and re-requested/refreshed by the client itself, kept in
   memory only — unlike the Volvo spec's user-consent OAuth flow, there is no per-user token to
   persist to disk, so no `token_store_path` equivalent is needed here.
@@ -176,8 +195,11 @@ other provider kind's failures:
   misconfiguration) so it's actionable.
 - No stations found for the configured postcode/fuel type — log a warning; `get_threshold()`
   returns `None`, scheduler falls back to the static threshold.
-- OAuth token failure — attempt one re-fetch; if that also fails, log and report unavailable for
-  this cycle.
+- 401 — attempt `regenerate_access_token` once using the cached refresh token; if that also fails
+  (refresh token itself expired/invalid), fall back to `generate_access_token` with the client
+  id/secret; if that also fails, log and report unavailable for this cycle.
+- `postcodes.io` geocoding failure (bad postcode, network) — log a warning; `get_threshold()`
+  returns `None` for this cycle rather than caching a bad/missing coordinate.
 
 ## Testing Decisions
 
@@ -225,9 +247,12 @@ other provider kind's failures:
   during this planning session (roughly 3.2–3.8 mi/kWh, e.g. Toyota Prius PHEV), not from this
   codebase — worth re-confirming against a wider vehicle sample at implementation time if the
   default proves consistently off for operators who don't override it.
-- Exact Fuel Finder API request/response shapes and OAuth token endpoint are implementation-time
-  lookups against its own published reference, not planning blockers, matching the same treatment
-  the Volvo spec gives its own not-yet-confirmed wire formats.
+- Fuel Finder API request/response shapes and the token endpoint were confirmed against the
+  operator's own live registered credentials during implementation of issue #158 (not just docs,
+  which proved to be generic boilerplate on several pages) — see the "Fuel price source" section
+  above for the confirmed shapes. The batch-paginated, no-location-filter, national-dataset design
+  was not anticipated during planning and materially changed the client's approach (client-side
+  geocoding + distance ranking instead of a server-side postcode query).
 - This spec deliberately performs the ADR 0017 loader generalisation ahead of the still-unimplemented
   Volvo spec — anyone later implementing Volvo's `VehicleProvider` should find the shared loader
   already in place and just add a third marker method, not redo this extraction.
