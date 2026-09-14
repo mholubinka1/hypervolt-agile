@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import importlib.util
-import inspect
 import logging.config
-import sys
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from logging import Logger, getLogger
@@ -14,6 +11,8 @@ from zoneinfo import ZoneInfo
 
 import yaml
 from common.constants import APP_NAME, TIMEZONE
+from common.extensions import ExtensionWrapper as _GenericExtensionWrapper
+from common.extensions import load_extensions as _load_generic_extensions
 from common.logging import config
 
 if TYPE_CHECKING:
@@ -231,137 +230,94 @@ class LedThemeProvider(Protocol):
     # tiers on a fallback pass while its resolve() still ranks above them.
 
 
+def _validate_led_theme_result(result: Any, method_name: str) -> LedTheme | None:
+    # Raised here so a misbehaving extension's bad return value is funnelled
+    # through the generic wrapper's own isolation/dedup handling (it calls
+    # this via _LedThemeValidatingProvider below) rather than propagating to
+    # crash resolve_theme's own .effect_name access.
+    if result is not None and not isinstance(result, LedTheme):
+        raise TypeError(
+            f"{method_name}() returned {type(result).__name__}, expected "
+            "LedTheme or None"
+        )
+    return result
+
+
+class _LedThemeValidatingProvider:
+    # Wraps a LedThemeProvider so its results are validated before the
+    # generic ExtensionWrapper's isolation/dedup logic ever sees them -- the
+    # generic wrapper has no notion of LedTheme, so this is where that check
+    # has to live. Any other attribute (start, stop, ...) is delegated to the
+    # real provider untouched.
+    def __init__(self, provider: LedThemeProvider) -> None:
+        self._provider = provider
+
+    async def resolve(self, now: datetime) -> LedTheme | None:
+        return _validate_led_theme_result(await self._provider.resolve(now), "resolve")
+
+    async def resolve_fallback(self, now: datetime) -> LedTheme | None:
+        # resolve_fallback is deliberately not a Protocol member (see
+        # LedThemeProvider above) -- narrow via hasattr so mypy knows the
+        # attribute exists on this branch, same as the ExtensionWrapper-level
+        # guard that decides whether to call this method at all.
+        if not hasattr(self._provider, "resolve_fallback"):
+            return None
+        return _validate_led_theme_result(
+            await self._provider.resolve_fallback(now), "resolve_fallback"
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._provider, name)
+
+
+# Preserves the original "LED theme extension ..." log wording verbatim
+# now that the shared wrapper's messages are kind-labelled rather than
+# LED-specific by default (ADR 0017) -- a second provider kind would supply
+# its own label instead of this one.
+_LED_EXTENSION_KIND = "LED theme extension"
+
+
 class ExtensionWrapper:
+    # A thin LED-specific adapter over common.extensions.ExtensionWrapper --
+    # the dynamic-import machinery, path-traversal guard, and per-method
+    # isolation/dedup logging all live in the shared module now (ADR 0017).
+    # This layer keeps the LED-typed `.resolve(now)` / `.resolve_fallback(now)`
+    # call sites main.py and the coordinator already depend on.
     def __init__(self, name: str, provider: LedThemeProvider) -> None:
         self.name = name
         self._provider = provider
-        # Keyed by the provider method that failed -- resolve() and
-        # resolve_fallback() are independent code paths (a live-API resolve()
-        # can fail every cycle while a cached resolve_fallback() succeeds), so
-        # each dedups its own repeated warning and clears its own record
-        # without the other's success spuriously logging "recovered".
-        self._last_exception: dict[str, Exception] = {}
+        self._generic = _GenericExtensionWrapper(
+            name=name,
+            provider=_LedThemeValidatingProvider(provider),
+            kind=_LED_EXTENSION_KIND,
+        )
 
     async def resolve(self, now: datetime) -> LedTheme | None:
-        return await self._invoke(self._provider.resolve, now)
+        return await self._generic.invoke("resolve", now)
 
     async def resolve_fallback(self, now: datetime) -> LedTheme | None:
         # Optional second-pass hook (ADR 0015) -- absent on most providers, so
-        # guarded like stop() rather than assumed present.
+        # guarded like stop() rather than assumed present. Checked against the
+        # real provider, not the validating wrapper, which always defines the
+        # method regardless of whether the wrapped provider does.
         if not hasattr(self._provider, "resolve_fallback"):
             return None
-        return await self._invoke(self._provider.resolve_fallback, now)
-
-    async def _invoke(
-        self,
-        method: Callable[[datetime], Awaitable[LedTheme | None]],
-        now: datetime,
-    ) -> LedTheme | None:
-        # resolve() and resolve_fallback() share this isolation/dedup body,
-        # each tracked separately under its own name (see __init__).
-        _name = method.__name__
-        _previous = self._last_exception.get(_name)
-        try:
-            _result = await method(now)
-            # Raised inside this try so a misbehaving extension's bad return
-            # value is funnelled through the same isolation/dedup handling
-            # below as any other failure, rather than propagating to crash
-            # resolve_theme's own .effect_name access.
-            if _result is not None and not isinstance(_result, LedTheme):
-                raise TypeError(
-                    f"{_name}() returned {type(_result).__name__}, expected "
-                    "LedTheme or None"
-                )
-        except Exception as e:
-            if type(e) is not type(_previous) or str(e) != str(_previous):
-                logger.warning(
-                    f"LED theme extension {self.name!r} {_name}() failed: "
-                    f"{type(e).__name__}: {e}."
-                )
-            self._last_exception[_name] = e
-            return None
-        if _previous is not None:
-            logger.info(f"LED theme extension {self.name!r} {_name}() recovered.")
-            del self._last_exception[_name]
-        return _result
+        return await self._generic.invoke("resolve_fallback", now)
 
     async def stop(self) -> None:
-        if not hasattr(self._provider, "stop"):
-            return
-        try:
-            await self._provider.stop()
-        except Exception as e:
-            logger.warning(
-                f"LED theme extension {self.name!r} failed to stop cleanly: "
-                f"{type(e).__name__}: {e}."
-            )
-
-
-def _load_provider_class(module_path: Path) -> type[LedThemeProvider]:
-    _spec = importlib.util.spec_from_file_location(
-        f"_hypervolt_extension.{module_path.stem}", module_path
-    )
-    if _spec is None or _spec.loader is None:
-        raise ImportError(f"Could not load module spec for {module_path}.")
-    _module = importlib.util.module_from_spec(_spec)
-    # module_from_spec() alone does not register the module in sys.modules --
-    # unlike a normal import, so anything the module's own top-level code
-    # relies on sys.modules for (e.g. @dataclass, via dataclasses._is_type,
-    # looks up sys.modules[cls.__module__] directly with no default) would
-    # otherwise crash during exec_module below. Matches importlib's own
-    # documented recipe for loading a module from a file path. The name is
-    # namespaced under "_hypervolt_extension." so an extension file that
-    # happens to share a name with a real module (e.g. "config.py") can
-    # never clobber -- or be clobbered by -- that module's sys.modules entry.
-    sys.modules[_spec.name] = _module
-    try:
-        _spec.loader.exec_module(_module)
-        _candidates = [
-            _cls
-            for _, _cls in inspect.getmembers(_module, inspect.isclass)
-            if _cls.__module__ == _module.__name__ and hasattr(_cls, "resolve")
-        ]
-        if len(_candidates) != 1:
-            raise ValueError(
-                f"{module_path}: expected exactly one class implementing "
-                f"LedThemeProvider, found {len(_candidates)}."
-            )
-    except Exception:
-        del sys.modules[_spec.name]
-        raise
-    return _candidates[0]
+        await self._generic.stop()
 
 
 async def load_extensions(
     entries: Sequence[ExtensionEntry], extensions_dir: Path
 ) -> list[ExtensionWrapper]:
-    _loaded: list[ExtensionWrapper] = []
-    _extensions_dir = extensions_dir.resolve()
-    for entry in entries:
-        _provider: LedThemeProvider | None = None
-        try:
-            _module_path = (extensions_dir / f"{entry.name}.py").resolve()
-            if not _module_path.is_relative_to(_extensions_dir):
-                raise ValueError(
-                    f"{entry.name!r} resolves outside extensions_dir {extensions_dir}."
-                )
-            _provider_class = _load_provider_class(_module_path)
-            _provider = _provider_class(entry.config)
-            if hasattr(_provider, "start"):
-                await _provider.start()
-        except Exception as e:
-            logger.error(
-                f"Failed to load LED theme extension {entry.name!r}: {type(e).__name__}: {e}."
-            )
-            # __init__ succeeding but start() raising can still leave a
-            # resource open (e.g. an httpx.AsyncClient) -- best-effort clean
-            # it up via the same isolated stop() path a fully-loaded
-            # extension gets, so a failed load never leaks.
-            if _provider is not None:
-                await ExtensionWrapper(name=entry.name, provider=_provider).stop()
-            continue
-        _loaded.append(ExtensionWrapper(name=entry.name, provider=_provider))
-    return _loaded
+    _generic_wrappers = await _load_generic_extensions(
+        entries, extensions_dir, marker_method="resolve", kind=_LED_EXTENSION_KIND
+    )
+    return [
+        ExtensionWrapper(name=_wrapper.name, provider=_wrapper.provider)
+        for _wrapper in _generic_wrappers
+    ]
 
 
 def load_custom_themes(
