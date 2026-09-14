@@ -89,6 +89,20 @@ _Avoid_: persistent theme, forced theme
 The interval a Saints FC match-day theme outranks all other themes: 30 minutes before kick-off until three hours after, unioned across every Southampton fixture that local date (a rare double-header covers both). A fixture whose kick-off time is still unknown contributes no Match window — it is only a charging-gated fallback that day; kick-off times are polled hourly so an unknown kick-off is rare. Outside the window on a match day the strip becomes a charging-gated fallback below every custom and built-in theme; off a match day the extension contributes nothing.
 _Avoid_: fixture window, game window
 
+## Dynamic Charging Threshold
+
+**Behaviour Provider** (`BehaviourProvider`):
+The generalised name (ADR 0021) for an operator-registered extension kind loaded through the same shared mechanism as LED Theme Extensions (ADR 0017) — each kind is identified by its own marker method, e.g. a dynamic-threshold extension's `get_threshold()`. Chosen over a feature-specific name so future extension kinds keep fitting the same loader without a naming exception each time.
+_Avoid_: ThresholdProvider, generic extension
+
+**Dynamic charging threshold**:
+A PHEV-only, opt-in alternative to the static `price_limit_incl_vat` config value: a registered `BehaviourProvider` extension recomputes the charging threshold from local fuel price and the vehicle's MPG, so charging only happens when electricity is genuinely cheaper than driving on fuel. Falls back to the required static `price_limit_incl_vat` whenever the extension has no fresh value.
+_Avoid_: fuel-aware threshold, smart threshold
+
+**Breakeven price per kWh**:
+The electricity price at which a mile costs the same on electric as on fuel, derived from fuel price per litre, MPG, and the vehicle's electric efficiency (mi/kWh). The dynamic charging threshold is this value discounted by a fixed 20% margin, not the breakeven price itself.
+_Avoid_: parity price, equivalent price
+
 ## Boundaries
 
 **Octopus client**:
