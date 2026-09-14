@@ -38,13 +38,30 @@ async def test_load_extensions_loads_and_wraps_a_provider_identified_by_a_custom
 
 
 def _widget_provider_source(widget: str) -> str:
+    # get_widget() deliberately reads WIDGET_NAME back through
+    # sys.modules[__name__] rather than closing over a local/module-level
+    # reference directly -- a sys.modules key collision doesn't change which
+    # class object gets returned from _load_provider_class (module_from_spec
+    # + exec_module always builds a genuinely fresh class per load,
+    # regardless of the dict key), so a test asserting only the returned
+    # value from a provider that captures its own constant directly would
+    # pass identically against the old, colliding key. Reading back through
+    # sys.modules[__name__] is what actually breaks under a collision: the
+    # second load's module silently replaces the first's under the shared
+    # key, so the first provider's own sys.modules[__name__] lookup starts
+    # returning the *second* module's WIDGET_NAME instead of its own.
     return f"""
+import sys
+
+WIDGET_NAME = {widget!r}
+
+
 class FakeWidgetProvider:
     def __init__(self, config: dict) -> None:
         self.config = config
 
     async def get_widget(self) -> str:
-        return {widget!r}
+        return sys.modules[__name__].WIDGET_NAME
 """
 
 
@@ -110,6 +127,38 @@ async def test_load_extensions_does_not_collide_two_entries_whose_dotted_names_f
 
     assert await result_a[0].invoke("get_widget") == "widget from group.a/foo"
     assert await result_b[0].invoke("get_widget") == "widget from group/a.foo"
+
+
+async def test_load_extensions_does_not_collide_when_a_name_already_contains_a_percent_escape(
+    tmp_path: Path,
+) -> None:
+    # Escaping only "." (without also escaping "%" first) would let
+    # "group.a/foo" and "group%2Ea/foo" -- a name that already contains a
+    # literal "%2E" -- both flatten to "group%2Ea.foo".
+    _write_extension(
+        tmp_path / "group.a", "foo", _widget_provider_source("widget from group.a/foo")
+    )
+    _write_extension(
+        tmp_path / "group%2Ea",
+        "foo",
+        _widget_provider_source("widget from group%2Ea/foo"),
+    )
+
+    result_a = await load_extensions(
+        [ExtensionEntry(name="group.a/foo", config={})],
+        tmp_path,
+        marker_method="get_widget",
+        kind="kind a",
+    )
+    result_b = await load_extensions(
+        [ExtensionEntry(name="group%2Ea/foo", config={})],
+        tmp_path,
+        marker_method="get_widget",
+        kind="kind b",
+    )
+
+    assert await result_a[0].invoke("get_widget") == "widget from group.a/foo"
+    assert await result_b[0].invoke("get_widget") == "widget from group%2Ea/foo"
 
 
 async def test_extension_wrapper_invoke_returns_none_for_a_method_the_provider_lacks() -> (

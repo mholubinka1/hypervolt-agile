@@ -143,9 +143,15 @@ async def load_extensions(
             # segments with "." -- otherwise "a.b/c" and "a/b.c" would both
             # flatten to the same "a.b.c" key, reintroducing the exact
             # collision this parameter exists to prevent, just via "." rather
-            # than a shared filename stem.
+            # than a shared filename stem. "%" must be escaped first, not
+            # just "." -- otherwise "group.a/foo" and "group%2Ea/foo" (a
+            # literal "%2E" already in the name) would both produce
+            # "group%2Ea.foo", the same collision one level down. Escaping
+            # "%" before "." makes every encoded sequence unambiguous, the
+            # standard percent-encoding ordering.
             _module_key = ".".join(
-                _segment.replace(".", "%2E") for _segment in entry.name.split("/")
+                _segment.replace("%", "%25").replace(".", "%2E")
+                for _segment in entry.name.split("/")
             )
             _provider_class = _load_provider_class(
                 _module_path, marker_method, _module_key
