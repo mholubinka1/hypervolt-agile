@@ -41,11 +41,12 @@ def _agile_client(prices: list[Price]) -> Mock:
 
 
 class _FixedThresholdProvider:
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, value: float = 5.0) -> None:
         self.config = config
+        self._value = value
 
     async def get_threshold(self) -> float | None:
-        return 5.0
+        return self._value
 
 
 class _NoFreshValueThresholdProvider:
@@ -54,6 +55,14 @@ class _NoFreshValueThresholdProvider:
 
     async def get_threshold(self) -> float | None:
         return None
+
+
+class _ChangingThresholdProvider:
+    def __init__(self, values: list[float]) -> None:
+        self._values = iter(values)
+
+    async def get_threshold(self) -> float | None:
+        return next(self._values)
 
 
 async def test_scheduler_uses_the_threshold_providers_fresh_value_instead_of_the_static_config() -> (
@@ -122,3 +131,66 @@ async def test_scheduler_uses_the_static_limit_when_no_threshold_provider_is_con
     await scheduler.update()
 
     assert len(scheduler.schedule) == 1
+
+
+async def test_scheduler_refreshes_the_threshold_on_the_next_new_prices_rebuild_not_only_replug() -> (
+    None
+):
+    # _rebuild_on_new_prices() is a second, independent call site to the
+    # same update_limit()-before-build() wiring the replug-triggered tests
+    # above already cover -- a regression that only wired the replug path
+    # would pass every other test in this file silently.
+    _now = datetime.now(tz=_UTC)
+    _later = _now + timedelta(hours=2)
+    _client = Mock(spec=AgileClient)
+    _client.get_upcoming_prices = AsyncMock(
+        side_effect=[
+            [_half_hour_price(50, 0, _now)],
+            [_half_hour_price(50, 0, _later)],
+        ]
+    )
+    threshold_provider = ExtensionWrapper(
+        name="fake_threshold",
+        provider=_ChangingThresholdProvider([5.0, 60.0]),
+        kind="charging threshold",
+    )
+    scheduler = Scheduler(
+        _client,
+        _config(price_limit_incl_vat=100),
+        threshold_provider=threshold_provider,
+    )
+
+    scheduler.invalidate()
+    await scheduler.update()
+    assert scheduler.schedule == []  # 5p limit blocks the 50p price
+
+    await scheduler._rebuild_on_new_prices()
+
+    assert len(scheduler.schedule) == 1  # 60p limit now admits the 50p price
+
+
+async def test_scheduler_correctly_converts_the_dynamic_thresholds_incl_vat_pence_to_exc_vat() -> (
+    None
+):
+    # 21p incl VAT converts to exactly 20p exc VAT (21 / 1.05). A 20.5p
+    # exc-VAT price sits between the two: correctly converted, it's above
+    # the limit (no session); if the /ELECTRICITY_VAT_RATE conversion were
+    # skipped (comparing against the raw 21p instead), it would incorrectly
+    # qualify and build a session.
+    _now = datetime.now(tz=_UTC)
+    prices = [_half_hour_price(20.5, 0, _now)]
+    threshold_provider = ExtensionWrapper(
+        name="fake_threshold",
+        provider=_FixedThresholdProvider({}, value=21.0),
+        kind="charging threshold",
+    )
+    scheduler = Scheduler(
+        _agile_client(prices),
+        _config(price_limit_incl_vat=100),
+        threshold_provider=threshold_provider,
+    )
+
+    scheduler.invalidate()
+    await scheduler.update()
+
+    assert scheduler.schedule == []
