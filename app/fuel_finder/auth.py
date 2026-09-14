@@ -1,5 +1,5 @@
 import logging.config
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from logging import Logger, getLogger
 
 import httpx
@@ -47,26 +47,25 @@ class FuelFinderAuth:
             "/api/v1/oauth/generate_access_token",
             {"client_id": self._client_id, "client_secret": self._client_secret},
         )
-        self._store_token(_data)
+        _token = self._store_token(_data)
         self._store_refresh_token(_data)
-        return self._access_token  # type: ignore[return-value]
+        return _token
 
     async def _regenerate_access_token(self) -> str:
         _data = await self._request_token(
             "/api/v1/oauth/regenerate_access_token",
             {"client_id": self._client_id, "refresh_token": self._refresh_token},
         )
-        self._store_token(_data)
         # A confirmed sample response has no new refresh_token field -- the
         # refresh token doesn't rotate, so keep using the original one until
         # it hits its own refresh_token_expires_in.
-        return self._access_token  # type: ignore[return-value]
+        return self._store_token(_data)
 
-    def _store_token(self, data: dict) -> None:
-        self._access_token = data["access_token"]
-        self._expires_at = datetime.now(UTC) + timedelta(
-            seconds=data["expires_in"]
-        )
+    def _store_token(self, data: dict) -> str:
+        _token = data["access_token"]
+        self._access_token = _token
+        self._expires_at = datetime.now(UTC) + timedelta(seconds=data["expires_in"])
+        return _token
 
     def _store_refresh_token(self, data: dict) -> None:
         self._refresh_token = data["refresh_token"]
@@ -75,11 +74,11 @@ class FuelFinderAuth:
         )
 
     def invalidate(self) -> None:
-        """Discard the cached access token so the next get_access_token()
-        call fetches a fresh one, even though our local expires_at bookkeeping
-        still thinks it's in-date. Lets a caller recover from a token the
-        server rejected early (a live 401) rather than replaying the same
-        stale token forever."""
+        # Discards the cached access token so the next get_access_token()
+        # call fetches a fresh one, even though local expires_at bookkeeping
+        # still thinks it's in-date -- lets a caller recover from a token the
+        # server rejected early (a live 401) rather than replaying the same
+        # stale token forever.
         self._access_token = None
         self._expires_at = None
 

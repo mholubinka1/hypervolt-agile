@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
 
 import httpx
@@ -153,3 +153,20 @@ async def test_get_access_token_falls_back_to_full_reauth_when_regenerate_fails(
     assert len(_requests) == 3
     assert _requests[1].url.path == "/api/v1/oauth/regenerate_access_token"
     assert _requests[2].url.path == "/api/v1/oauth/generate_access_token"
+
+
+async def test_get_access_token_returns_none_when_no_cached_token_and_generate_fails() -> (
+    None
+):
+    # Given no cached token at all (the very first call) and the full
+    # generate_access_token call itself fails -- get_access_token() must
+    # report unavailable, not raise.
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    client = _mock_client(httpx.MockTransport(_handler))
+    auth = FuelFinderAuth(client, client_id="my-client-id", client_secret="my-secret")
+
+    token = await auth.get_access_token()
+
+    assert token is None

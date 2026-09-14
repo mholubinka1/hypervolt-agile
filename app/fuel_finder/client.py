@@ -47,6 +47,9 @@ class FuelFinderClient:
                 _GEOCODE_URL.format(postcode=postcode), timeout=10
             )
             if _response.status_code == 404:
+                logger.warning(
+                    f"postcodes.io does not recognise postcode {postcode!r}."
+                )
                 return None
             _response.raise_for_status()
         except httpx.HTTPError as e:
@@ -196,7 +199,9 @@ class FuelFinderClient:
         _matching_prices: list[float] = []
         for _distance, _station in _by_distance:
             if radius_miles is not None and _distance > radius_miles:
-                continue
+                # _by_distance is sorted ascending -- every remaining station
+                # is at least this far away, so nothing later can qualify.
+                break
             _price = self._price_for(_prices_by_node, _station.node_id, fuel_type)
             if _price is None:
                 continue

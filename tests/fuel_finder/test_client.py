@@ -137,6 +137,45 @@ async def test_average_price_near_uses_nearest_stations_that_report_the_fuel_typ
     assert _average == 140.0
 
 
+async def test_average_price_near_excludes_stations_outside_radius_miles() -> None:
+    # A station selling the requested fuel type but well outside radius_miles
+    # must not be averaged in, even if it would otherwise be picked to reach
+    # station_count.
+    _within_radius = _station("within-radius", latitude=51.5, longitude=-0.14)
+    _outside_radius = _station("outside-radius", latitude=52.0, longitude=-0.14)
+    _prices = [
+        _price_entry("within-radius", "E10", 130.0),
+        _price_entry("outside-radius", "E10", 999.0),
+    ]
+    client = _mock_client(
+        _router(
+            pfs_batches=[[_within_radius, _outside_radius]], price_batches=[_prices]
+        )
+    )
+    fuel_finder = FuelFinderClient(client, _auth())
+
+    _average = await fuel_finder.average_price_near(
+        "SW1A 1AA", "E10", station_count=2, radius_miles=10.0
+    )
+
+    assert _average == 130.0
+
+
+async def test_average_price_near_returns_none_when_the_postcode_does_not_geocode(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client = _mock_client(_router(pfs_batches=[], price_batches=[], geocode_status=404))
+    fuel_finder = FuelFinderClient(client, _auth())
+
+    with caplog.at_level(logging.WARNING):
+        _average = await fuel_finder.average_price_near(
+            "NOT A REAL POSTCODE", "E10", station_count=1
+        )
+
+    assert _average is None
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
 async def test_average_price_near_returns_none_when_no_station_reports_the_fuel_type() -> (
     None
 ):
