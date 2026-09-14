@@ -147,6 +147,7 @@ class AppConfig(BaseModel):
     hypervolt: Hypervolt
     schedule: Schedule
     led: LedConfig | None = None
+    threshold_extension: ExtensionEntry | None = None
     log_file: str | None = None
     log_level: str = "INFO"
 

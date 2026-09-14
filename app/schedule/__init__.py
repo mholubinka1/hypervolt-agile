@@ -4,6 +4,7 @@ from logging import Logger, getLogger
 from zoneinfo import ZoneInfo
 
 from common.constants import APP_NAME, ELECTRICITY_VAT_RATE, TIMEZONE
+from common.extensions import ExtensionWrapper
 from common.logging import config
 from common.model import ChargeSession, Price
 from octopus.client import AgileClient
@@ -16,10 +17,17 @@ logger: Logger = getLogger(APP_NAME)
 
 
 class Scheduler:
-    def __init__(self, agile_client: AgileClient, config: AppConfig) -> None:
+    def __init__(
+        self,
+        agile_client: AgileClient,
+        config: AppConfig,
+        threshold_provider: ExtensionWrapper | None = None,
+    ) -> None:
         self._agile_client = agile_client
         self._timezone = TIMEZONE
         self._update_freq = config.schedule.frequency
+        self._static_limit_incl_vat = config.schedule.limit
+        self._threshold_provider = threshold_provider
         self._builder = ScheduleBuilder(
             duration_hrs=config.schedule.duration,
             limit_exc_vat=config.schedule.limit / ELECTRICITY_VAT_RATE,
@@ -93,6 +101,19 @@ class Scheduler:
         elif self._should_update():
             await self._rebuild_on_new_prices()
 
+    async def _current_limit_exc_vat(self) -> float:
+        # Recomputed on every rebuild rather than cached -- a threshold
+        # provider's whole point is a fresh value per cycle (issue #157).
+        # get_threshold() returning None means "no fresh value this cycle",
+        # not "block everything", so that falls back to the static config
+        # limit exactly as if no provider were configured at all.
+        _limit_incl_vat = self._static_limit_incl_vat
+        if self._threshold_provider is not None:
+            _dynamic_limit = await self._threshold_provider.invoke("get_threshold")
+            if _dynamic_limit is not None:
+                _limit_incl_vat = _dynamic_limit
+        return _limit_incl_vat / ELECTRICITY_VAT_RATE
+
     async def _rebuild_on_replug(self) -> None:
         _now = datetime.now(ZoneInfo("UTC"))
         try:
@@ -104,6 +125,7 @@ class Scheduler:
             self._time_until = max(price.valid_to for price in _new_prices)
             self._last_schedule_update = _now
             _prices_from_now = [p for p in self._agile_prices if p.valid_to > _now]
+            self._builder.update_limit(await self._current_limit_exc_vat())
             self._schedule, self._average_price_per_kwh = self._builder.build(
                 _prices_from_now,
             )
@@ -131,6 +153,7 @@ class Scheduler:
             logger.info(
                 f"New Agile prices received: {len(self._agile_prices)} periods, valid until {self._time_until}."
             )
+            self._builder.update_limit(await self._current_limit_exc_vat())
             self._schedule, self._average_price_per_kwh = self._builder.build(
                 self._agile_prices,
             )

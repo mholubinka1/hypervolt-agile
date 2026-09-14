@@ -8,6 +8,8 @@ from logging import Logger, getLogger
 from pathlib import Path
 
 from common.constants import APP_NAME
+from common.extensions import ExtensionWrapper as GenericExtensionWrapper
+from common.extensions import load_extensions as load_generic_extensions
 from common.logging import config, configure_file_logging
 from common.polling import every
 from hypervolt.led import (
@@ -81,7 +83,25 @@ async def main() -> None:
             app_config.led.extensions, Path(args.extensions_dir)
         )
 
-    scheduler = Scheduler(agile_client, app_config)
+    threshold_provider: GenericExtensionWrapper | None = None
+    if app_config.threshold_extension:
+        if args.extensions_dir is None:
+            logger.critical(
+                "threshold_extension is configured in config.yml but --extensions-dir was not provided."
+            )
+            await agile_client.close()
+            sys.exit(1)
+        _threshold_providers = await load_generic_extensions(
+            [app_config.threshold_extension],
+            Path(args.extensions_dir),
+            marker_method="get_threshold",
+            kind="charging threshold extension",
+        )
+        threshold_provider = _threshold_providers[0] if _threshold_providers else None
+
+    scheduler = Scheduler(
+        agile_client, app_config, threshold_provider=threshold_provider
+    )
     coordinator = ScheduleCoordinator(
         scheduler,
         app_config,
@@ -119,6 +139,8 @@ async def main() -> None:
             logger.exception("Error closing schedule coordinator.")
         for extension in extensions:
             await extension.stop()
+        if threshold_provider is not None:
+            await threshold_provider.stop()
 
 
 if __name__ == "__main__":
