@@ -37,6 +37,100 @@ async def test_load_extensions_loads_and_wraps_a_provider_identified_by_a_custom
     assert widget == "a widget"
 
 
+def _widget_provider_source(widget: str) -> str:
+    return f"""
+class FakeWidgetProvider:
+    def __init__(self, config: dict) -> None:
+        self.config = config
+
+    async def get_widget(self) -> str:
+        return {widget!r}
+"""
+
+
+async def test_load_extensions_does_not_collide_two_entries_sharing_a_filename_stem_in_different_subfolders(
+    tmp_path: Path,
+) -> None:
+    # Two different provider kinds can share one extensions_dir (ADR 0021's
+    # subfolder convention, e.g. "themes/foo" vs "vehicles/foo") -- the
+    # sys.modules registration key must be derived from each entry's own
+    # relative name, not just the filename stem, or the second load's module
+    # silently replaces the first's under a lookup the first is still relying
+    # on (see PR #161 review).
+    _write_extension(
+        tmp_path / "kind_a", "foo", _widget_provider_source("widget from kind_a")
+    )
+    _write_extension(
+        tmp_path / "kind_b", "foo", _widget_provider_source("widget from kind_b")
+    )
+
+    result_a = await load_extensions(
+        [ExtensionEntry(name="kind_a/foo", config={})],
+        tmp_path,
+        marker_method="get_widget",
+        kind="kind a",
+    )
+    result_b = await load_extensions(
+        [ExtensionEntry(name="kind_b/foo", config={})],
+        tmp_path,
+        marker_method="get_widget",
+        kind="kind b",
+    )
+
+    assert await result_a[0].invoke("get_widget") == "widget from kind_a"
+    assert await result_b[0].invoke("get_widget") == "widget from kind_b"
+
+
+async def test_load_extensions_does_not_collide_two_entries_whose_dotted_names_flatten_the_same(
+    tmp_path: Path,
+) -> None:
+    # A literal "." inside a path segment must not let two genuinely
+    # different entries flatten to the same dotted module key --
+    # "group.a/foo" and "group/a.foo" would collapse to "group.a.foo" without
+    # escaping the "." first.
+    _write_extension(
+        tmp_path / "group.a", "foo", _widget_provider_source("widget from group.a/foo")
+    )
+    _write_extension(
+        tmp_path / "group", "a.foo", _widget_provider_source("widget from group/a.foo")
+    )
+
+    result_a = await load_extensions(
+        [ExtensionEntry(name="group.a/foo", config={})],
+        tmp_path,
+        marker_method="get_widget",
+        kind="kind a",
+    )
+    result_b = await load_extensions(
+        [ExtensionEntry(name="group/a.foo", config={})],
+        tmp_path,
+        marker_method="get_widget",
+        kind="kind b",
+    )
+
+    assert await result_a[0].invoke("get_widget") == "widget from group.a/foo"
+    assert await result_b[0].invoke("get_widget") == "widget from group/a.foo"
+
+
+async def test_extension_wrapper_invoke_returns_none_for_a_method_the_provider_lacks() -> (
+    None
+):
+    # Mirrors how hypervolt.led's own ExtensionWrapper.resolve_fallback guards
+    # this same absence with its own hasattr check before ever calling
+    # invoke() -- but the generic wrapper must handle an absent method safely
+    # on its own too, for any future caller that doesn't pre-guard.
+    class _ProviderWithoutTheMethod:
+        pass
+
+    wrapper = ExtensionWrapper(
+        name="fake_widget", provider=_ProviderWithoutTheMethod(), kind="widget provider"
+    )
+
+    result = await wrapper.invoke("get_widget")
+
+    assert result is None
+
+
 class _FlakyThenRecoveringProvider:
     """Fails its marker method on the first N calls, then succeeds -- the
     generic shape any provider's method can take, not just LED's resolve()."""

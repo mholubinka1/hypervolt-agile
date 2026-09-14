@@ -47,6 +47,13 @@ async def test_extension_wrapper_logs_a_warning_naming_the_extension_and_excepti
     assert "saints_fc" in caplog.records[0].message
     assert "ValueError" in caplog.records[0].message
     assert "fixtures API unreachable" in caplog.records[0].message
+    # Regression guard for the "LED theme extension" discriminator (ADR 0017):
+    # the generic shared wrapper's log lines are kind-labelled precisely so a
+    # second provider kind can't produce an indistinguishable log line -- a
+    # wrong or missing label here would change operator-facing logs while
+    # every other assertion in this file (extension name, exception text)
+    # stays green.
+    assert "LED theme extension" in caplog.records[0].message
 
 
 async def test_extension_wrapper_suppresses_a_repeated_identical_failure(
@@ -82,6 +89,7 @@ async def test_extension_wrapper_logs_recovery_after_a_failure(
     assert len(caplog.records) == 1
     assert caplog.records[0].levelname == "INFO"
     assert "saints_fc" in caplog.records[0].message
+    assert "LED theme extension" in caplog.records[0].message
 
 
 class _SucceedingProvider:
@@ -215,3 +223,4 @@ async def test_extension_wrapper_stop_logs_and_swallows_a_raising_providers_stop
     assert len(caplog.records) == 1
     assert "saints_fc" in caplog.records[0].message
     assert "RuntimeError" in caplog.records[0].message
+    assert "LED theme extension" in caplog.records[0].message

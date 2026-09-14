@@ -75,9 +75,11 @@ class ExtensionWrapper:
             )
 
 
-def _load_provider_class(module_path: Path, marker_method: str) -> type:
+def _load_provider_class(
+    module_path: Path, marker_method: str, module_key: str
+) -> type:
     _spec = importlib.util.spec_from_file_location(
-        f"_hypervolt_extension.{module_path.stem}", module_path
+        f"_hypervolt_extension.{module_key}", module_path
     )
     if _spec is None or _spec.loader is None:
         raise ImportError(f"Could not load module spec for {module_path}.")
@@ -91,6 +93,17 @@ def _load_provider_class(module_path: Path, marker_method: str) -> type:
     # namespaced under "_hypervolt_extension." so an extension file that
     # happens to share a name with a real module (e.g. "config.py") can
     # never clobber -- or be clobbered by -- that module's sys.modules entry.
+    # module_key is the entry's own relative name (dots for path separators),
+    # not just module_path.stem -- since this loader now serves more than one
+    # provider kind against the same extensions_dir, two different kinds'
+    # entries can share a filename stem while differing in subfolder (e.g.
+    # "themes/foo" vs "vehicles/foo", ADR 0021's subfolder convention) --
+    # .stem alone would collide those into the same sys.modules key even
+    # though they're different files, letting the second load's module
+    # silently replace the first's under a lookup the first is still relying
+    # on. Keying on the full relative name instead means two different files
+    # can never collide, and the same entry loaded twice (genuinely the same
+    # file) safely just re-registers itself.
     sys.modules[_spec.name] = _module
     try:
         _spec.loader.exec_module(_module)
@@ -126,7 +139,17 @@ async def load_extensions(
                 raise ValueError(
                     f"{entry.name!r} resolves outside extensions_dir {extensions_dir}."
                 )
-            _provider_class = _load_provider_class(_module_path, marker_method)
+            # Escape a literal "." within a path segment before joining
+            # segments with "." -- otherwise "a.b/c" and "a/b.c" would both
+            # flatten to the same "a.b.c" key, reintroducing the exact
+            # collision this parameter exists to prevent, just via "." rather
+            # than a shared filename stem.
+            _module_key = ".".join(
+                _segment.replace(".", "%2E") for _segment in entry.name.split("/")
+            )
+            _provider_class = _load_provider_class(
+                _module_path, marker_method, _module_key
+            )
             _provider = _provider_class(entry.config)
             if hasattr(_provider, "start"):
                 await _provider.start()
