@@ -39,9 +39,14 @@ same treatment. #159 originally landed with a top-level `threshold_extension:` f
 `AppConfig` — a name specific to this one feature, the config-schema mirror of the
 `ThresholdProvider`-vs-`BehaviourProvider` naming question this ADR already settled for the code
 side. Reshaped before merge into `extensions.threshold:`, under a new `ExtensionsConfig` model
-keyed by provider kind, so the still-unbuilt `VehicleProvider` (or any future kind) adds its own
-field there (`extensions.vehicles:` or similar) rather than needing another top-level,
-feature-specific config key. `led:` is deliberately untouched — LED's own `extensions:` list
-(themes resolved via `resolve()`/`resolve_fallback()`) is a different shape for a different reason
-(multiple simultaneous themes, priority-ordered) and this ADR does not fold it into
-`AppConfig.extensions`.
+(`extra="forbid"`, mirroring `LedConfig`'s own unknown-key rejection so a typo'd or not-yet-built
+provider kind fails loudly rather than being silently ignored) keyed by provider kind, so the
+still-unbuilt `VehicleProvider` (or any future kind) adds its own field there
+(`extensions.vehicles:` or similar) rather than needing another top-level, feature-specific config
+key. `AppConfig.extensions` itself stays optional (`ExtensionsConfig | None = None`) exactly like
+`AppConfig.led` already is — two levels of optionality, not one, so a caller reading
+`extensions.threshold` must still null-check `extensions` itself first (see `main.py`'s
+`if app_config.extensions and app_config.extensions.threshold:` guard). `led:` is deliberately
+untouched — LED's own `extensions:` list (themes resolved via `resolve()`/`resolve_fallback()`) is
+a different shape for a different reason (multiple simultaneous themes, priority-ordered) and this
+ADR does not fold it into `AppConfig.extensions`.

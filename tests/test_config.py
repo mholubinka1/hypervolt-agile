@@ -8,6 +8,7 @@ from config import (
     ConfigLoader,
     CustomLedTheme,
     ExtensionEntry,
+    ExtensionsConfig,
     LedConfig,
     Octopus,
     Schedule,
@@ -103,6 +104,14 @@ def test_led_config_rejects_the_removed_brightness_field() -> None:
 def test_led_config_rejects_an_unknown_key() -> None:
     with pytest.raises(ValidationError):
         LedConfig(enabled=True, wibble=1)
+
+
+def test_extensions_config_rejects_an_unknown_provider_kind() -> None:
+    # Mirrors LedConfig's own unknown-key rejection above -- a typo'd or
+    # not-yet-built provider kind (e.g. `vehicles:` before it exists) should
+    # fail loudly rather than being silently ignored.
+    with pytest.raises(ValidationError):
+        ExtensionsConfig(vehicles={"volvo": {"name": "vehicles/volvo"}})
 
 
 @pytest.mark.parametrize(
