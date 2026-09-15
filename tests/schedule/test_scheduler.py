@@ -421,6 +421,54 @@ async def test_scheduler_warns_with_the_new_prices_specific_wording_when_no_pric
     )
 
 
+async def test_scheduler_warns_with_the_replug_specific_wording_when_no_threshold_value_is_available(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # no_threshold_warning is the fourth per-trigger string threaded through
+    # the shared _rebuild -- same swap risk as the other three.
+    _now = datetime.now(tz=_UTC)
+    scheduler = Scheduler(
+        _agile_client([_half_hour_price(50, 0, _now)]),
+        _config_with_threshold_extension(price_limit_incl_vat=0),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await scheduler._rebuild_on_replug()
+
+    assert any(
+        "Skipping schedule rebuild on car plugged in until it produces one."
+        in r.message
+        for r in caplog.records
+    )
+    assert not any(
+        "Skipping schedule update until it produces one." in r.message
+        for r in caplog.records
+    )
+
+
+async def test_scheduler_warns_with_the_new_prices_specific_wording_when_no_threshold_value_is_available(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _now = datetime.now(tz=_UTC)
+    scheduler = Scheduler(
+        _agile_client([_half_hour_price(50, 0, _now)]),
+        _config_with_threshold_extension(price_limit_incl_vat=0),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await scheduler._rebuild_on_new_prices()
+
+    assert any(
+        "Skipping schedule update until it produces one." in r.message
+        for r in caplog.records
+    )
+    assert not any(
+        "Skipping schedule rebuild on car plugged in until it produces one."
+        in r.message
+        for r in caplog.records
+    )
+
+
 async def test_scheduler_logs_the_replug_specific_exception_message_on_failure(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
