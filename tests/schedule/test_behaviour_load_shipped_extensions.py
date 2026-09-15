@@ -92,6 +92,20 @@ async def test_loading_shipped_dynamic_charging_threshold_does_not_clobber_file_
     # Python's own import cache would otherwise skip their module-level code
     # entirely on this import, masking a real bug behind test collection
     # order.
+    #
+    # Pre-warm common.polling's own import first, though -- unlike
+    # fuel_finder.auth/client, it's also imported by the extension but is a
+    # normal, eagerly-imported app/* module (main.py itself imports it) that
+    # correctly calls dictConfig() at its own import time, exactly like
+    # every other early import does in production, always before
+    # configure_file_logging() runs there. Letting that happen for the
+    # first time *after* configure_file_logging() instead -- which happens
+    # if this test file runs in isolation, with nothing else having
+    # imported it first -- would have common.polling's own dictConfig()
+    # strip the file handler and produce a false positive on the very fix
+    # this test exists to prove.
+    import common.polling  # noqa: F401
+
     for _mod in ("fuel_finder.auth", "fuel_finder.client"):
         sys.modules.pop(_mod, None)
     configure_file_logging(str(tmp_path / "test.log"), "INFO")
