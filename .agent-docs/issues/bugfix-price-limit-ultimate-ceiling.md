@@ -1,5 +1,7 @@
 # Issues: bugfix-price-limit-ultimate-ceiling
 
+> Work complete — PR ready to merge.
+
 ## Allow price_limit_incl_vat=0, requiring extensions.threshold when it's set
 
 **Issue**: #166
