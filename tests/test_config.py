@@ -78,7 +78,6 @@ def test_octopus_rejects_blank_credentials(field: str) -> None:
     [
         ("total_charge_duration", 0),
         ("total_charge_duration", 24.1),
-        ("price_limit_incl_vat", 0),
         ("update_every_mins", 0),
         ("poll_every_secs", 1),
     ],
@@ -96,6 +95,22 @@ def test_schedule_rejects_out_of_range_values(field: str, value: float) -> None:
         Schedule(**values)
 
 
+@pytest.mark.parametrize("value", [-1, 100.1])
+def test_schedule_still_rejects_a_price_limit_outside_its_bounds(value: float) -> None:
+    # ge=0 replaced gt=0 so that a bare 0 is allowed (scenario for the
+    # ultimate-ceiling extension), but the bounds themselves -- negative
+    # values and anything above 100 -- must still be rejected.
+    values = {
+        "total_charge_duration": 4,
+        "price_limit_incl_vat": value,
+        "update_every_mins": 30,
+        "poll_every_secs": 10,
+    }
+
+    with pytest.raises(ValidationError):
+        Schedule(**values)
+
+
 def test_led_config_rejects_the_removed_brightness_field() -> None:
     # brightness is gone entirely (ADR 0014); a config still carrying it must
     # fail loudly at load rather than be silently ignored.
@@ -106,6 +121,66 @@ def test_led_config_rejects_the_removed_brightness_field() -> None:
 def test_led_config_rejects_an_unknown_key() -> None:
     with pytest.raises(ValidationError):
         LedConfig(enabled=True, wibble=1)
+
+
+def test_app_config_allows_a_zero_price_limit_when_a_threshold_extension_is_configured() -> (
+    None
+):
+    # price_limit_incl_vat: 0 means "defer fully to the dynamic threshold extension" -- only
+    # meaningful when extensions.threshold is actually configured to defer to.
+    app_config = AppConfig(
+        octopus=Octopus(account_number="A-1", api_key="key"),
+        hypervolt=Hypervolt(username="user", password="pass"),
+        schedule=Schedule(
+            total_charge_duration=4,
+            price_limit_incl_vat=0,
+            update_every_mins=30,
+            poll_every_secs=10,
+        ),
+        extensions=ExtensionsConfig(
+            threshold=ExtensionEntry(name="behaviours/dynamic_charging_threshold")
+        ),
+    )
+
+    assert app_config.schedule.limit == 0
+
+
+def test_app_config_rejects_a_zero_price_limit_with_no_extensions_block() -> None:
+    # price_limit_incl_vat: 0 only means "defer fully to the dynamic threshold
+    # extension" -- with no extensions block at all there's nothing to defer
+    # to, so a bare zero must fail loudly rather than silently allow unlimited
+    # charging.
+    with pytest.raises(ValidationError, match="extensions.threshold"):
+        AppConfig(
+            octopus=Octopus(account_number="A-1", api_key="key"),
+            hypervolt=Hypervolt(username="user", password="pass"),
+            schedule=Schedule(
+                total_charge_duration=4,
+                price_limit_incl_vat=0,
+                update_every_mins=30,
+                poll_every_secs=10,
+            ),
+        )
+
+
+def test_app_config_rejects_a_zero_price_limit_when_the_threshold_extension_is_not_configured() -> (
+    None
+):
+    # An extensions block is present, but its threshold field is empty --
+    # same reasoning as the no-extensions-at-all case: there is nothing to
+    # defer to.
+    with pytest.raises(ValidationError, match="extensions.threshold"):
+        AppConfig(
+            octopus=Octopus(account_number="A-1", api_key="key"),
+            hypervolt=Hypervolt(username="user", password="pass"),
+            schedule=Schedule(
+                total_charge_duration=4,
+                price_limit_incl_vat=0,
+                update_every_mins=30,
+                poll_every_secs=10,
+            ),
+            extensions=ExtensionsConfig(),
+        )
 
 
 def test_extensions_config_rejects_an_unknown_provider_kind() -> None:
