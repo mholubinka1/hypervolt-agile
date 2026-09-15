@@ -1,8 +1,6 @@
 import logging.config
-import math
 from datetime import datetime, timedelta
 from logging import Logger, getLogger
-from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 from common.constants import APP_NAME, ELECTRICITY_VAT_RATE, TIMEZONE
@@ -11,17 +9,12 @@ from common.logging import config
 from common.model import ChargeSession, Price
 from octopus.client import AgileClient
 from schedule.builder import ScheduleBuilder
+from schedule.threshold_policy import ThresholdPolicy
 
 from config import AppConfig
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
-
-
-class EffectiveLimit(NamedTuple):
-    incl_vat: float
-    exc_vat: float
-    source: str
 
 
 class Scheduler:
@@ -34,9 +27,8 @@ class Scheduler:
         self._agile_client = agile_client
         self._timezone = TIMEZONE
         self._update_freq = config.schedule.frequency
-        self._static_limit_incl_vat = config.schedule.limit
         self._threshold_provider = threshold_provider
-        self._cached_dynamic_limit_incl_vat: float | None = None
+        self._threshold_policy = ThresholdPolicy(config.schedule.limit)
         self._builder = ScheduleBuilder(
             duration_hrs=config.schedule.duration,
             limit_exc_vat=config.schedule.limit / ELECTRICITY_VAT_RATE,
@@ -110,69 +102,6 @@ class Scheduler:
         elif self._should_update():
             await self._rebuild_on_new_prices()
 
-    async def _current_limit(self) -> EffectiveLimit | None:
-        # price_limit_incl_vat is an ultimate ceiling (ADR 0022), never
-        # fully overridden by the dynamic threshold extension. The fresh
-        # value is fetched every cycle -- a threshold provider's whole
-        # point is a fresh value per cycle (issue #157) -- and the cache
-        # is refreshed whenever a fresh value comes back, regardless of
-        # whether static is currently 0, so it stays warm if the operator
-        # later flips price_limit_incl_vat to 0.
-        #
-        # Returns None when static is 0 (fully deferring to the extension)
-        # and no fresh or cached dynamic value is available yet.
-        _dynamic_limit: float | None = None
-        if self._threshold_provider is not None:
-            _dynamic_limit = await self._threshold_provider.invoke("get_threshold")
-            if _dynamic_limit is not None:
-                if math.isfinite(_dynamic_limit) and _dynamic_limit > 0:
-                    self._cached_dynamic_limit_incl_vat = _dynamic_limit
-                else:
-                    logger.warning(
-                        f"Threshold extension returned an invalid value "
-                        f"({_dynamic_limit!r}); ignoring it for this cycle."
-                    )
-                    _dynamic_limit = None
-
-        if self._static_limit_incl_vat == 0:
-            if _dynamic_limit is not None:
-                _limit_incl_vat = _dynamic_limit
-                _source = "dynamic"
-            elif self._cached_dynamic_limit_incl_vat is not None:
-                _limit_incl_vat = self._cached_dynamic_limit_incl_vat
-                _source = "cached dynamic"
-            else:
-                return None
-        elif _dynamic_limit is not None:
-            _limit_incl_vat = min(_dynamic_limit, self._static_limit_incl_vat)
-            _source = (
-                "dynamic"
-                if _dynamic_limit <= self._static_limit_incl_vat
-                else "static cap"
-            )
-        else:
-            _limit_incl_vat = self._static_limit_incl_vat
-            _source = "static"
-
-        return EffectiveLimit(
-            _limit_incl_vat, _limit_incl_vat / ELECTRICITY_VAT_RATE, _source
-        )
-
-    async def _effective_limit_or_warn(
-        self, no_limit_action: str
-    ) -> EffectiveLimit | None:
-        # Centralises the "static is 0 and the extension has nothing yet"
-        # skip-and-warn path shared by both rebuild call sites -- only the
-        # action description in the warning differs between them.
-        _limit = await self._current_limit()
-        if _limit is None:
-            logger.warning(
-                "price_limit_incl_vat is 0 and the threshold extension has "
-                f"no fresh or cached value yet. Skipping {no_limit_action} "
-                "until it produces one."
-            )
-        return _limit
-
     async def _rebuild_on_replug(self) -> None:
         _now = datetime.now(ZoneInfo("UTC"))
         try:
@@ -184,10 +113,16 @@ class Scheduler:
             self._time_until = max(price.valid_to for price in _new_prices)
             self._last_schedule_update = _now
             _prices_from_now = [p for p in self._agile_prices if p.valid_to > _now]
-            _limit = await self._effective_limit_or_warn(
-                "schedule rebuild on car plugged in"
-            )
+            _dynamic_limit: float | None = None
+            if self._threshold_provider is not None:
+                _dynamic_limit = await self._threshold_provider.invoke("get_threshold")
+            _limit = self._threshold_policy.effective_limit(_dynamic_limit)
             if _limit is None:
+                logger.warning(
+                    "price_limit_incl_vat is 0 and the threshold extension has "
+                    "no fresh or cached value yet. Skipping schedule rebuild on "
+                    "car plugged in until it produces one."
+                )
                 return
             self._builder.update_limit(_limit.exc_vat)
             self._schedule, self._average_price_per_kwh = self._builder.build(
@@ -222,8 +157,16 @@ class Scheduler:
             # horizon on the next cycle look identical to the one just
             # "seen" and short-circuit above before ever asking the
             # threshold provider again (Copilot review, PR #168).
-            _limit = await self._effective_limit_or_warn("schedule update")
+            _dynamic_limit: float | None = None
+            if self._threshold_provider is not None:
+                _dynamic_limit = await self._threshold_provider.invoke("get_threshold")
+            _limit = self._threshold_policy.effective_limit(_dynamic_limit)
             if _limit is None:
+                logger.warning(
+                    "price_limit_incl_vat is 0 and the threshold extension has "
+                    "no fresh or cached value yet. Skipping schedule update "
+                    "until it produces one."
+                )
                 return
             self._agile_prices = _new_prices
             self._time_until = _new_time_until

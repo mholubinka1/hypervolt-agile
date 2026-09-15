@@ -77,14 +77,6 @@ class _FixedThresholdProvider:
         return self._value
 
 
-class _NoFreshValueThresholdProvider:
-    def __init__(self, config: dict) -> None:
-        self.config = config
-
-    async def get_threshold(self) -> float | None:
-        return None
-
-
 class _ChangingThresholdProvider:
     def __init__(self, values: list[float]) -> None:
         self._values = iter(values)
@@ -93,134 +85,15 @@ class _ChangingThresholdProvider:
         return next(self._values)
 
 
-async def test_scheduler_uses_the_threshold_providers_fresh_value_instead_of_the_static_config(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # Static price_limit_incl_vat is 100p -- if the dynamic provider's 5p
-    # value weren't taking effect, every period below would still be under
-    # the static limit and a session would still build. Also asserts the
-    # rebuild log names "dynamic" as the source, since this is the
-    # dynamic-wins-over-static case (5p <= 100p, no clamp).
-    _now = datetime.now(tz=_UTC)
-    prices = [_half_hour_price(50, 0, _now)]  # 50p exc VAT -- above a 5p limit
-    threshold_provider = ExtensionWrapper(
-        name="fake_threshold",
-        provider=_FixedThresholdProvider({}),
-        kind="charging threshold",
-    )
-    scheduler = Scheduler(
-        _agile_client(prices),
-        _config(price_limit_incl_vat=100),
-        threshold_provider=threshold_provider,
-    )
-
-    with caplog.at_level(logging.INFO):
-        scheduler.invalidate()
-        await scheduler.update()
-
-    assert scheduler.schedule == []
-    assert any("source: dynamic)" in r.message for r in caplog.records)
-
-
-async def test_scheduler_labels_the_source_as_dynamic_when_the_dynamic_value_equals_the_static_limit(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # Boundary case for the min(dynamic, static) clamp (Copilot review, PR
-    # #168): when the two values are exactly equal, the source must still be
-    # labelled "dynamic", not "static cap" -- a regression from `<=` to `<`
-    # in the tie-break would mislabel this case without changing the built
-    # schedule at all (the numeric limit is identical either way), so only a
-    # log assertion can catch it.
-    _now = datetime.now(tz=_UTC)
-    prices = [_half_hour_price(50, 0, _now)]
-    threshold_provider = ExtensionWrapper(
-        name="fake_threshold",
-        provider=_FixedThresholdProvider({}, value=20.0),
-        kind="charging threshold",
-    )
-    scheduler = Scheduler(
-        _agile_client(prices),
-        _config(price_limit_incl_vat=20),
-        threshold_provider=threshold_provider,
-    )
-
-    with caplog.at_level(logging.INFO):
-        scheduler.invalidate()
-        await scheduler.update()
-
-    assert any("source: dynamic)" in r.message for r in caplog.records)
-    assert not any("source: static cap)" in r.message for r in caplog.records)
-
-
-async def test_scheduler_clamps_the_dynamic_threshold_to_the_static_price_limit(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # price_limit_incl_vat is an ultimate ceiling (ADR 0022): a dynamic value
-    # ABOVE the static limit must not be allowed to raise the effective limit
-    # past what the operator set. Static 20p incl VAT -> ~19.05p exc VAT;
-    # dynamic 50p incl VAT -> ~47.62p exc VAT. A 30p exc-VAT price sits
-    # between the two -- correctly clamped to the static limit, it's above
-    # 19.05p (no session); if the dynamic value wrongly won, it would qualify
-    # under 47.62p and build one.
-    _now = datetime.now(tz=_UTC)
-    prices = [_half_hour_price(30, 0, _now)]
-    threshold_provider = ExtensionWrapper(
-        name="fake_threshold",
-        provider=_FixedThresholdProvider({}, value=50.0),
-        kind="charging threshold",
-    )
-    scheduler = Scheduler(
-        _agile_client(prices),
-        _config(price_limit_incl_vat=20),
-        threshold_provider=threshold_provider,
-    )
-
-    with caplog.at_level(logging.INFO):
-        scheduler.invalidate()
-        await scheduler.update()
-
-    assert scheduler.schedule == []
-    assert any("source: static cap)" in r.message for r in caplog.records)
-
-
-async def test_scheduler_falls_back_to_the_static_limit_when_the_threshold_provider_has_no_fresh_value(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # Static price_limit_incl_vat is 100p -- a 50p price should still clear
-    # it and build a session, proving a None from the provider means "use
-    # the static config for this cycle", not "treat as a zero/blocking limit".
-    # Also asserts the log states the plain "static" source (no clamp
-    # happened -- there was nothing fresh to clamp against), and NOT the
-    # distinct "static cap" source used when a clamp actually occurs.
-    _now = datetime.now(tz=_UTC)
-    prices = [_half_hour_price(50, 0, _now)]  # 50p exc VAT -- under a 100p limit
-    threshold_provider = ExtensionWrapper(
-        name="fake_threshold",
-        provider=_NoFreshValueThresholdProvider({}),
-        kind="charging threshold",
-    )
-    scheduler = Scheduler(
-        _agile_client(prices),
-        _config(price_limit_incl_vat=100),
-        threshold_provider=threshold_provider,
-    )
-
-    with caplog.at_level(logging.INFO):
-        scheduler.invalidate()
-        await scheduler.update()
-
-    assert len(scheduler.schedule) == 1
-    assert any("source: static)" in r.message for r in caplog.records)
-    assert not any("source: static cap)" in r.message for r in caplog.records)
-
-
 async def test_scheduler_uses_the_static_limit_when_no_threshold_provider_is_configured(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # No threshold_provider passed at all (the default) -- proves this
     # feature is genuinely opt-in and doesn't change today's behaviour.
-    # Also asserts the plain "static" source label, distinct from "static
-    # cap" (see test above).
+    # Also proves the computed limit is actually wired into
+    # ScheduleBuilder.update_limit (the built schedule reflects it), and
+    # that the rebuild log states the plain "static" source, distinct from
+    # "static cap".
     _now = datetime.now(tz=_UTC)
     prices = [_half_hour_price(50, 0, _now)]  # 50p exc VAT -- under a 100p limit
     scheduler = Scheduler(
@@ -237,24 +110,23 @@ async def test_scheduler_uses_the_static_limit_when_no_threshold_provider_is_con
     assert not any("source: static cap)" in r.message for r in caplog.records)
 
 
-async def test_scheduler_fully_defers_to_the_dynamic_threshold_when_the_static_limit_is_zero(
+async def test_scheduler_logs_the_computed_threshold_to_two_decimal_places_on_rebuild(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # price_limit_incl_vat=0 means "fully defer to the dynamic threshold
-    # extension" (ADR 0022) -- the fresh 40p value should be used as-is
-    # (no static value to clamp against), admitting a 30p exc-VAT price
-    # that a lower static limit would otherwise block. The log should
-    # state "dynamic" as the source.
+    # The extension's own poll-time log already reports the threshold it
+    # computed (2dp) -- this proves the scheduler's own rebuild log also
+    # states which limit it actually built against, at the same precision,
+    # for whichever cycle triggered the rebuild.
     _now = datetime.now(tz=_UTC)
-    prices = [_half_hour_price(30, 0, _now)]
+    prices = [_half_hour_price(50, 0, _now)]
     threshold_provider = ExtensionWrapper(
         name="fake_threshold",
-        provider=_FixedThresholdProvider({}, value=40.0),
+        provider=_FixedThresholdProvider({}, value=38.891799950000006),
         kind="charging threshold",
     )
     scheduler = Scheduler(
         _agile_client(prices),
-        _config_with_threshold_extension(price_limit_incl_vat=0),
+        _config(price_limit_incl_vat=100),
         threshold_provider=threshold_provider,
     )
 
@@ -262,8 +134,7 @@ async def test_scheduler_fully_defers_to_the_dynamic_threshold_when_the_static_l
         scheduler.invalidate()
         await scheduler.update()
 
-    assert len(scheduler.schedule) == 1
-    assert any("source: dynamic)" in r.message for r in caplog.records)
+    assert any("38.89" in r.message for r in caplog.records)
 
 
 async def test_scheduler_refreshes_the_threshold_on_the_next_new_prices_rebuild_not_only_replug() -> (
@@ -302,33 +173,6 @@ async def test_scheduler_refreshes_the_threshold_on_the_next_new_prices_rebuild_
     assert len(scheduler.schedule) == 1  # 60p limit now admits the 50p price
 
 
-async def test_scheduler_logs_the_computed_threshold_to_two_decimal_places_on_rebuild(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # The extension's own poll-time log already reports the threshold it
-    # computed (2dp) -- this proves the scheduler's own rebuild log also
-    # states which limit it actually built against, at the same precision,
-    # for whichever cycle triggered the rebuild.
-    _now = datetime.now(tz=_UTC)
-    prices = [_half_hour_price(50, 0, _now)]
-    threshold_provider = ExtensionWrapper(
-        name="fake_threshold",
-        provider=_FixedThresholdProvider({}, value=38.891799950000006),
-        kind="charging threshold",
-    )
-    scheduler = Scheduler(
-        _agile_client(prices),
-        _config(price_limit_incl_vat=100),
-        threshold_provider=threshold_provider,
-    )
-
-    with caplog.at_level(logging.INFO):
-        scheduler.invalidate()
-        await scheduler.update()
-
-    assert any("38.89" in r.message for r in caplog.records)
-
-
 async def test_scheduler_logs_the_computed_threshold_on_a_new_prices_rebuild_too(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -363,45 +207,6 @@ async def test_scheduler_logs_the_computed_threshold_on_a_new_prices_rebuild_too
         await scheduler._rebuild_on_new_prices()
 
     assert any("60.00" in r.message for r in caplog.records)
-
-
-async def test_scheduler_uses_the_cached_dynamic_threshold_when_the_static_limit_is_zero_and_no_fresh_value_this_cycle(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # price_limit_incl_vat=0 fully defers to the dynamic threshold. The
-    # first cycle gets a fresh 40p value (admits the 30p price, caching
-    # 40p). The second cycle's provider returns None (no fresh value) --
-    # the cached 40p value should still be used, and the log should state
-    # "cached dynamic" as the source.
-    _now = datetime.now(tz=_UTC)
-    _later = _now + timedelta(hours=2)
-    _client = Mock(spec=AgileClient)
-    _client.get_upcoming_prices = AsyncMock(
-        side_effect=[
-            [_half_hour_price(30, 0, _now)],
-            [_half_hour_price(30, 0, _later)],
-        ]
-    )
-    threshold_provider = ExtensionWrapper(
-        name="fake_threshold",
-        provider=_ChangingThresholdProvider([40.0, None]),
-        kind="charging threshold",
-    )
-    scheduler = Scheduler(
-        _client,
-        _config_with_threshold_extension(price_limit_incl_vat=0),
-        threshold_provider=threshold_provider,
-    )
-
-    scheduler.invalidate()
-    await scheduler.update()
-    assert len(scheduler.schedule) == 1  # fresh 40p limit admits the 30p price
-
-    with caplog.at_level(logging.INFO):
-        await scheduler._rebuild_on_new_prices()
-
-    assert len(scheduler.schedule) == 1  # cached 40p limit still admits it
-    assert any("source: cached dynamic)" in r.message for r in caplog.records)
 
 
 async def test_scheduler_retries_on_the_next_new_prices_cycle_after_a_cold_start_skip_with_unchanged_prices() -> (
@@ -469,69 +274,6 @@ async def test_scheduler_skips_the_rebuild_when_the_static_limit_is_zero_and_no_
     await scheduler.update()  # the extension now has a value -- retries on its own
 
     assert len(scheduler.schedule) == 1  # 40p limit admits the 30p price
-
-
-@pytest.mark.parametrize("invalid_value", [0.0, -5.0, float("inf"), float("nan")])
-async def test_scheduler_ignores_a_non_finite_or_non_positive_dynamic_threshold(
-    invalid_value: float,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # Scheduler must not trust an arbitrary extension's return value as-is --
-    # a misbehaving provider returning 0, negative, infinite, or NaN must be
-    # treated the same as "no fresh value this cycle" (falling back to the
-    # static limit here), not cached or used to compute an effective limit.
-    _now = datetime.now(tz=_UTC)
-    prices = [_half_hour_price(50, 0, _now)]  # 50p exc VAT -- under a 100p limit
-    threshold_provider = ExtensionWrapper(
-        name="fake_threshold",
-        provider=_FixedThresholdProvider({}, value=invalid_value),
-        kind="charging threshold",
-    )
-    scheduler = Scheduler(
-        _agile_client(prices),
-        _config(price_limit_incl_vat=100),
-        threshold_provider=threshold_provider,
-    )
-
-    with caplog.at_level(logging.INFO):
-        scheduler.invalidate()
-        await scheduler.update()
-
-    assert len(scheduler.schedule) == 1  # static 100p limit used instead
-    assert any("source: static)" in r.message for r in caplog.records)
-    assert any(r.levelname == "WARNING" for r in caplog.records)
-
-
-@pytest.mark.parametrize("invalid_value", [0.0, -5.0, float("inf"), float("nan")])
-async def test_scheduler_skips_the_rebuild_on_a_non_finite_or_non_positive_dynamic_threshold_with_no_static_cap(
-    invalid_value: float,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # Same invalid-value rejection as the non-zero-static test above, but for
-    # the price_limit_incl_vat=0 / cold-start branch specifically: an invalid
-    # value must not be mistaken for a usable cached value, or get cached at
-    # all, when there's nothing else to fall back to -- it must fall through
-    # to the same "no limit determinable yet" skip as a genuinely absent
-    # value would.
-    _now = datetime.now(tz=_UTC)
-    prices = [_half_hour_price(30, 0, _now)]
-    threshold_provider = ExtensionWrapper(
-        name="fake_threshold",
-        provider=_FixedThresholdProvider({}, value=invalid_value),
-        kind="charging threshold",
-    )
-    scheduler = Scheduler(
-        _agile_client(prices),
-        _config_with_threshold_extension(price_limit_incl_vat=0),
-        threshold_provider=threshold_provider,
-    )
-
-    with caplog.at_level(logging.WARNING):
-        scheduler.invalidate()
-        await scheduler.update()
-
-    assert scheduler.schedule == []
-    assert any(r.levelname == "WARNING" for r in caplog.records)
 
 
 async def test_scheduler_correctly_converts_the_dynamic_thresholds_incl_vat_pence_to_exc_vat() -> (
