@@ -241,6 +241,26 @@ def test_station_count_must_be_a_positive_int(bad_station_count: object) -> None
         )
 
 
+@pytest.mark.parametrize(
+    "bad_mi_per_kwh", [0, -3.5, "fast", float("nan"), float("inf"), True]
+)
+def test_mi_per_kwh_must_be_a_positive_finite_number_when_provided(
+    bad_mi_per_kwh: object,
+) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_valid_config(mi_per_kwh=bad_mi_per_kwh))
+
+
+@pytest.mark.parametrize(
+    "bad_radius_miles", [0, -10, "far", float("nan"), float("inf"), True]
+)
+def test_radius_miles_must_be_a_positive_finite_number_when_provided(
+    bad_radius_miles: object,
+) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_valid_config(radius_miles=bad_radius_miles))
+
+
 async def test_radius_miles_excludes_a_station_beyond_the_configured_radius() -> None:
     # Scenario: radius_miles is an upper-bound cap, not an alternative
     # selection mode -- a farther station reporting a cheaper price is
@@ -317,17 +337,29 @@ async def test_a_successful_poll_caches_the_computed_margined_threshold() -> Non
     assert await extension.get_threshold() == pytest.approx(42.0)
 
 
-async def test_a_poll_finding_no_stations_leaves_get_threshold_returning_none() -> None:
+async def test_a_poll_finding_no_stations_clears_a_previously_cached_threshold() -> (
+    None
+):
     # Scenario 10: average_price_near() returns None (no station near the
-    # postcode reports the requested fuel type) -- get_threshold() must
-    # fall back cleanly to None afterward, not raise.
+    # postcode reports the requested fuel type) -- get_threshold() must fall
+    # back cleanly to None afterward, not raise. Seeds a real cached value
+    # from a prior successful poll first -- self._threshold starts at None
+    # by construction, so asserting None after a no-match poll alone would
+    # pass whether or not a *previously cached* value actually gets cleared.
     extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    assert await extension.get_threshold() is not None
+
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
         price_batches=[[_price_entry("s1", [("B7_STANDARD", 150.0)])]],
     )
-
     await extension._poll_once()
 
     assert await extension.get_threshold() is None

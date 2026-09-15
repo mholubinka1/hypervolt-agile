@@ -108,22 +108,36 @@ async def test_loading_shipped_dynamic_charging_threshold_does_not_clobber_file_
 
     for _mod in ("fuel_finder.auth", "fuel_finder.client"):
         sys.modules.pop(_mod, None)
-    configure_file_logging(str(tmp_path / "test.log"), "INFO")
-    assert any(isinstance(h, RotatingFileHandler) for h in getLogger(APP_NAME).handlers)
-    entry = ExtensionEntry(
-        name="behaviours/dynamic_charging_threshold", config=_VALID_CONFIG
-    )
-
-    with patch(
-        "behaviours.dynamic_charging_threshold.httpx.AsyncClient",
-        side_effect=_mock_async_client,
-    ):
-        result = await load_threshold_extension(
-            entry, _EXTENSIONS_DIR, update_every_mins=30
+    _app_logger = getLogger(APP_NAME)
+    # configure_file_logging() replaces the APP_NAME logger's handlers
+    # app-wide via dictConfig(), not scoped to this test -- restore the
+    # pre-test handlers afterward so this test doesn't leak a
+    # RotatingFileHandler pointed at a tmp_path pytest deletes once this
+    # test ends, which would otherwise affect every other test's logging
+    # for the rest of the session.
+    _original_handlers = list(_app_logger.handlers)
+    try:
+        configure_file_logging(str(tmp_path / "test.log"), "INFO")
+        assert any(isinstance(h, RotatingFileHandler) for h in _app_logger.handlers)
+        entry = ExtensionEntry(
+            name="behaviours/dynamic_charging_threshold", config=_VALID_CONFIG
         )
-        assert result is not None
-        await result.stop()
 
-    assert any(
-        isinstance(h, RotatingFileHandler) for h in getLogger(APP_NAME).handlers
-    ), "file handler was stripped by loading the extension"
+        with patch(
+            "behaviours.dynamic_charging_threshold.httpx.AsyncClient",
+            side_effect=_mock_async_client,
+        ):
+            result = await load_threshold_extension(
+                entry, _EXTENSIONS_DIR, update_every_mins=30
+            )
+            assert result is not None
+            await result.stop()
+
+        assert any(
+            isinstance(h, RotatingFileHandler) for h in _app_logger.handlers
+        ), "file handler was stripped by loading the extension"
+    finally:
+        for _handler in _app_logger.handlers:
+            if _handler not in _original_handlers:
+                _handler.close()
+        _app_logger.handlers = _original_handlers
