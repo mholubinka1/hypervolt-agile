@@ -45,6 +45,6 @@ schedule:
 #     radius_miles: 10                # Optional -- an upper-bound cap on how far a station may be and still count towards station_count; it does NOT relax station_count if fewer matches are found within range, it only excludes anything further out.
 #     client_id: your-fuel-finder-client-id         # Required -- from your own GOV.UK Fuel Finder developer registration (https://www.fuel-finder.service.gov.uk), not a shared app credential.
 #     client_secret: your-fuel-finder-client-secret  # Required -- see client_id above. Keep this file's permissions restricted; it's a real secret.
-#     update_every_mins: 30           # Required -- how often (in minutes) this extension re-polls the Fuel Finder API for a fresh price. Fuel prices move far less often than Agile electricity prices, so this reuses (i.e. should be set to match) schedule.update_every_mins above rather than needing its own separate tuning.
+#                                     # No separate poll-interval field here -- this extension re-polls on the same update_every_mins cadence set above under schedule:, since fuel prices move far less often than Agile electricity prices and don't need their own independent tuning.
 # log_file: /logs/hypervolt-agile-scheduler.log   # Omit to log to console only. In Docker, /logs is bind-mounted from /mnt/media/pi-media/containers/hypervolt-agile-scheduler/log.
 # log_level: INFO                # Console log level (default: INFO). File log level is always INFO.

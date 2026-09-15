@@ -99,7 +99,9 @@ async def main() -> None:
             args, agile_client, "threshold_extension"
         )
         threshold_provider = await load_threshold_extension(
-            app_config.threshold_extension, _extensions_dir
+            app_config.threshold_extension,
+            _extensions_dir,
+            app_config.schedule.frequency,
         )
 
     scheduler = Scheduler(

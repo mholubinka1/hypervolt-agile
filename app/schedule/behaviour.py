@@ -31,13 +31,23 @@ class BehaviourProvider(Protocol):
 
 
 async def load_threshold_extension(
-    entry: ExtensionEntry | None, extensions_dir: Path
+    entry: ExtensionEntry | None, extensions_dir: Path, update_every_mins: int
 ) -> ExtensionWrapper | None:
     # A single optional entry, not a list -- only one charging threshold is
     # ever active (ADR 0021), unlike LED's list of extensions.
     if entry is None:
         return None
+    # update_every_mins is injected here, not set by the operator in the
+    # extension's own config block -- the spec deliberately reuses the
+    # schedule's own cadence rather than introducing a second, independently
+    # tunable interval that could drift out of sync with it ("this avoids a
+    # redundant config field", feature-dynamic-charging-threshold.md). Any
+    # operator-supplied value under this key in the extension's config is
+    # overridden, since that field isn't meant to be operator-configurable.
+    _entry = entry.model_copy(
+        update={"config": {**entry.config, "update_every_mins": update_every_mins}}
+    )
     _wrappers = await _load_extensions(
-        [entry], extensions_dir, marker_method=_MARKER_METHOD, kind=_KIND
+        [_entry], extensions_dir, marker_method=_MARKER_METHOD, kind=_KIND
     )
     return _wrappers[0] if _wrappers else None

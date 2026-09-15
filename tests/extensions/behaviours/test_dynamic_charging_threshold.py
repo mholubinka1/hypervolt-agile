@@ -213,6 +213,47 @@ def test_a_missing_station_count_raises_value_error() -> None:
         DynamicChargingThresholdExtension(_config)
 
 
+@pytest.mark.parametrize("bad_mpg", [0, -10, "fast", float("nan"), float("inf"), True])
+def test_mpg_must_be_a_positive_finite_number(bad_mpg: object) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_valid_config(mpg=bad_mpg))
+
+
+@pytest.mark.parametrize("bad_station_count", [0, -1, 1.5, "5", True])
+def test_station_count_must_be_a_positive_int(bad_station_count: object) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(
+            _valid_config(station_count=bad_station_count)
+        )
+
+
+async def test_radius_miles_excludes_a_station_beyond_the_configured_radius() -> None:
+    # Scenario: radius_miles is an upper-bound cap, not an alternative
+    # selection mode -- a farther station reporting a cheaper price is
+    # excluded outright, even though station_count would otherwise want more
+    # matches. Proven by observing the computed threshold reflects only the
+    # in-radius station's price, not an average blended with the excluded one.
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(station_count=2, radius_miles=5)
+    )
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("near", 51.5, -0.14), _station("far", 52.5, -0.14)]],
+        price_batches=[
+            [
+                _price_entry("near", [("E10", 150.0)]),
+                _price_entry("far", [("E10", 100.0)]),
+            ]
+        ],
+    )
+
+    await extension._poll_once()
+
+    assert await extension.get_threshold() == pytest.approx(
+        _dynamic_threshold_incl_vat(150.0, 45.4609, 3.5)
+    )
+
+
 @pytest.mark.parametrize("credential_key", ["client_id", "client_secret"])
 @pytest.mark.parametrize("bad_value", [None, "", "   "])
 def test_a_missing_or_blank_credential_raises_value_error(
