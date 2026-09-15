@@ -372,15 +372,16 @@ async def test_a_successful_poll_caches_the_computed_margined_threshold() -> Non
     assert await extension.get_threshold() == pytest.approx(42.0)
 
 
-async def test_a_poll_finding_no_stations_clears_a_previously_cached_threshold() -> (
+async def test_a_poll_finding_no_matching_fuel_type_clears_a_previously_cached_threshold() -> (
     None
 ):
-    # Scenario 10: average_price_near() returns None (no station near the
-    # postcode reports the requested fuel type) -- get_threshold() must fall
-    # back cleanly to None afterward, not raise. Seeds a real cached value
-    # from a prior successful poll first -- self._threshold starts at None
-    # by construction, so asserting None after a no-match poll alone would
-    # pass whether or not a *previously cached* value actually gets cleared.
+    # Scenario 10: average_price_near() returns None (the only nearby
+    # station doesn't report the requested fuel type) -- get_threshold()
+    # must fall back cleanly to None afterward, not raise. Seeds a real
+    # cached value from a prior successful poll first -- self._threshold
+    # starts at None by construction, so asserting None after a no-match
+    # poll alone would pass whether or not a *previously cached* value
+    # actually gets cleared.
     extension = DynamicChargingThresholdExtension(_valid_config())
     _wire_mock_transport(
         extension,
