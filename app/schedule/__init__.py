@@ -1,4 +1,6 @@
 import logging.config
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from logging import Logger, getLogger
 from zoneinfo import ZoneInfo
@@ -15,6 +17,30 @@ from config import AppConfig
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
+
+
+@dataclass(frozen=True)
+class _RebuildTrigger:
+    """Per-trigger behaviour injected into the shared `Scheduler._rebuild`
+    routine.
+
+    `prepare` decides -- and may itself log -- whether to proceed at all,
+    and returns the prices to build the schedule against, or `None` to skip
+    (having already logged why). It is where each trigger's own
+    "should we even try" logic lives; the shared routine has no built-in
+    notion of it. `commit` runs immediately before the schedule is built,
+    once an effective limit is confirmed available, for any state that must
+    not be updated on a skipped/cold-start cycle. `finalize` runs after a
+    schedule has been successfully built and logged.
+    """
+
+    no_prices_warning: str
+    no_threshold_warning: str
+    success_log_prefix: str
+    exception_message: str
+    prepare: Callable[[list[Price]], list[Price] | None]
+    commit: Callable[[list[Price]], None]
+    finalize: Callable[[], None]
 
 
 class Scheduler:
@@ -103,82 +129,103 @@ class Scheduler:
             await self._rebuild_on_new_prices()
 
     async def _rebuild_on_replug(self) -> None:
-        _now = datetime.now(ZoneInfo("UTC"))
-        try:
-            _new_prices = await self._agile_client.get_upcoming_prices()
-            if not _new_prices:
-                logger.warning("No Agile prices returned. Skipping schedule rebuild.")
-                return
-            self._agile_prices = _new_prices
-            self._time_until = max(price.valid_to for price in _new_prices)
+        def _prepare(new_prices: list[Price]) -> list[Price]:
+            # No "has anything changed" pre-check here -- a replug always
+            # rebuilds while invalidated, regardless of the price horizon.
+            _now = datetime.now(ZoneInfo("UTC"))
+            self._agile_prices = new_prices
+            self._time_until = max(price.valid_to for price in new_prices)
             self._last_schedule_update = _now
-            _prices_from_now = [p for p in self._agile_prices if p.valid_to > _now]
-            _dynamic_limit: float | None = None
-            if self._threshold_provider is not None:
-                _dynamic_limit = await self._threshold_provider.invoke("get_threshold")
-            _limit = self._threshold_policy.effective_limit(_dynamic_limit)
-            if _limit is None:
-                logger.warning(
+            return [p for p in new_prices if p.valid_to > _now]
+
+        def _finalize() -> None:
+            self._invalidated = False
+
+        await self._rebuild(
+            _RebuildTrigger(
+                no_prices_warning="No Agile prices returned. Skipping schedule rebuild.",
+                no_threshold_warning=(
                     "price_limit_incl_vat is 0 and the threshold extension has "
                     "no fresh or cached value yet. Skipping schedule rebuild on "
                     "car plugged in until it produces one."
-                )
-                return
-            self._builder.update_limit(_limit.exc_vat)
-            self._schedule, self._average_price_per_kwh = self._builder.build(
-                _prices_from_now,
+                ),
+                success_log_prefix="New Schedule created on car plugged in",
+                exception_message="Failed to rebuild schedule on car plugged in.",
+                prepare=_prepare,
+                commit=lambda new_prices: None,
+                finalize=_finalize,
             )
-            logger.info(
-                f"New Schedule created on car plugged in: {len(self._schedule)} sessions "
-                f"(limit {_limit.incl_vat:.2f}p/kWh incl VAT, source: {_limit.source})."
-            )
-            for session in self._schedule:
-                logger.info(f"Session: {session.format(self._timezone)}.")
-            self._invalidated = False
-        except Exception:
-            logger.exception("Failed to rebuild schedule on car plugged in.")
+        )
 
     async def _rebuild_on_new_prices(self) -> None:
+        def _prepare(new_prices: list[Price]) -> list[Price] | None:
+            # The "new price horizon vs old" pre-check: this is the one
+            # thing the replug trigger has no equivalent of, so it lives
+            # here rather than in the shared routine, which has no built-in
+            # notion of "unchanged".
+            _new_time_until = max(price.valid_to for price in new_prices)
+            if not _new_time_until > self._time_until:
+                logger.debug("Agile prices unchanged.")
+                return None
+            logger.info(
+                f"New Agile prices received: {len(new_prices)} periods, "
+                f"valid until {_new_time_until}."
+            )
+            return new_prices
+
+        def _commit(new_prices: list[Price]) -> None:
+            # _agile_prices / _time_until are deliberately not committed
+            # until a limit is actually available -- otherwise a cold-start
+            # skip (limit is None) would still advance them, making an
+            # unchanged price horizon on the next cycle look identical to
+            # the one just "seen" and short-circuit above before ever
+            # asking the threshold provider again (Copilot review, PR #168).
+            self._agile_prices = new_prices
+            self._time_until = max(price.valid_to for price in new_prices)
+
+        await self._rebuild(
+            _RebuildTrigger(
+                no_prices_warning="No Agile prices returned. Skipping schedule update.",
+                no_threshold_warning=(
+                    "price_limit_incl_vat is 0 and the threshold extension has "
+                    "no fresh or cached value yet. Skipping schedule update "
+                    "until it produces one."
+                ),
+                success_log_prefix="New schedule created",
+                exception_message="Failed to create charging schedule.",
+                prepare=_prepare,
+                commit=_commit,
+                finalize=lambda: None,
+            )
+        )
+
+    async def _rebuild(self, trigger: _RebuildTrigger) -> None:
         try:
             _new_prices = await self._agile_client.get_upcoming_prices()
             if not _new_prices:
-                logger.warning("No Agile prices returned. Skipping schedule update.")
+                logger.warning(trigger.no_prices_warning)
                 return
-            _new_time_until = max(price.valid_to for price in _new_prices)
-            if not _new_time_until > self._time_until:
-                logger.debug("Agile prices unchanged.")
+            _prices_for_build = trigger.prepare(_new_prices)
+            if _prices_for_build is None:
                 return
-            logger.info(
-                f"New Agile prices received: {len(_new_prices)} periods, valid until {_new_time_until}."
-            )
-            # _time_until is deliberately not committed until a limit is
-            # actually available -- otherwise a cold-start skip (limit is
-            # None) would still advance it, making an unchanged price
-            # horizon on the next cycle look identical to the one just
-            # "seen" and short-circuit above before ever asking the
-            # threshold provider again (Copilot review, PR #168).
             _dynamic_limit: float | None = None
             if self._threshold_provider is not None:
                 _dynamic_limit = await self._threshold_provider.invoke("get_threshold")
             _limit = self._threshold_policy.effective_limit(_dynamic_limit)
             if _limit is None:
-                logger.warning(
-                    "price_limit_incl_vat is 0 and the threshold extension has "
-                    "no fresh or cached value yet. Skipping schedule update "
-                    "until it produces one."
-                )
+                logger.warning(trigger.no_threshold_warning)
                 return
-            self._agile_prices = _new_prices
-            self._time_until = _new_time_until
+            trigger.commit(_new_prices)
             self._builder.update_limit(_limit.exc_vat)
             self._schedule, self._average_price_per_kwh = self._builder.build(
-                self._agile_prices,
+                _prices_for_build,
             )
             logger.info(
-                f"New schedule created: {len(self._schedule)} sessions "
+                f"{trigger.success_log_prefix}: {len(self._schedule)} sessions "
                 f"(limit {_limit.incl_vat:.2f}p/kWh incl VAT, source: {_limit.source})."
             )
             for session in self._schedule:
                 logger.info(f"Session: {session.format(self._timezone)}.")
+            trigger.finalize()
         except Exception:
-            logger.exception("Failed to create charging schedule.")
+            logger.exception(trigger.exception_message)
