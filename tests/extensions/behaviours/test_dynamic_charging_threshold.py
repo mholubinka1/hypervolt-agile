@@ -158,18 +158,13 @@ def _wire_mock_transport(
     # owns a FuelFinderAuth + FuelFinderClient built from that client rather
     # than calling it directly -- both are rebuilt from the same mock client
     # so every real code path (geocoding, auth, pagination, distance
-    # ranking) still runs for real, only the transport is faked.
-    _mock_client = httpx.AsyncClient(
-        transport=httpx.MockTransport(
-            _router(pfs_batches=pfs_batches, price_batches=price_batches)
-        ),
-        base_url=_FUEL_FINDER_BASE_URL,
+    # ranking) still runs for real, only the transport is faked. Delegates
+    # the actual client/auth/fuel_finder rebuild to _wire_custom_transport
+    # rather than repeating it, supplying the successful-pagination router
+    # as this variant's specific handler.
+    _wire_custom_transport(
+        extension, _router(pfs_batches=pfs_batches, price_batches=price_batches)
     )
-    extension._client = _mock_client
-    extension._auth = FuelFinderAuth(
-        _mock_client, client_id="the-client-id", client_secret="the-client-secret"
-    )
-    extension._fuel_finder = FuelFinderClient(_mock_client, extension._auth)
 
 
 async def test_petrol_fuel_type_resolves_to_the_fuel_finder_e10_code() -> None:
@@ -487,6 +482,10 @@ async def test_a_poll_with_a_postcode_that_does_not_geocode_logs_the_geocode_spe
         "could not resolve postcode 'SW1A 1AA'" in r.message for r in caplog.records
     )
     assert not any("found no fuel price" in r.message for r in caplog.records)
+    assert not any(
+        "could not fetch the fuel station list" in r.message for r in caplog.records
+    )
+    assert not any("could not fetch fuel prices" in r.message for r in caplog.records)
 
 
 async def test_a_poll_with_an_unavailable_station_list_logs_the_stations_specific_reason(
@@ -534,6 +533,7 @@ async def test_a_poll_with_an_unavailable_station_list_logs_the_stations_specifi
     )
     assert not any("could not fetch fuel prices" in r.message for r in caplog.records)
     assert not any("found no fuel price" in r.message for r in caplog.records)
+    assert not any("could not resolve postcode" in r.message for r in caplog.records)
 
 
 async def test_a_poll_with_an_unavailable_price_list_logs_the_prices_specific_reason(
@@ -587,6 +587,7 @@ async def test_a_poll_with_an_unavailable_price_list_logs_the_prices_specific_re
         "could not fetch the fuel station list" in r.message for r in caplog.records
     )
     assert not any("found no fuel price" in r.message for r in caplog.records)
+    assert not any("could not resolve postcode" in r.message for r in caplog.records)
 
 
 @pytest.mark.parametrize("bad_price", [-150.0, 0.0, float("nan"), float("inf")])
