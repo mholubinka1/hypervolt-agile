@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -104,7 +105,17 @@ def _router(
             raise AssertionError(f"Unexpected request: {request.url}")
         _batch = int(request.url.params["batch-number"])
         _page = _pages[_batch - 1] if _batch <= len(_pages) else []
-        return httpx.Response(200, json=_page)
+        # httpx.Response(json=...) hardcodes allow_nan=False internally,
+        # unlike stdlib json.dumps's own default -- building the body
+        # manually lets a non-finite price (NaN/Infinity) round-trip
+        # through this mock the same way a permissive real API response
+        # could still produce one, so invalid-price tests exercise the
+        # real chain rather than mocking FuelFinderClient directly.
+        return httpx.Response(
+            200,
+            content=json.dumps(_page).encode(),
+            headers={"content-type": "application/json"},
+        )
 
     return _handler
 
@@ -383,6 +394,38 @@ async def test_a_poll_finding_no_stations_clears_a_previously_cached_threshold()
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
         price_batches=[[_price_entry("s1", [("B7_STANDARD", 150.0)])]],
+    )
+    await extension._poll_once()
+
+    assert await extension.get_threshold() is None
+
+
+@pytest.mark.parametrize("bad_price", [-150.0, 0.0, float("nan"), float("inf")])
+async def test_a_poll_receiving_an_invalid_fuel_price_clears_a_previously_cached_threshold(
+    bad_price: float,
+) -> None:
+    # FuelFinderClient passes the API's raw price straight through with no
+    # validation of its own -- a malformed payload (negative, zero, NaN, or
+    # infinite) must be treated as unavailable data, the same as no price
+    # found at all, rather than caching a threshold that silently breaks
+    # every schedule comparison (NaN never compares true; infinity accepts
+    # every price). Exercised through the real HTTP-mocked chain for every
+    # case, including NaN/Infinity -- _router builds responses via raw
+    # content= rather than httpx's stricter json= helper specifically so
+    # these non-finite values can round-trip through it.
+    extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    assert await extension.get_threshold() is not None
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", bad_price)])]],
     )
     await extension._poll_once()
 

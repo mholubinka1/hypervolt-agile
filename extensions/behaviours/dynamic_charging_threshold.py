@@ -166,6 +166,21 @@ class DynamicChargingThresholdExtension:
                 )
                 self._threshold = None
                 return
+            if not math.isfinite(_price) or _price <= 0:
+                # FuelFinderClient passes the API's raw price straight
+                # through with no validation of its own -- a malformed
+                # payload (negative, NaN, or infinite) would otherwise cache
+                # a threshold that silently breaks every schedule
+                # comparison (NaN never compares true; infinity accepts
+                # every price), rather than being treated as unavailable
+                # data the same way a missing price already is.
+                logger.warning(
+                    "Dynamic charging threshold extension received an "
+                    f"invalid fuel price {_price!r} near {self._postcode!r}; "
+                    "clearing the cached threshold."
+                )
+                self._threshold = None
+                return
             self._threshold = _dynamic_threshold_incl_vat(
                 _price, self._mpg, self._mi_per_kwh
             )
