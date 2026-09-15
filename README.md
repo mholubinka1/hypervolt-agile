@@ -48,6 +48,8 @@ schedule:
 
 Your Octopus account postcode is used to determine the charger's timezone automatically — no timezone configuration is needed.
 
+`price_limit_incl_vat` is always an ultimate ceiling: charging only ever happens below this price, no matter what else is configured. If an optional dynamic threshold extension (`extensions.threshold` — see `config/config.yml.template`) is set up, it can lower the effective limit further, but it can never raise it past `price_limit_incl_vat`. Setting `price_limit_incl_vat` to `0` (only valid when `extensions.threshold` is configured) defers fully to that extension's own computed value instead.
+
 ### LED Themes
 
 The charger's LEDs can show one of three built-in seasonal effects. Each is opt-in — listing an effect in `built_in_themes` is what enables it; leave one out and it never runs:

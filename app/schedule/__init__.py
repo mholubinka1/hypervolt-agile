@@ -28,6 +28,7 @@ class Scheduler:
         self._update_freq = config.schedule.frequency
         self._static_limit_incl_vat = config.schedule.limit
         self._threshold_provider = threshold_provider
+        self._cached_dynamic_limit_incl_vat: float | None = None
         self._builder = ScheduleBuilder(
             duration_hrs=config.schedule.duration,
             limit_exc_vat=config.schedule.limit / ELECTRICITY_VAT_RATE,
@@ -101,21 +102,48 @@ class Scheduler:
         elif self._should_update():
             await self._rebuild_on_new_prices()
 
-    async def _current_limit(self) -> tuple[float, float]:
-        # Recomputed on every rebuild rather than cached -- a threshold
-        # provider's whole point is a fresh value per cycle (issue #157).
-        # get_threshold() returning None means "no fresh value this cycle",
-        # not "block everything", so that falls back to the static config
-        # limit exactly as if no provider were configured at all. Returns
-        # (limit_incl_vat, limit_exc_vat) -- the caller logs the former
-        # (matching the operator-familiar price_limit_incl_vat convention)
-        # and builds against the latter.
-        _limit_incl_vat = self._static_limit_incl_vat
+    async def _current_limit(self) -> tuple[float, float, str] | None:
+        # price_limit_incl_vat is an ultimate ceiling (ADR 0022), never
+        # fully overridden by the dynamic threshold extension. The fresh
+        # value is fetched every cycle -- a threshold provider's whole
+        # point is a fresh value per cycle (issue #157) -- and the cache
+        # is refreshed whenever a fresh value comes back, regardless of
+        # whether static is currently 0, so it stays warm if the operator
+        # later flips price_limit_incl_vat to 0.
+        #
+        # Returns (limit_incl_vat, limit_exc_vat, source) -- the caller
+        # logs the incl-VAT value and source (matching the
+        # operator-familiar price_limit_incl_vat convention) and builds
+        # against the exc-VAT value -- or None when static is 0 (fully
+        # deferring to the extension) and no fresh or cached dynamic value
+        # is available yet.
+        _dynamic_limit: float | None = None
         if self._threshold_provider is not None:
             _dynamic_limit = await self._threshold_provider.invoke("get_threshold")
             if _dynamic_limit is not None:
+                self._cached_dynamic_limit_incl_vat = _dynamic_limit
+
+        if self._static_limit_incl_vat == 0:
+            if _dynamic_limit is not None:
                 _limit_incl_vat = _dynamic_limit
-        return _limit_incl_vat, _limit_incl_vat / ELECTRICITY_VAT_RATE
+                _source = "dynamic"
+            elif self._cached_dynamic_limit_incl_vat is not None:
+                _limit_incl_vat = self._cached_dynamic_limit_incl_vat
+                _source = "cached dynamic"
+            else:
+                return None
+        elif _dynamic_limit is not None:
+            _limit_incl_vat = min(_dynamic_limit, self._static_limit_incl_vat)
+            _source = (
+                "dynamic"
+                if _dynamic_limit <= self._static_limit_incl_vat
+                else "static cap"
+            )
+        else:
+            _limit_incl_vat = self._static_limit_incl_vat
+            _source = "static"
+
+        return _limit_incl_vat, _limit_incl_vat / ELECTRICITY_VAT_RATE, _source
 
     async def _rebuild_on_replug(self) -> None:
         _now = datetime.now(ZoneInfo("UTC"))
@@ -128,14 +156,22 @@ class Scheduler:
             self._time_until = max(price.valid_to for price in _new_prices)
             self._last_schedule_update = _now
             _prices_from_now = [p for p in self._agile_prices if p.valid_to > _now]
-            _limit_incl_vat, _limit_exc_vat = await self._current_limit()
+            _current_limit = await self._current_limit()
+            if _current_limit is None:
+                logger.warning(
+                    "price_limit_incl_vat is 0 and the threshold extension has "
+                    "no fresh or cached value yet. Skipping schedule rebuild on "
+                    "car plugged in until it produces one."
+                )
+                return
+            _limit_incl_vat, _limit_exc_vat, _limit_source = _current_limit
             self._builder.update_limit(_limit_exc_vat)
             self._schedule, self._average_price_per_kwh = self._builder.build(
                 _prices_from_now,
             )
             logger.info(
                 f"New Schedule created on car plugged in: {len(self._schedule)} sessions "
-                f"(limit {_limit_incl_vat:.2f}p/kWh incl VAT)."
+                f"(limit {_limit_incl_vat:.2f}p/kWh incl VAT, source: {_limit_source})."
             )
             for session in self._schedule:
                 logger.info(f"Session: {session.format(self._timezone)}.")
@@ -158,14 +194,22 @@ class Scheduler:
             logger.info(
                 f"New Agile prices received: {len(self._agile_prices)} periods, valid until {self._time_until}."
             )
-            _limit_incl_vat, _limit_exc_vat = await self._current_limit()
+            _current_limit = await self._current_limit()
+            if _current_limit is None:
+                logger.warning(
+                    "price_limit_incl_vat is 0 and the threshold extension has "
+                    "no fresh or cached value yet. Skipping schedule update "
+                    "until it produces one."
+                )
+                return
+            _limit_incl_vat, _limit_exc_vat, _limit_source = _current_limit
             self._builder.update_limit(_limit_exc_vat)
             self._schedule, self._average_price_per_kwh = self._builder.build(
                 self._agile_prices,
             )
             logger.info(
                 f"New schedule created: {len(self._schedule)} sessions "
-                f"(limit {_limit_incl_vat:.2f}p/kWh incl VAT)."
+                f"(limit {_limit_incl_vat:.2f}p/kWh incl VAT, source: {_limit_source})."
             )
             for session in self._schedule:
                 logger.info(f"Session: {session.format(self._timezone)}.")
