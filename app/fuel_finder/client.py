@@ -1,14 +1,14 @@
-import logging.config
 import math
 from dataclasses import dataclass
 from logging import Logger, getLogger
 
 import httpx
 from common.constants import APP_NAME
-from common.logging import config
 from fuel_finder.auth import FuelFinderAuth
 
-logging.config.dictConfig(config)
+# Deliberately does NOT call logging.config.dictConfig() -- see auth.py's
+# identical comment: this module is only ever reached via a dynamically
+# loaded extension, after configure_file_logging() has already run.
 logger: Logger = getLogger(APP_NAME)
 
 # A batch returning exactly this many records means more may follow; fewer

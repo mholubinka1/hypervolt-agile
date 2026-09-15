@@ -179,6 +179,20 @@ def test_an_unrecognised_fuel_type_raises_value_error() -> None:
         DynamicChargingThresholdExtension(_valid_config(fuel_type="lpg"))
 
 
+def test_a_non_string_unhashable_fuel_type_raises_value_error_not_type_error() -> None:
+    # A YAML list (e.g. `fuel_type: [petrol]`) is unhashable -- must raise
+    # the same actionable ValueError as any other invalid fuel_type, not a
+    # TypeError from the dict membership check.
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_valid_config(fuel_type=["petrol"]))
+
+
+@pytest.mark.parametrize("bad_postcode", [None, "", "   ", 12345])
+def test_postcode_must_be_a_non_blank_string(bad_postcode: object) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_valid_config(postcode=bad_postcode))
+
+
 def test_a_missing_mpg_raises_value_error() -> None:
     _config = _valid_config()
     del _config["mpg"]

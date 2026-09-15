@@ -37,7 +37,10 @@ def _dynamic_threshold_incl_vat(
 class DynamicChargingThresholdExtension:
     def __init__(self, config: dict[str, Any]) -> None:
         _fuel_type = config.get("fuel_type")
-        if _fuel_type not in _FUEL_TYPE_CODES:
+        # isinstance guard first -- a non-string, unhashable value (e.g. a
+        # YAML list) would otherwise raise TypeError from the `in` check
+        # below instead of the intended, actionable ValueError.
+        if not isinstance(_fuel_type, str) or _fuel_type not in _FUEL_TYPE_CODES:
             raise ValueError(
                 f"fuel_type must be one of {sorted(_FUEL_TYPE_CODES)}, got "
                 f"{_fuel_type!r}."
