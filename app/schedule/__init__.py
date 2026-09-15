@@ -101,18 +101,21 @@ class Scheduler:
         elif self._should_update():
             await self._rebuild_on_new_prices()
 
-    async def _current_limit_exc_vat(self) -> float:
+    async def _current_limit(self) -> tuple[float, float]:
         # Recomputed on every rebuild rather than cached -- a threshold
         # provider's whole point is a fresh value per cycle (issue #157).
         # get_threshold() returning None means "no fresh value this cycle",
         # not "block everything", so that falls back to the static config
-        # limit exactly as if no provider were configured at all.
+        # limit exactly as if no provider were configured at all. Returns
+        # (limit_incl_vat, limit_exc_vat) -- the caller logs the former
+        # (matching the operator-familiar price_limit_incl_vat convention)
+        # and builds against the latter.
         _limit_incl_vat = self._static_limit_incl_vat
         if self._threshold_provider is not None:
             _dynamic_limit = await self._threshold_provider.invoke("get_threshold")
             if _dynamic_limit is not None:
                 _limit_incl_vat = _dynamic_limit
-        return _limit_incl_vat / ELECTRICITY_VAT_RATE
+        return _limit_incl_vat, _limit_incl_vat / ELECTRICITY_VAT_RATE
 
     async def _rebuild_on_replug(self) -> None:
         _now = datetime.now(ZoneInfo("UTC"))
@@ -125,12 +128,14 @@ class Scheduler:
             self._time_until = max(price.valid_to for price in _new_prices)
             self._last_schedule_update = _now
             _prices_from_now = [p for p in self._agile_prices if p.valid_to > _now]
-            self._builder.update_limit(await self._current_limit_exc_vat())
+            _limit_incl_vat, _limit_exc_vat = await self._current_limit()
+            self._builder.update_limit(_limit_exc_vat)
             self._schedule, self._average_price_per_kwh = self._builder.build(
                 _prices_from_now,
             )
             logger.info(
-                f"New Schedule created on car plugged in: {len(self._schedule)} sessions."
+                f"New Schedule created on car plugged in: {len(self._schedule)} sessions "
+                f"(limit {_limit_incl_vat:.2f}p/kWh incl VAT)."
             )
             for session in self._schedule:
                 logger.info(f"Session: {session.format(self._timezone)}.")
@@ -153,11 +158,15 @@ class Scheduler:
             logger.info(
                 f"New Agile prices received: {len(self._agile_prices)} periods, valid until {self._time_until}."
             )
-            self._builder.update_limit(await self._current_limit_exc_vat())
+            _limit_incl_vat, _limit_exc_vat = await self._current_limit()
+            self._builder.update_limit(_limit_exc_vat)
             self._schedule, self._average_price_per_kwh = self._builder.build(
                 self._agile_prices,
             )
-            logger.info(f"New schedule created: {len(self._schedule)} sessions.")
+            logger.info(
+                f"New schedule created: {len(self._schedule)} sessions "
+                f"(limit {_limit_incl_vat:.2f}p/kWh incl VAT)."
+            )
             for session in self._schedule:
                 logger.info(f"Session: {session.format(self._timezone)}.")
         except Exception:

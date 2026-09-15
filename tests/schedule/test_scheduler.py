@@ -1,7 +1,9 @@
+import logging
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock
 from zoneinfo import ZoneInfo
 
+import pytest
 from common.extensions import ExtensionWrapper
 from common.model import Price
 from octopus.client import AgileClient
@@ -167,6 +169,69 @@ async def test_scheduler_refreshes_the_threshold_on_the_next_new_prices_rebuild_
     await scheduler._rebuild_on_new_prices()
 
     assert len(scheduler.schedule) == 1  # 60p limit now admits the 50p price
+
+
+async def test_scheduler_logs_the_computed_threshold_to_two_decimal_places_on_rebuild(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The extension's own poll-time log already reports the threshold it
+    # computed (2dp) -- this proves the scheduler's own rebuild log also
+    # states which limit it actually built against, at the same precision,
+    # for whichever cycle triggered the rebuild.
+    _now = datetime.now(tz=_UTC)
+    prices = [_half_hour_price(50, 0, _now)]
+    threshold_provider = ExtensionWrapper(
+        name="fake_threshold",
+        provider=_FixedThresholdProvider({}, value=38.891799950000006),
+        kind="charging threshold",
+    )
+    scheduler = Scheduler(
+        _agile_client(prices),
+        _config(price_limit_incl_vat=100),
+        threshold_provider=threshold_provider,
+    )
+
+    with caplog.at_level(logging.INFO):
+        scheduler.invalidate()
+        await scheduler.update()
+
+    assert any("38.89" in r.message for r in caplog.records)
+
+
+async def test_scheduler_logs_the_computed_threshold_on_a_new_prices_rebuild_too(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # _rebuild_on_new_prices() is a second, independent log call site --
+    # matches the existing "second call site" test above for build
+    # behaviour, but for the log line specifically: a regression that only
+    # added the limit to the replug-triggered log would pass every other
+    # test in this file silently.
+    _now = datetime.now(tz=_UTC)
+    _later = _now + timedelta(hours=2)
+    _client = Mock(spec=AgileClient)
+    _client.get_upcoming_prices = AsyncMock(
+        side_effect=[
+            [_half_hour_price(50, 0, _now)],
+            [_half_hour_price(50, 0, _later)],
+        ]
+    )
+    threshold_provider = ExtensionWrapper(
+        name="fake_threshold",
+        provider=_ChangingThresholdProvider([5.0, 60.0]),
+        kind="charging threshold",
+    )
+    scheduler = Scheduler(
+        _client,
+        _config(price_limit_incl_vat=100),
+        threshold_provider=threshold_provider,
+    )
+    scheduler.invalidate()
+    await scheduler.update()
+
+    with caplog.at_level(logging.INFO):
+        await scheduler._rebuild_on_new_prices()
+
+    assert any("60.00" in r.message for r in caplog.records)
 
 
 async def test_scheduler_correctly_converts_the_dynamic_thresholds_incl_vat_pence_to_exc_vat() -> (

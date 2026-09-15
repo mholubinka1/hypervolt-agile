@@ -94,12 +94,14 @@ async def main() -> None:
         extensions = await load_extensions(app_config.led.extensions, _extensions_dir)
 
     threshold_provider: GenericExtensionWrapper | None = None
-    if app_config.threshold_extension:
+    if app_config.extensions and app_config.extensions.threshold:
         _extensions_dir = await _require_extensions_dir(
-            args, agile_client, "threshold_extension"
+            args, agile_client, "extensions.threshold"
         )
         threshold_provider = await load_threshold_extension(
-            app_config.threshold_extension, _extensions_dir
+            app_config.extensions.threshold,
+            _extensions_dir,
+            app_config.schedule.frequency,
         )
 
     scheduler = Scheduler(

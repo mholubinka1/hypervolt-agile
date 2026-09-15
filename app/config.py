@@ -142,16 +142,32 @@ class LedConfig(BaseModel):
     extensions: list[ExtensionEntry] = []
 
 
+class ExtensionsConfig(BaseModel):
+    # Keyed by provider kind, one field per kind -- e.g. `threshold` for the
+    # single active BehaviourProvider (ADR 0021). A future vehicle-provider
+    # kind lands here as its own field when it's actually built, not
+    # pre-provisioned now.
+    model_config = {"extra": "forbid"}
+
+    threshold: ExtensionEntry | None = None
+
+
 class AppConfig(BaseModel):
     octopus: Octopus
     hypervolt: Hypervolt
     schedule: Schedule
     led: LedConfig | None = None
-    threshold_extension: ExtensionEntry | None = None
+    extensions: ExtensionsConfig | None = None
     log_file: str | None = None
     log_level: str = "INFO"
 
-    model_config = {"populate_by_name": True}
+    # extra="forbid" -- a top-level key that no longer exists (e.g. the old
+    # threshold_extension:, renamed to extensions.threshold: -- ADR 0021's
+    # 2026-09-15 amendment) must fail loudly at startup rather than being
+    # silently dropped, which would otherwise degrade the charging schedule
+    # to its static fallback with no visible error. Matches LedConfig's and
+    # ExtensionsConfig's own extra="forbid" convention.
+    model_config = {"populate_by_name": True, "extra": "forbid"}
 
 
 class ConfigLoader:

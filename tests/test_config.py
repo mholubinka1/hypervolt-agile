@@ -4,10 +4,13 @@ import pytest
 from pydantic import ValidationError
 
 from config import (
+    AppConfig,
     BuiltInLedTheme,
     ConfigLoader,
     CustomLedTheme,
     ExtensionEntry,
+    ExtensionsConfig,
+    Hypervolt,
     LedConfig,
     Octopus,
     Schedule,
@@ -103,6 +106,14 @@ def test_led_config_rejects_the_removed_brightness_field() -> None:
 def test_led_config_rejects_an_unknown_key() -> None:
     with pytest.raises(ValidationError):
         LedConfig(enabled=True, wibble=1)
+
+
+def test_extensions_config_rejects_an_unknown_provider_kind() -> None:
+    # Mirrors LedConfig's own unknown-key rejection above -- a typo'd or
+    # not-yet-built provider kind (e.g. `vehicles:` before it exists) should
+    # fail loudly rather than being silently ignored.
+    with pytest.raises(ValidationError):
+        ExtensionsConfig(vehicles={"volvo": {"name": "vehicles/volvo"}})
 
 
 @pytest.mark.parametrize(
@@ -266,22 +277,23 @@ def test_extension_entry_defaults_config_to_an_empty_dict_when_omitted() -> None
     assert entry.config == {}
 
 
-def test_config_loader_parses_a_configured_threshold_extension(tmp_path: Path) -> None:
+def test_config_loader_parses_a_configured_extensions_threshold(tmp_path: Path) -> None:
     config_file = tmp_path / "config.yml"
     config_file.write_text(
         _VALID_CONFIG_YAML
-        + "\nthreshold_extension:\n  name: fuel_price\n  config:\n    api_key: xyz\n",
+        + "\nextensions:\n  threshold:\n    name: fuel_price\n    config:\n      api_key: xyz\n",
         encoding="utf-8",
     )
 
     app_config = ConfigLoader(config_file).get_config()
 
-    assert app_config.threshold_extension == ExtensionEntry(
+    assert app_config.extensions is not None
+    assert app_config.extensions.threshold == ExtensionEntry(
         name="fuel_price", config={"api_key": "xyz"}
     )
 
 
-def test_config_loader_defaults_threshold_extension_to_none_when_omitted(
+def test_config_loader_defaults_extensions_threshold_to_none_when_omitted(
     tmp_path: Path,
 ) -> None:
     config_file = tmp_path / "config.yml"
@@ -289,13 +301,58 @@ def test_config_loader_defaults_threshold_extension_to_none_when_omitted(
 
     app_config = ConfigLoader(config_file).get_config()
 
-    assert app_config.threshold_extension is None
+    assert app_config.extensions is None
 
 
-def test_config_loader_exits_when_price_limit_incl_vat_is_missing_even_with_a_threshold_extension(
+def test_config_loader_rejects_the_legacy_top_level_threshold_extension_key(
     tmp_path: Path,
 ) -> None:
-    # threshold_extension only supplies a dynamic override each cycle --
+    # Regression guard for the extensions.threshold rename (ADR 0021's
+    # 2026-09-15 amendment): AppConfig's extra="forbid" must reject the old
+    # top-level key outright rather than silently discarding it -- a config
+    # still on the old key would otherwise lose its dynamic threshold
+    # provider with no visible error, quietly falling back to the static
+    # price_limit_incl_vat.
+    config_file = tmp_path / "config.yml"
+    config_file.write_text(
+        _VALID_CONFIG_YAML
+        + "\nthreshold_extension:\n  name: fuel_price\n  config:\n    api_key: xyz\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        ConfigLoader(config_file)
+
+    assert exc_info.value.code == 1
+
+
+def test_app_config_rejects_an_unknown_top_level_key() -> None:
+    # General case behind the regression guard above -- mirrors
+    # LedConfig's and ExtensionsConfig's own unknown-key rejection tests.
+    _valid_kwargs = {
+        "octopus": Octopus(account_number="A-123", api_key="sk_test"),
+        "hypervolt": Hypervolt(username="user@example.com", password="secret"),
+        "schedule": Schedule(
+            total_charge_duration=4,
+            price_limit_incl_vat=15,
+            update_every_mins=30,
+            poll_every_secs=10,
+        ),
+    }
+    # Prove the valid kwargs alone construct cleanly -- otherwise the
+    # assertion below could pass for the wrong reason (an unrelated
+    # ValidationError from a missing/invalid required field), the same
+    # mistake this test itself first shipped with.
+    AppConfig(**_valid_kwargs)
+
+    with pytest.raises(ValidationError):
+        AppConfig(**_valid_kwargs, wibble=1)
+
+
+def test_config_loader_exits_when_price_limit_incl_vat_is_missing_even_with_an_extensions_threshold(
+    tmp_path: Path,
+) -> None:
+    # extensions.threshold only supplies a dynamic override each cycle --
     # the static price_limit_incl_vat must still be present as the required
     # fallback, never made optional by configuring a provider.
     config_file = tmp_path / "config.yml"
@@ -311,8 +368,9 @@ schedule:
   total_charge_duration: 4
   update_every_mins: 30
   poll_every_secs: 10
-threshold_extension:
-  name: fuel_price
+extensions:
+  threshold:
+    name: fuel_price
 """,
         encoding="utf-8",
     )

@@ -37,8 +37,9 @@ See #124 directly — unchanged by this feature.
 Define the `BehaviourProvider` protocol (`__init__(config)`, `async get_threshold() -> float |
 None`, optional `start()`/`stop()` lifecycle hooks) loaded through the generalised loader from
 issue #124, using `get_threshold` as its marker method (ADR 0021). Add
-`AppConfig.threshold_extension: ExtensionEntry | None = None` — a single optional entry, not a
-list. `price_limit_incl_vat` stays required regardless of whether `threshold_extension` is set.
+`AppConfig.extensions.threshold: ExtensionEntry | None = None` (under a new `ExtensionsConfig`
+model keyed by provider kind — see ADR 0021's 2026-09-15 amendment) — a single optional entry, not
+a list. `price_limit_incl_vat` stays required regardless of whether `extensions.threshold` is set.
 Wire `main.py` to load it via the existing `--extensions-dir` flag, the same way LED extensions
 load today.
 
@@ -57,7 +58,7 @@ No real fuel-price integration exists yet at this point — prove the wiring wit
 
 - [ ] `BehaviourProvider` protocol is defined and loads through the shared loader using
       `get_threshold` as its marker method
-- [ ] `AppConfig.threshold_extension: ExtensionEntry | None` is added; `price_limit_incl_vat`
+- [ ] `AppConfig.extensions.threshold: ExtensionEntry | None` is added; `price_limit_incl_vat`
       remains required in all cases
 - [ ] No provider configured → static `price_limit_incl_vat` is used, identical to today's
       behaviour
@@ -134,21 +135,21 @@ LED and the planned Volvo extension). Any exception anywhere in the poll is caug
 inside the extension itself.
 
 This is the slice that makes the feature end-to-end usable: registering
-`threshold_extension: {name: behaviours/dynamic_charging_threshold, config: {...}}` in
+`extensions: {threshold: {name: behaviours/dynamic_charging_threshold, config: {...}}}` in
 `config.yml` now produces a live fuel-aware charging threshold in production.
 
 ### Acceptance criteria
 
-- [ ] Breakeven/margin formula is implemented as a pure, standalone function and tested with
+- [x] Breakeven/margin formula is implemented as a pure, standalone function and tested with
       hand-picked inputs independent of any I/O
-- [ ] `mi_per_kwh` defaults to `3.5` when omitted from config
-- [ ] `extensions/behaviours/dynamic_charging_threshold.py` implements `BehaviourProvider` and
+- [x] `mi_per_kwh` defaults to `3.5` when omitted from config
+- [x] `extensions/behaviours/dynamic_charging_threshold.py` implements `BehaviourProvider` and
       loads via the same `--extensions-dir` mechanism as other extension kinds
-- [ ] The background poll runs on the `update_every_mins` cadence, not more often
-- [ ] `get_threshold()` never awaits a live API call — always returns from cache
-- [ ] Fuel Finder unavailable (any error case from #3) → `get_threshold()` returns `None` this
+- [x] The background poll runs on the `update_every_mins` cadence, not more often
+- [x] `get_threshold()` never awaits a live API call — always returns from cache
+- [x] Fuel Finder unavailable (any error case from #3) → `get_threshold()` returns `None` this
       cycle, and the scheduler falls back to the static threshold (via #2) rather than stalling
-- [ ] End-to-end: with valid fuel type/MPG/postcode/credentials configured, the app computes and
+- [x] End-to-end: with valid fuel type/MPG/postcode/credentials configured, the app computes and
       logs a dynamic threshold each rebuild and the schedule respects it
 
 ---

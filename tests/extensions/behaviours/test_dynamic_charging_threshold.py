@@ -1,0 +1,581 @@
+import asyncio
+import json
+from typing import Any
+from unittest.mock import AsyncMock, patch
+
+import httpx
+import pytest
+from behaviours.dynamic_charging_threshold import (
+    DynamicChargingThresholdExtension,
+    _dynamic_threshold_incl_vat,
+)
+from fuel_finder.auth import FuelFinderAuth
+from fuel_finder.client import FuelFinderClient
+
+_FUEL_FINDER_BASE_URL = "https://www.fuel-finder.service.gov.uk"
+_GEOCODE_RESULT = {
+    "status": 200,
+    "result": {"postcode": "SW1A 1AA", "latitude": 51.5, "longitude": -0.14},
+}
+
+
+def test_computes_the_dynamic_threshold_as_eighty_percent_of_the_fuel_breakeven_price() -> (
+    None
+):
+    # 150p/litre petrol, 45.4609 mpg, 3.5 mi/kWh -> breakeven of 52.5p/kWh
+    # (fuel cost per mile == electric cost per mile), margined down by the
+    # fixed 20% safety margin to 42.0p/kWh.
+    assert _dynamic_threshold_incl_vat(
+        fuel_price_per_litre=150.0, mpg=45.4609, mi_per_kwh=3.5
+    ) == pytest.approx(42.0)
+
+
+def _valid_config(**overrides: Any) -> dict[str, Any]:
+    _config: dict[str, Any] = {
+        "fuel_type": "petrol",
+        "mpg": 45.4609,
+        "postcode": "SW1A 1AA",
+        "station_count": 1,
+        "client_id": "the-client-id",
+        "client_secret": "the-client-secret",
+        "update_every_mins": 30,
+    }
+    _config.update(overrides)
+    return _config
+
+
+def _station(node_id: str, latitude: float, longitude: float) -> dict:
+    return {
+        "node_id": node_id,
+        "trading_name": "TEST STATION",
+        "location": {
+            "address_line_1": "1 TEST STREET",
+            "postcode": "TE5 7ST",
+            "latitude": latitude,
+            "longitude": longitude,
+        },
+        "fuel_types": ["E10", "B7_STANDARD"],
+    }
+
+
+def _price_entry(node_id: str, prices: list[tuple[str, float]]) -> dict:
+    return {
+        "node_id": node_id,
+        "trading_name": "TEST STATION",
+        "fuel_prices": [
+            {
+                "fuel_type": _fuel_type,
+                "price": _price,
+                "price_last_updated": "2026-09-07T20:37:43.000Z",
+                "price_change_effective_timestamp": "2026-09-07T20:37:43.000Z",
+            }
+            for _fuel_type, _price in prices
+        ],
+    }
+
+
+def _router(
+    *,
+    pfs_batches: list[list[dict]],
+    price_batches: list[list[dict]],
+) -> Any:
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.postcodes.io":
+            return httpx.Response(200, json=_GEOCODE_RESULT)
+        if request.url.path == "/api/v1/oauth/generate_access_token":
+            return httpx.Response(
+                200,
+                json={
+                    "success": True,
+                    "data": {
+                        "access_token": "the-token",
+                        "token_type": "Bearer",
+                        "expires_in": 3600,
+                        "refresh_token": "the-refresh-token",
+                        "refresh_token_expires_in": 172800,
+                    },
+                    "message": "Operation successful",
+                },
+            )
+        if request.url.path == "/api/v1/pfs":
+            _pages = pfs_batches
+        elif request.url.path == "/api/v1/pfs/fuel-prices":
+            _pages = price_batches
+        else:
+            raise AssertionError(f"Unexpected request: {request.url}")
+        _batch = int(request.url.params["batch-number"])
+        _page = _pages[_batch - 1] if _batch <= len(_pages) else []
+        # httpx.Response(json=...) hardcodes allow_nan=False internally,
+        # unlike stdlib json.dumps's own default -- building the body
+        # manually lets a non-finite price (NaN/Infinity) round-trip
+        # through this mock the same way a permissive real API response
+        # could still produce one, so invalid-price tests exercise the
+        # real chain rather than mocking FuelFinderClient directly.
+        return httpx.Response(
+            200,
+            content=json.dumps(_page).encode(),
+            headers={"content-type": "application/json"},
+        )
+
+    return _handler
+
+
+def _wire_mock_transport(
+    extension: DynamicChargingThresholdExtension,
+    *,
+    pfs_batches: list[list[dict]],
+    price_batches: list[list[dict]],
+) -> None:
+    # Mirrors tests/extensions/test_saints_fc.py's own convention of
+    # re-pointing the extension's real httpx client at a MockTransport after
+    # construction, extended one layer further here since this extension
+    # owns a FuelFinderAuth + FuelFinderClient built from that client rather
+    # than calling it directly -- both are rebuilt from the same mock client
+    # so every real code path (geocoding, auth, pagination, distance
+    # ranking) still runs for real, only the transport is faked.
+    _mock_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            _router(pfs_batches=pfs_batches, price_batches=price_batches)
+        ),
+        base_url=_FUEL_FINDER_BASE_URL,
+    )
+    extension._client = _mock_client
+    extension._auth = FuelFinderAuth(
+        _mock_client, client_id="the-client-id", client_secret="the-client-secret"
+    )
+    extension._fuel_finder = FuelFinderClient(_mock_client, extension._auth)
+
+
+async def test_petrol_fuel_type_resolves_to_the_fuel_finder_e10_code() -> None:
+    # Given fuel_type: petrol, the extension must select the E10 price at a
+    # station reporting both grades, not the diesel (B7_STANDARD) price also
+    # present in the same fixture data -- proof it resolved the code
+    # correctly, without reaching into a private attribute to check it
+    # directly.
+    extension = DynamicChargingThresholdExtension(_valid_config(fuel_type="petrol"))
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 130.0), ("B7_STANDARD", 999.0)])]],
+    )
+
+    await extension._poll_once()
+
+    assert await extension.get_threshold() == pytest.approx(
+        _dynamic_threshold_incl_vat(130.0, 45.4609, 3.5)
+    )
+
+
+async def test_diesel_fuel_type_resolves_to_the_fuel_finder_b7_standard_code() -> None:
+    # Mirrors the petrol test above: the station reports both grades, so
+    # picking the diesel price specifically proves fuel_type: diesel
+    # resolved to B7_STANDARD, not the petrol E10 price present in the same
+    # fixture data.
+    extension = DynamicChargingThresholdExtension(_valid_config(fuel_type="diesel"))
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 999.0), ("B7_STANDARD", 140.0)])]],
+    )
+
+    await extension._poll_once()
+
+    assert await extension.get_threshold() == pytest.approx(
+        _dynamic_threshold_incl_vat(140.0, 45.4609, 3.5)
+    )
+
+
+def test_an_unrecognised_fuel_type_raises_value_error() -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_valid_config(fuel_type="lpg"))
+
+
+def test_a_non_string_unhashable_fuel_type_raises_value_error_not_type_error() -> None:
+    # A YAML list (e.g. `fuel_type: [petrol]`) is unhashable -- must raise
+    # the same actionable ValueError as any other invalid fuel_type, not a
+    # TypeError from the dict membership check.
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_valid_config(fuel_type=["petrol"]))
+
+
+@pytest.mark.parametrize("bad_postcode", [None, "", "   ", 12345])
+def test_postcode_must_be_a_non_blank_string(bad_postcode: object) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_valid_config(postcode=bad_postcode))
+
+
+def test_a_missing_mpg_raises_value_error() -> None:
+    _config = _valid_config()
+    del _config["mpg"]
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_config)
+
+
+async def test_mi_per_kwh_defaults_to_three_point_five_when_omitted() -> None:
+    # Observable through a poll's computed threshold, not by reaching into
+    # a private attribute: the config omits mi_per_kwh entirely, and the
+    # resulting cached threshold must match the default 3.5 mi/kWh.
+    _config = _valid_config()
+    assert "mi_per_kwh" not in _config
+    extension = DynamicChargingThresholdExtension(_config)
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+
+    await extension._poll_once()
+
+    assert await extension.get_threshold() == pytest.approx(
+        _dynamic_threshold_incl_vat(150.0, 45.4609, 3.5)
+    )
+
+
+def test_a_missing_station_count_raises_value_error() -> None:
+    _config = _valid_config()
+    del _config["station_count"]
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_config)
+
+
+@pytest.mark.parametrize("bad_mpg", [0, -10, "fast", float("nan"), float("inf"), True])
+def test_mpg_must_be_a_positive_finite_number(bad_mpg: object) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_valid_config(mpg=bad_mpg))
+
+
+@pytest.mark.parametrize("bad_station_count", [0, -1, 1.5, "5", True])
+def test_station_count_must_be_a_positive_int(bad_station_count: object) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(
+            _valid_config(station_count=bad_station_count)
+        )
+
+
+@pytest.mark.parametrize(
+    "bad_mi_per_kwh", [0, -3.5, "fast", float("nan"), float("inf"), True]
+)
+def test_mi_per_kwh_must_be_a_positive_finite_number_when_provided(
+    bad_mi_per_kwh: object,
+) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_valid_config(mi_per_kwh=bad_mi_per_kwh))
+
+
+@pytest.mark.parametrize(
+    "bad_radius_miles", [0, -10, "far", float("nan"), float("inf"), True]
+)
+def test_radius_miles_must_be_a_positive_finite_number_when_provided(
+    bad_radius_miles: object,
+) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_valid_config(radius_miles=bad_radius_miles))
+
+
+def test_a_missing_update_every_mins_raises_value_error() -> None:
+    # update_every_mins is injected by load_threshold_extension (never
+    # operator-set -- see app/schedule/behaviour.py), but the extension's
+    # own construction-time validation must still reject a missing value
+    # the same way as any other required field, guarding every()'s interval
+    # arithmetic against a silently-absent cadence.
+    _config = _valid_config()
+    del _config["update_every_mins"]
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_config)
+
+
+@pytest.mark.parametrize(
+    "bad_update_every_mins", [0, -30, "often", float("nan"), float("inf"), True]
+)
+def test_update_every_mins_must_be_a_positive_finite_number(
+    bad_update_every_mins: object,
+) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(
+            _valid_config(update_every_mins=bad_update_every_mins)
+        )
+
+
+async def test_radius_miles_excludes_a_station_beyond_the_configured_radius() -> None:
+    # Scenario: radius_miles is an upper-bound cap, not an alternative
+    # selection mode -- a farther station reporting a cheaper price is
+    # excluded outright, even though station_count would otherwise want more
+    # matches. Proven by observing the computed threshold reflects only the
+    # in-radius station's price, not an average blended with the excluded one.
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(station_count=2, radius_miles=5)
+    )
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("near", 51.5, -0.14), _station("far", 52.5, -0.14)]],
+        price_batches=[
+            [
+                _price_entry("near", [("E10", 150.0)]),
+                _price_entry("far", [("E10", 100.0)]),
+            ]
+        ],
+    )
+
+    await extension._poll_once()
+
+    assert await extension.get_threshold() == pytest.approx(
+        _dynamic_threshold_incl_vat(150.0, 45.4609, 3.5)
+    )
+
+
+@pytest.mark.parametrize("credential_key", ["client_id", "client_secret"])
+@pytest.mark.parametrize("bad_value", [None, "", "   "])
+def test_a_missing_or_blank_credential_raises_value_error(
+    credential_key: str, bad_value: object
+) -> None:
+    _config = _valid_config(**{credential_key: bad_value})
+
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_config)
+
+
+@pytest.mark.parametrize("credential_key", ["client_id", "client_secret"])
+def test_a_non_string_credential_error_does_not_echo_the_value(
+    credential_key: str,
+) -> None:
+    # A non-string, distinctive credential value: if the error message ever
+    # echoed the value itself (rather than just its type), this fake but
+    # secret-shaped value would show up verbatim -- mirrors saints_fc.py's
+    # api_key validation convention (describe the type, don't echo).
+    _config = _valid_config(**{credential_key: 424242424242})
+
+    with pytest.raises(ValueError) as _exc_info:
+        DynamicChargingThresholdExtension(_config)
+
+    assert "424242424242" not in str(_exc_info.value)
+    assert "int" in str(_exc_info.value)
+
+
+async def test_a_successful_poll_caches_the_computed_margined_threshold() -> None:
+    # Scenario 9: the full real average_price_near() call chain (geocoding,
+    # auth, pagination, distance ranking) runs against a MockTransport --
+    # get_threshold() afterwards reflects the margined breakeven computed
+    # from the price it found.
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(mpg=45.4609, station_count=1)
+    )
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+
+    assert await extension.get_threshold() is None  # nothing cached yet
+
+    await extension._poll_once()
+
+    assert await extension.get_threshold() == pytest.approx(42.0)
+
+
+async def test_a_poll_finding_no_matching_fuel_type_clears_a_previously_cached_threshold() -> (
+    None
+):
+    # Scenario 10: average_price_near() returns None (the only nearby
+    # station doesn't report the requested fuel type) -- get_threshold()
+    # must fall back cleanly to None afterward, not raise. Seeds a real
+    # cached value from a prior successful poll first -- self._threshold
+    # starts at None by construction, so asserting None after a no-match
+    # poll alone would pass whether or not a *previously cached* value
+    # actually gets cleared.
+    extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    assert await extension.get_threshold() is not None
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("B7_STANDARD", 150.0)])]],
+    )
+    await extension._poll_once()
+
+    assert await extension.get_threshold() is None
+
+
+@pytest.mark.parametrize("bad_price", [-150.0, 0.0, float("nan"), float("inf")])
+async def test_a_poll_receiving_an_invalid_fuel_price_clears_a_previously_cached_threshold(
+    bad_price: float,
+) -> None:
+    # FuelFinderClient passes the API's raw price straight through with no
+    # validation of its own -- a malformed payload (negative, zero, NaN, or
+    # infinite) must be treated as unavailable data, the same as no price
+    # found at all, rather than caching a threshold that silently breaks
+    # every schedule comparison (NaN never compares true; infinity accepts
+    # every price). Exercised through the real HTTP-mocked chain for every
+    # case, including NaN/Infinity -- _router builds responses via raw
+    # content= rather than httpx's stricter json= helper specifically so
+    # these non-finite values can round-trip through it.
+    extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    assert await extension.get_threshold() is not None
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", bad_price)])]],
+    )
+    await extension._poll_once()
+
+    assert await extension.get_threshold() is None
+
+
+async def test_a_poll_computing_an_overflowing_threshold_clears_a_previously_cached_threshold() -> (
+    None
+):
+    # A raw price can itself be finite and positive (passing the check
+    # above) while still overflowing to inf once multiplied through the
+    # breakeven formula -- 1e308p/litre is finite, but 1e308 * 4.54609
+    # already exceeds float's max representable value. Must be treated as
+    # unavailable data the same way an invalid raw price is, rather than
+    # caching an infinite threshold that would accept every electricity
+    # price.
+    extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    assert await extension.get_threshold() is not None
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 1e308)])]],
+    )
+    await extension._poll_once()
+
+    assert await extension.get_threshold() is None
+
+
+async def test_a_poll_computing_an_underflowing_threshold_clears_a_previously_cached_threshold() -> (
+    None
+):
+    # The other edge of the same guard: an extreme but valid mpg can drive
+    # the breakeven arithmetic to underflow to exactly 0.0 rather than
+    # overflowing -- 1e-300p/litre and a 1e300 mpg (both individually
+    # finite and positive, passing every earlier check) divide down past
+    # float's smallest representable positive value. Must be treated as
+    # unavailable data the same way an infinite threshold is, rather than
+    # caching a zero threshold that would accept no electricity price at
+    # all.
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(mpg=1e300, station_count=1)
+    )
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    assert await extension.get_threshold() is not None
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 1e-300)])]],
+    )
+    await extension._poll_once()
+
+    assert await extension.get_threshold() is None
+
+
+async def test_get_threshold_returns_none_instantly_before_any_poll_has_completed() -> (
+    None
+):
+    # Scenario 11: proves get_threshold() never awaits live I/O -- no
+    # httpx.MockTransport (or any transport at all) is wired up, so any
+    # attempt to actually make a request would hang or error; a near-zero
+    # timeout on the await proves it returns immediately.
+    extension = DynamicChargingThresholdExtension(_valid_config())
+
+    _result = await asyncio.wait_for(extension.get_threshold(), timeout=0.01)
+
+    assert _result is None
+
+
+async def test_start_schedules_an_interval_poll_at_the_configured_cadence() -> None:
+    # Scenario 12: mirrors tests/extensions/test_saints_fc.py's own cadence
+    # test shape -- update_every_mins (minutes) converted to seconds for
+    # every().
+    extension = DynamicChargingThresholdExtension(_valid_config(update_every_mins=15))
+
+    with patch("behaviours.dynamic_charging_threshold.every", AsyncMock()) as _every:
+        await extension.start()
+
+    _every.assert_called_once_with(900, extension._poll_once)
+    await extension.stop()
+
+
+async def test_stop_cancels_the_background_task_and_closes_the_http_client() -> None:
+    # Scenario 13: mirrors test_saints_fc.py's own stop() test -- the task
+    # is cancelled cleanly and the extension's own httpx client is closed
+    # (a closed client raises on any further use).
+    extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension.start()
+
+    await extension.stop()
+
+    assert extension._task is not None
+    assert extension._task.cancelled() or extension._task.done()
+    assert extension._client.is_closed
+
+
+async def test_an_unexpected_error_during_a_poll_is_caught_and_preserves_the_cache(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Scenario 14: an unexpected failure -- here, a malformed 200 geocode
+    # response missing the "result" key, which FuelFinderClient itself does
+    # not catch (only httpx.HTTPError) -- must be caught inside the
+    # extension itself, logged, and never propagate out of _poll_once()/
+    # get_threshold(). A transient failure like this should not wipe a
+    # still-valid cached threshold from a previous successful poll, so the
+    # last good value is left in place rather than cleared to None.
+    extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    _cached_before = await extension.get_threshold()
+    assert _cached_before is not None
+
+    def _malformed_geocode_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.postcodes.io":
+            return httpx.Response(200, json={"status": 200})  # no "result" key
+        raise AssertionError(f"Unexpected request: {request.url}")
+
+    extension._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(_malformed_geocode_handler),
+        base_url=_FUEL_FINDER_BASE_URL,
+    )
+    extension._auth = FuelFinderAuth(
+        extension._client, client_id="the-client-id", client_secret="the-client-secret"
+    )
+    extension._fuel_finder = FuelFinderClient(extension._client, extension._auth)
+
+    with caplog.at_level("WARNING"):
+        await extension._poll_once()  # must not raise
+
+    assert await extension.get_threshold() == _cached_before
+    assert any("poll failed unexpectedly" in r.message for r in caplog.records)

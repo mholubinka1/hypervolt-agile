@@ -1,13 +1,19 @@
-import logging.config
 from datetime import UTC, datetime, timedelta
 from logging import Logger, getLogger
 
 import httpx
 from common.constants import APP_NAME
 from common.exceptions import APIError
-from common.logging import config
 
-logging.config.dictConfig(config)
+# Deliberately does NOT call logging.config.dictConfig() -- unlike app/*
+# modules imported eagerly at startup (before main.py's
+# configure_file_logging() runs), this module is only ever reached via a
+# dynamically loaded extension (extensions/behaviours/dynamic_charging_threshold.py),
+# which happens AFTER configure_file_logging() has already configured the
+# APP_NAME logger with a file handler (see extensions/saints_fc.py's
+# identical comment). Re-running dictConfig here would reset it back to
+# console-only, silently breaking file logging app-wide the moment the
+# extension is loaded.
 logger: Logger = getLogger(APP_NAME)
 
 
