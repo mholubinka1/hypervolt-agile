@@ -41,7 +41,7 @@ schedule:
   poll_every_secs: 10        # How often the scheduler runs (2–3600)
   update_every_mins: 30      # How often to fetch new Agile prices (1–1440)
   total_charge_duration: 3   # Target charge duration in hours (0–24)
-  price_limit_incl_vat: 30   # Max price in p/kWh inc. VAT to charge at (0–100)
+  price_limit_incl_vat: 30   # Max price in p/kWh inc. VAT to charge at (1–100; 0 defers fully to a dynamic threshold extension instead, see below)
 # log_file: /logs/hypervolt-agile-scheduler.log
 # log_level: INFO
 ```

@@ -122,6 +122,36 @@ async def test_scheduler_uses_the_threshold_providers_fresh_value_instead_of_the
     assert any("source: dynamic)" in r.message for r in caplog.records)
 
 
+async def test_scheduler_labels_the_source_as_dynamic_when_the_dynamic_value_equals_the_static_limit(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Boundary case for the min(dynamic, static) clamp (Copilot review, PR
+    # #168): when the two values are exactly equal, the source must still be
+    # labelled "dynamic", not "static cap" -- a regression from `<=` to `<`
+    # in the tie-break would mislabel this case without changing the built
+    # schedule at all (the numeric limit is identical either way), so only a
+    # log assertion can catch it.
+    _now = datetime.now(tz=_UTC)
+    prices = [_half_hour_price(50, 0, _now)]
+    threshold_provider = ExtensionWrapper(
+        name="fake_threshold",
+        provider=_FixedThresholdProvider({}, value=20.0),
+        kind="charging threshold",
+    )
+    scheduler = Scheduler(
+        _agile_client(prices),
+        _config(price_limit_incl_vat=20),
+        threshold_provider=threshold_provider,
+    )
+
+    with caplog.at_level(logging.INFO):
+        scheduler.invalidate()
+        await scheduler.update()
+
+    assert any("source: dynamic)" in r.message for r in caplog.records)
+    assert not any("source: static cap)" in r.message for r in caplog.records)
+
+
 async def test_scheduler_clamps_the_dynamic_threshold_to_the_static_price_limit(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -372,6 +402,37 @@ async def test_scheduler_uses_the_cached_dynamic_threshold_when_the_static_limit
 
     assert len(scheduler.schedule) == 1  # cached 40p limit still admits it
     assert any("source: cached dynamic)" in r.message for r in caplog.records)
+
+
+async def test_scheduler_retries_on_the_next_new_prices_cycle_after_a_cold_start_skip_with_unchanged_prices() -> (
+    None
+):
+    # Regression (Copilot review, PR #168): _rebuild_on_new_prices must not
+    # commit _time_until when the effective limit is None (cold start) --
+    # otherwise an unchanged price horizon on the next cycle looks identical
+    # to the one already "seen", so the method returns via the
+    # "Agile prices unchanged" short-circuit before ever asking the
+    # threshold provider again, leaving the car unscheduled indefinitely
+    # even once the extension has a usable value.
+    _now = datetime.now(tz=_UTC)
+    prices = [_half_hour_price(30, 0, _now)]
+    threshold_provider = ExtensionWrapper(
+        name="fake_threshold",
+        provider=_ChangingThresholdProvider([None, 40.0]),
+        kind="charging threshold",
+    )
+    scheduler = Scheduler(
+        _agile_client(prices),  # same prices returned on every call
+        _config_with_threshold_extension(price_limit_incl_vat=0),
+        threshold_provider=threshold_provider,
+    )
+
+    await scheduler._rebuild_on_new_prices()  # cold start: no limit yet, skips
+    assert scheduler.schedule == []
+
+    await scheduler._rebuild_on_new_prices()  # same prices, extension now has a value
+
+    assert len(scheduler.schedule) == 1  # 40p limit admits the 30p price
 
 
 async def test_scheduler_skips_the_rebuild_when_the_static_limit_is_zero_and_no_threshold_value_is_available_yet(

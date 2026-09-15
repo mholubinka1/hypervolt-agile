@@ -213,14 +213,20 @@ class Scheduler:
             if not _new_time_until > self._time_until:
                 logger.debug("Agile prices unchanged.")
                 return
-            self._agile_prices = _new_prices
-            self._time_until = _new_time_until
             logger.info(
-                f"New Agile prices received: {len(self._agile_prices)} periods, valid until {self._time_until}."
+                f"New Agile prices received: {len(_new_prices)} periods, valid until {_new_time_until}."
             )
+            # _time_until is deliberately not committed until a limit is
+            # actually available -- otherwise a cold-start skip (limit is
+            # None) would still advance it, making an unchanged price
+            # horizon on the next cycle look identical to the one just
+            # "seen" and short-circuit above before ever asking the
+            # threshold provider again (Copilot review, PR #168).
             _limit = await self._effective_limit_or_warn("schedule update")
             if _limit is None:
                 return
+            self._agile_prices = _new_prices
+            self._time_until = _new_time_until
             self._builder.update_limit(_limit.exc_vat)
             self._schedule, self._average_price_per_kwh = self._builder.build(
                 self._agile_prices,
