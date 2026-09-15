@@ -1,5 +1,7 @@
 # Issues: chore-consolidate-effective-limit-policy
 
+> Work complete — PR ready to merge.
+
 ## Extract the effective-limit policy into ThresholdPolicy
 
 **GitHub issue**: #171
@@ -29,24 +31,24 @@ the same rebuild logs and schedules as before.
 
 ### Acceptance criteria
 
-- [ ] Given a fresh dynamic value below the static limit, the effective limit is the dynamic value,
+- [x] Given a fresh dynamic value below the static limit, the effective limit is the dynamic value,
       labelled "dynamic".
-- [ ] Given a fresh dynamic value above the static limit, the effective limit is the static value,
+- [x] Given a fresh dynamic value above the static limit, the effective limit is the static value,
       labelled "static cap".
-- [ ] Given a fresh dynamic value exactly equal to the static limit, the effective limit is labelled
+- [x] Given a fresh dynamic value exactly equal to the static limit, the effective limit is labelled
       "dynamic", not "static cap".
-- [ ] Given no fresh dynamic value and a non-zero static limit, the effective limit is the static value,
+- [x] Given no fresh dynamic value and a non-zero static limit, the effective limit is the static value,
       labelled "static".
-- [ ] Given the static limit is the explicit opt-out value and a fresh dynamic value is available, the
+- [x] Given the static limit is the explicit opt-out value and a fresh dynamic value is available, the
       effective limit is the dynamic value as-is, with no clamp.
-- [ ] Given the static limit is the explicit opt-out value, no fresh dynamic value this cycle, but a
+- [x] Given the static limit is the explicit opt-out value, no fresh dynamic value this cycle, but a
       dynamic value cached from a prior cycle, the effective limit is the cached value, labelled "cached
       dynamic".
-- [ ] Given the static limit is the explicit opt-out value, no fresh dynamic value, and nothing cached
+- [x] Given the static limit is the explicit opt-out value, no fresh dynamic value, and nothing cached
       yet (cold start), the policy reports no limit is available.
-- [ ] `Scheduler`'s rebuild log still states the correct source label and the threshold value at the same
+- [x] `Scheduler`'s rebuild log still states the correct source label and the threshold value at the same
       precision as today.
-- [ ] All existing `Scheduler`-level tests covering these scenarios continue to pass unmodified in
+- [x] All existing `Scheduler`-level tests covering these scenarios continue to pass unmodified in
       behaviour (test location may move — see the "merge rebuild paths" and "validating wrapper" issues
       for where).
 
@@ -76,17 +78,17 @@ still carrying its own inline limit computation.
 
 ### Acceptance criteria
 
-- [ ] A car-plugged-in rebuild still fetches prices, computes the limit, builds the schedule, and logs
+- [x] A car-plugged-in rebuild still fetches prices, computes the limit, builds the schedule, and logs
       "New Schedule created on car plugged in..." with the correct source and value, unchanged from
       today.
-- [ ] A new-prices rebuild with an unchanged price horizon still skips without doing any further work
+- [x] A new-prices rebuild with an unchanged price horizon still skips without doing any further work
       (existing short-circuit preserved).
-- [ ] A new-prices rebuild with a changed price horizon still fetches, computes, builds, and logs "New
+- [x] A new-prices rebuild with a changed price horizon still fetches, computes, builds, and logs "New
       schedule created..." with the correct source and value, unchanged from today.
-- [ ] The existing regression (a cold-start skip on the new-prices trigger must not commit the new price
+- [x] The existing regression (a cold-start skip on the new-prices trigger must not commit the new price
       horizon) still holds — an unchanged-but-not-yet-limited price horizon still re-asks the policy on
       the following cycle rather than being mistaken for "already seen".
-- [ ] Both triggers demonstrably share one internal rebuild path (not just visually similar code) —
+- [x] Both triggers demonstrably share one internal rebuild path (not just visually similar code) —
       provable by a single point of change affecting both, e.g. via a shared private method.
 
 ---
@@ -119,15 +121,15 @@ policy as part of this change.
 
 ### Acceptance criteria
 
-- [ ] A provider returning zero, a negative number, infinity, or NaN is rejected: the cycle is treated as
+- [x] A provider returning zero, a negative number, infinity, or NaN is rejected: the cycle is treated as
       if the provider had returned nothing fresh, exactly as it is today.
-- [ ] The rejection is now logged in the generic provider-failure format (naming the kind, the provider
+- [x] The rejection is now logged in the generic provider-failure format (naming the kind, the provider
       name, the method, and the exception), not the old bespoke "Threshold extension returned an invalid
       value" message.
-- [ ] A provider returning a valid positive finite value is unaffected and passes through unchanged.
-- [ ] Repeated identical invalid values across consecutive cycles are still deduplicated in the log
+- [x] A provider returning a valid positive finite value is unaffected and passes through unchanged.
+- [x] Repeated identical invalid values across consecutive cycles are still deduplicated in the log
       exactly as any other repeated provider failure is today (no double-logging regression).
-- [ ] `ThresholdPolicy`'s own finite/positive check is removed — coverage for invalid values now lives at
+- [x] `ThresholdPolicy`'s own finite/positive check is removed — coverage for invalid values now lives at
       this loader/wrapper seam instead.
 
 ---
@@ -149,9 +151,9 @@ module-boundary decision — not a proposal for further behavioural change.
 
 ### Acceptance criteria
 
-- [ ] A new ADR file exists, numbered immediately after the most recent existing ADR.
-- [ ] It names the module now responsible for the effective-limit policy and cross-references both prior
+- [x] A new ADR file exists, numbered immediately after the most recent existing ADR.
+- [x] It names the module now responsible for the effective-limit policy and cross-references both prior
       ADRs it relates to.
-- [ ] It accurately reflects the final code structure after #171, #172, and #173 have merged, not a proposal.
+- [x] It accurately reflects the final code structure after #171, #172, and #173 have merged, not a proposal.
 
 ---
