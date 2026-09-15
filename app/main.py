@@ -8,6 +8,7 @@ from logging import Logger, getLogger
 from pathlib import Path
 
 from common.constants import APP_NAME
+from common.extensions import ExtensionWrapper as GenericExtensionWrapper
 from common.logging import config, configure_file_logging
 from common.polling import every
 from hypervolt.led import (
@@ -20,6 +21,7 @@ from hypervolt.led import (
 from octopus.client import AgileClient
 from octopus.postcode import is_valid_postcode
 from schedule import Scheduler
+from schedule.behaviour import load_threshold_extension
 from schedule.coordinator import ScheduleCoordinator
 
 from config import ConfigLoader
@@ -38,6 +40,21 @@ def parse_args() -> Namespace:
     _parser.add_argument("--extensions-dir", type=str, default=None)
     _args = _parser.parse_args()
     return _args
+
+
+async def _require_extensions_dir(
+    args: Namespace, agile_client: AgileClient, config_key: str
+) -> Path:
+    # Shared by every extension kind (LED, threshold, ...) that needs
+    # --extensions-dir -- each kind is independently optional in config.yml,
+    # but any one of them being configured makes the flag required.
+    if args.extensions_dir is None:
+        logger.critical(
+            f"{config_key} is configured in config.yml but --extensions-dir was not provided."
+        )
+        await agile_client.close()
+        sys.exit(1)
+    return Path(args.extensions_dir)
 
 
 async def main() -> None:
@@ -71,17 +88,23 @@ async def main() -> None:
 
     extensions: list[ExtensionWrapper] = []
     if app_config.led and app_config.led.enabled and app_config.led.extensions:
-        if args.extensions_dir is None:
-            logger.critical(
-                "led.extensions is configured in config.yml but --extensions-dir was not provided."
-            )
-            await agile_client.close()
-            sys.exit(1)
-        extensions = await load_extensions(
-            app_config.led.extensions, Path(args.extensions_dir)
+        _extensions_dir = await _require_extensions_dir(
+            args, agile_client, "led.extensions"
+        )
+        extensions = await load_extensions(app_config.led.extensions, _extensions_dir)
+
+    threshold_provider: GenericExtensionWrapper | None = None
+    if app_config.threshold_extension:
+        _extensions_dir = await _require_extensions_dir(
+            args, agile_client, "threshold_extension"
+        )
+        threshold_provider = await load_threshold_extension(
+            app_config.threshold_extension, _extensions_dir
         )
 
-    scheduler = Scheduler(agile_client, app_config)
+    scheduler = Scheduler(
+        agile_client, app_config, threshold_provider=threshold_provider
+    )
     coordinator = ScheduleCoordinator(
         scheduler,
         app_config,
@@ -119,6 +142,8 @@ async def main() -> None:
             logger.exception("Error closing schedule coordinator.")
         for extension in extensions:
             await extension.stop()
+        if threshold_provider is not None:
+            await threshold_provider.stop()
 
 
 if __name__ == "__main__":

@@ -37,6 +37,38 @@ async def test_load_extensions_loads_and_wraps_a_provider_identified_by_a_custom
     assert widget == "a widget"
 
 
+_FAKE_BEHAVIOUR_PROVIDER_SOURCE = """
+class FakeBehaviourProvider:
+    def __init__(self, config: dict) -> None:
+        self.config = config
+
+    async def get_threshold(self) -> float | None:
+        return 12.5
+"""
+
+
+async def test_load_extensions_loads_a_behaviour_provider_implementing_only_get_threshold(
+    tmp_path: Path,
+) -> None:
+    # Proves BehaviourProvider (issue #157) integrates with the shared loader
+    # from issue #124 end-to-end, file-based -- not just an in-memory fake --
+    # the same way FakeWidgetProvider above proves the loader generically.
+    _write_extension(tmp_path, "fake_behaviour", _FAKE_BEHAVIOUR_PROVIDER_SOURCE)
+    entries = [ExtensionEntry(name="fake_behaviour", config={})]
+
+    result = await load_extensions(
+        entries,
+        tmp_path,
+        marker_method="get_threshold",
+        kind="charging threshold extension",
+    )
+
+    assert len(result) == 1
+    assert result[0].name == "fake_behaviour"
+    threshold = await result[0].invoke("get_threshold")
+    assert threshold == 12.5
+
+
 def _widget_provider_source(widget: str) -> str:
     # get_widget() deliberately reads WIDGET_NAME back through
     # sys.modules[__name__] rather than closing over a local/module-level

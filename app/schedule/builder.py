@@ -23,6 +23,9 @@ class ScheduleBuilder:
         )
         self._limit_exc_vat = limit_exc_vat
 
+    def update_limit(self, limit_exc_vat: float) -> None:
+        self._limit_exc_vat = limit_exc_vat
+
     def build(self, prices: list[Price]) -> tuple[list[ChargeSession], float | None]:
         _lowest_prices = self._select_cheapest(prices)
         if len(_lowest_prices) < self._charging_periods:

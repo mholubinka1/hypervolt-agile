@@ -264,3 +264,60 @@ def test_extension_entry_defaults_config_to_an_empty_dict_when_omitted() -> None
     entry = ExtensionEntry(name="saints_fc")
 
     assert entry.config == {}
+
+
+def test_config_loader_parses_a_configured_threshold_extension(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yml"
+    config_file.write_text(
+        _VALID_CONFIG_YAML
+        + "\nthreshold_extension:\n  name: fuel_price\n  config:\n    api_key: xyz\n",
+        encoding="utf-8",
+    )
+
+    app_config = ConfigLoader(config_file).get_config()
+
+    assert app_config.threshold_extension == ExtensionEntry(
+        name="fuel_price", config={"api_key": "xyz"}
+    )
+
+
+def test_config_loader_defaults_threshold_extension_to_none_when_omitted(
+    tmp_path: Path,
+) -> None:
+    config_file = tmp_path / "config.yml"
+    config_file.write_text(_VALID_CONFIG_YAML, encoding="utf-8")
+
+    app_config = ConfigLoader(config_file).get_config()
+
+    assert app_config.threshold_extension is None
+
+
+def test_config_loader_exits_when_price_limit_incl_vat_is_missing_even_with_a_threshold_extension(
+    tmp_path: Path,
+) -> None:
+    # threshold_extension only supplies a dynamic override each cycle --
+    # the static price_limit_incl_vat must still be present as the required
+    # fallback, never made optional by configuring a provider.
+    config_file = tmp_path / "config.yml"
+    config_file.write_text(
+        """
+octopus:
+  account_number: "A-123"
+  api_key: "sk_test"
+hypervolt:
+  username: "user@example.com"
+  password: "secret"
+schedule:
+  total_charge_duration: 4
+  update_every_mins: 30
+  poll_every_secs: 10
+threshold_extension:
+  name: fuel_price
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        ConfigLoader(config_file)
+
+    assert exc_info.value.code == 1
