@@ -1,4 +1,5 @@
 import logging.config
+import math
 from datetime import datetime, timedelta
 from logging import Logger, getLogger
 from typing import NamedTuple
@@ -124,7 +125,14 @@ class Scheduler:
         if self._threshold_provider is not None:
             _dynamic_limit = await self._threshold_provider.invoke("get_threshold")
             if _dynamic_limit is not None:
-                self._cached_dynamic_limit_incl_vat = _dynamic_limit
+                if math.isfinite(_dynamic_limit) and _dynamic_limit > 0:
+                    self._cached_dynamic_limit_incl_vat = _dynamic_limit
+                else:
+                    logger.warning(
+                        f"Threshold extension returned an invalid value "
+                        f"({_dynamic_limit!r}); ignoring it for this cycle."
+                    )
+                    _dynamic_limit = None
 
         if self._static_limit_incl_vat == 0:
             if _dynamic_limit is not None:

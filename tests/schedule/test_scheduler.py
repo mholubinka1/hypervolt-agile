@@ -410,6 +410,37 @@ async def test_scheduler_skips_the_rebuild_when_the_static_limit_is_zero_and_no_
     assert len(scheduler.schedule) == 1  # 40p limit admits the 30p price
 
 
+@pytest.mark.parametrize("invalid_value", [0.0, -5.0, float("inf"), float("nan")])
+async def test_scheduler_ignores_a_non_finite_or_non_positive_dynamic_threshold(
+    invalid_value: float,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Scheduler must not trust an arbitrary extension's return value as-is --
+    # a misbehaving provider returning 0, negative, infinite, or NaN must be
+    # treated the same as "no fresh value this cycle" (falling back to the
+    # static limit here), not cached or used to compute an effective limit.
+    _now = datetime.now(tz=_UTC)
+    prices = [_half_hour_price(50, 0, _now)]  # 50p exc VAT -- under a 100p limit
+    threshold_provider = ExtensionWrapper(
+        name="fake_threshold",
+        provider=_FixedThresholdProvider({}, value=invalid_value),
+        kind="charging threshold",
+    )
+    scheduler = Scheduler(
+        _agile_client(prices),
+        _config(price_limit_incl_vat=100),
+        threshold_provider=threshold_provider,
+    )
+
+    with caplog.at_level(logging.INFO):
+        scheduler.invalidate()
+        await scheduler.update()
+
+    assert len(scheduler.schedule) == 1  # static 100p limit used instead
+    assert any("source: static)" in r.message for r in caplog.records)
+    assert any(r.levelname == "WARNING" for r in caplog.records)
+
+
 async def test_scheduler_correctly_converts_the_dynamic_thresholds_incl_vat_pence_to_exc_vat() -> (
     None
 ):
