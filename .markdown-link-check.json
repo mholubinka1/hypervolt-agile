@@ -1,4 +1,9 @@
 {
   "retryOn429": true,
-  "timeout": "10s"
+  "timeout": "10s",
+  "ignorePatterns": [
+    {
+      "pattern": "^https://www\\.fuel-finder\\.service\\.gov\\.uk$"
+    }
+  ]
 }
