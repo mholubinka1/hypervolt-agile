@@ -120,41 +120,41 @@ class FuelFinderClient:
             return None
         return _response
 
-    async def _fetch_all_stations(self) -> list[_Station] | None:
-        _stations: list[_Station] = []
+    async def _paginate(self, path: str) -> list[dict] | None:
+        # Shared by _fetch_all_stations and _fetch_all_prices -- both page
+        # through an identically-shaped batch-number endpoint (fewer than
+        # _BATCH_SIZE records means it was the last page); None on the first
+        # failed batch, matching _authenticated_get's own "give up, don't
+        # partially succeed" contract.
+        _records: list[dict] = []
         _batch = 1
         while True:
-            _page = await self._authenticated_get(
-                "/api/v1/pfs", params={"batch-number": _batch}
-            )
+            _page = await self._authenticated_get(path, params={"batch-number": _batch})
             if _page is None:
                 return None
-            _stations.extend(
-                _Station(
-                    node_id=s["node_id"],
-                    latitude=s["location"]["latitude"],
-                    longitude=s["location"]["longitude"],
-                )
-                for s in _page
-            )
+            _records.extend(_page)
             if len(_page) < _BATCH_SIZE:
-                return _stations
+                return _records
             _batch += 1
 
-    async def _fetch_all_prices(self) -> dict[str, list[dict]] | None:
-        _prices_by_node: dict[str, list[dict]] = {}
-        _batch = 1
-        while True:
-            _page = await self._authenticated_get(
-                "/api/v1/pfs/fuel-prices", params={"batch-number": _batch}
+    async def _fetch_all_stations(self) -> list[_Station] | None:
+        _records = await self._paginate("/api/v1/pfs")
+        if _records is None:
+            return None
+        return [
+            _Station(
+                node_id=s["node_id"],
+                latitude=s["location"]["latitude"],
+                longitude=s["location"]["longitude"],
             )
-            if _page is None:
-                return None
-            for _entry in _page:
-                _prices_by_node[_entry["node_id"]] = _entry["fuel_prices"]
-            if len(_page) < _BATCH_SIZE:
-                return _prices_by_node
-            _batch += 1
+            for s in _records
+        ]
+
+    async def _fetch_all_prices(self) -> dict[str, list[dict]] | None:
+        _records = await self._paginate("/api/v1/pfs/fuel-prices")
+        if _records is None:
+            return None
+        return {r["node_id"]: r["fuel_prices"] for r in _records}
 
     def _price_for(
         self, prices_by_node: dict[str, list[dict]], node_id: str, fuel_type: str

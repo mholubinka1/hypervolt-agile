@@ -14,10 +14,10 @@ _GEOCODE_RESULT = {
 
 
 def _auth(token: str = "the-token") -> Mock:
-    _auth = Mock(spec=FuelFinderAuth)
-    _auth.get_access_token = AsyncMock(return_value=token)
-    _auth.invalidate = Mock()
-    return _auth
+    _mock = Mock(spec=FuelFinderAuth)
+    _mock.get_access_token = AsyncMock(return_value=token)
+    _mock.invalidate = Mock()
+    return _mock
 
 
 def _mock_client(

@@ -91,6 +91,12 @@ class FuelFinderAuth:
 
     def _store_refresh_token(self, data: dict) -> None:
         self._refresh_token = data["refresh_token"]
+        # No margin here, unlike _store_token's access-token expiry -- a
+        # stale "still valid" read just routes into _regenerate_access_token,
+        # whose own failure already falls back to a full re-auth (see
+        # get_access_token below). There's no live request riding on this
+        # check the way there is on the access token, so racing the real
+        # expiry has no user-visible failure mode to guard against.
         self._refresh_token_expires_at = datetime.now(UTC) + timedelta(
             seconds=data["refresh_token_expires_in"]
         )
