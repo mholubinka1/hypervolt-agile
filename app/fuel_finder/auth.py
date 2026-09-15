@@ -4,6 +4,7 @@ from logging import Logger, getLogger
 
 import httpx
 from common.constants import APP_NAME
+from common.exceptions import APIError
 from common.logging import config
 
 logging.config.dictConfig(config)
@@ -37,9 +38,23 @@ class FuelFinderAuth:
         )
 
     async def _request_token(self, path: str, body: dict) -> dict:
-        _response = await self._client.post(url=path, json=body, timeout=10)
-        _response.raise_for_status()
-        _data: dict = _response.json()["data"]
+        # An application-level failure (success: false, a missing "data" key,
+        # or a non-JSON body) can still arrive as HTTP 200 -- wrapping every
+        # failure mode as APIError, the same way app/octopus/client.py and
+        # app/hypervolt/client/rest.py already do for their own API calls,
+        # routes it through get_access_token()'s existing exception handling
+        # instead of letting a raw KeyError/JSONDecodeError escape uncaught.
+        try:
+            _response = await self._client.post(url=path, json=body, timeout=10)
+            _response.raise_for_status()
+            _payload = _response.json()
+            if not isinstance(_payload, dict) or not _payload.get("success"):
+                raise APIError(_payload)
+            _data: dict = _payload["data"]
+        except Exception as e:
+            if isinstance(e, APIError):
+                raise
+            raise APIError(f"Fuel Finder token request to {path} failed: {e}.") from e
         return _data
 
     async def _generate_access_token(self) -> str:
@@ -95,7 +110,7 @@ class FuelFinderAuth:
         if self._refresh_token_still_valid():
             try:
                 return await self._regenerate_access_token()
-            except httpx.HTTPError as e:
+            except APIError as e:
                 # The refresh token can expire server-side (or be revoked)
                 # even though our local bookkeeping still thinks it's
                 # in-date -- fall back to a full re-auth rather than
@@ -106,7 +121,7 @@ class FuelFinderAuth:
                 )
         try:
             return await self._generate_access_token()
-        except httpx.HTTPError as e:
+        except APIError as e:
             logger.warning(
                 f"Fetching a Fuel Finder access token failed: {type(e).__name__}."
             )

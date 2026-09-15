@@ -170,3 +170,39 @@ async def test_get_access_token_returns_none_when_no_cached_token_and_generate_f
     token = await auth.get_access_token()
 
     assert token is None
+
+
+async def test_get_access_token_returns_none_when_a_200_response_carries_no_data() -> (
+    None
+):
+    # An application-level failure (success: false, or a missing "data" key)
+    # can still arrive as HTTP 200 -- must not raise KeyError/TypeError past
+    # get_access_token()'s own APIError handling (PR #163 review).
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"success": False, "message": "invalid credentials"}
+        )
+
+    client = _mock_client(httpx.MockTransport(_handler))
+    auth = FuelFinderAuth(client, client_id="my-client-id", client_secret="my-secret")
+
+    token = await auth.get_access_token()
+
+    assert token is None
+
+
+async def test_get_access_token_returns_none_when_the_response_body_is_not_json() -> (
+    None
+):
+    # A genuinely non-JSON 200 body raises json.JSONDecodeError (a ValueError,
+    # not an httpx exception) -- must be caught the same way as any other
+    # request failure, not escape uncaught (PR #163 review).
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"not json")
+
+    client = _mock_client(httpx.MockTransport(_handler))
+    auth = FuelFinderAuth(client, client_id="my-client-id", client_secret="my-secret")
+
+    token = await auth.get_access_token()
+
+    assert token is None

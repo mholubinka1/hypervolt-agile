@@ -100,7 +100,8 @@ marker method:
   block in total isolation."
 - Reference extension config fields: `fuel_type` (`petrol` | `diesel`), `mpg` (float, required),
   `mi_per_kwh` (float, default `3.5` — see Further Notes for how that default was chosen),
-  `postcode`, `station_count` (int, required, default a small number such as `5`) and optionally
+  `postcode`, `station_count` (int, required — no code-level default; `5` is a recommended
+  starting value for an operator's own config) and optionally
   `radius_miles`. `radius_miles` is an upper-bound cap on `station_count`, not an alternative
   selection mode: stations are always ranked nearest-first and averaging stops once
   `station_count` matches are found; when `radius_miles` is also set, any station beyond it is

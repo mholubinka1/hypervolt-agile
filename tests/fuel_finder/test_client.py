@@ -239,12 +239,14 @@ async def test_average_price_near_retries_once_after_a_401_and_succeeds() -> Non
     _station_list = [_station("s1", latitude=51.5, longitude=-0.14)]
     _price_list = [_price_entry("s1", "E10", 140.0)]
     _pfs_calls = {"n": 0}
+    _pfs_auth_headers: list[str] = []
 
     def _handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "api.postcodes.io":
             return httpx.Response(200, json=_GEOCODE_RESULT)
         if request.url.path == "/api/v1/pfs":
             _pfs_calls["n"] += 1
+            _pfs_auth_headers.append(request.headers["authorization"])
             if _pfs_calls["n"] == 1:
                 return httpx.Response(
                     401, json={"success": False, "message": "expired"}
@@ -273,6 +275,11 @@ async def test_average_price_near_retries_once_after_a_401_and_succeeds() -> Non
     assert _average == 140.0
     _fuel_finder_auth.invalidate.assert_called_once()
     assert _fuel_finder_auth.get_access_token.await_count == 3
+    # Proves the Authorization header actually carries each token, and the
+    # retry genuinely sends the refreshed one, not a repeat of the stale one
+    # -- a regression dropping or freezing the header would still pass the
+    # assertions above (they only check FuelFinderAuth's own call counts).
+    assert _pfs_auth_headers == ["Bearer stale-token", "Bearer fresh-token"]
 
 
 async def test_average_price_near_returns_none_when_401_persists_after_refresh() -> (
@@ -286,11 +293,16 @@ async def test_average_price_near_returns_none_when_401_persists_after_refresh()
         return httpx.Response(401, json={"success": False, "message": "expired"})
 
     client = _mock_client(_handler)
-    fuel_finder = FuelFinderClient(client, _auth())
+    _fuel_finder_auth = _auth()
+    fuel_finder = FuelFinderClient(client, _fuel_finder_auth)
 
     _average = await fuel_finder.average_price_near("SW1A 1AA", "E10", station_count=1)
 
     assert _average is None
+    # Proves the retry genuinely happened exactly once, not zero times (the
+    # 401 silently swallowed) and not more than once (looping) -- a plain
+    # assert on the final None result alone can't distinguish those cases.
+    _fuel_finder_auth.invalidate.assert_called_once()
 
 
 async def test_average_price_near_returns_none_and_logs_a_warning_on_a_5xx(

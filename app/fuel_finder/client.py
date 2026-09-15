@@ -213,5 +213,8 @@ class FuelFinderClient:
                 break
 
         if not _matching_prices:
+            logger.warning(
+                f"No station near {postcode!r} reports fuel type {fuel_type!r}."
+            )
             return None
         return sum(_matching_prices) / len(_matching_prices)
