@@ -171,6 +171,9 @@ class FuelFinderClient:
         station_count: int,
         radius_miles: float | None = None,
     ) -> float | None:
+        if station_count <= 0:
+            raise ValueError(f"station_count must be positive, got {station_count}.")
+
         _location = await self._geocode(postcode)
         if _location is None:
             return None

@@ -109,6 +109,41 @@ async def test_average_price_near_pages_through_multiple_station_batches() -> No
     assert _average == 150.0
 
 
+async def test_average_price_near_pages_through_multiple_price_batches() -> None:
+    # _fetch_all_prices() has its own separate pagination loop from
+    # _fetch_all_stations() -- a regression specific to it wouldn't be
+    # caught by the station-pagination test above alone (PR #163 review).
+    _station_entry = _station(
+        "only-in-second-price-batch", latitude=51.5, longitude=-0.14
+    )
+    _filler_prices = [_price_entry(f"filler-{i}", "E10", 999.0) for i in range(500)]
+    _matching_price = [_price_entry("only-in-second-price-batch", "E10", 150.0)]
+
+    client = _mock_client(
+        _router(
+            pfs_batches=[[_station_entry]],
+            price_batches=[_filler_prices, _matching_price],
+        )
+    )
+    fuel_finder = FuelFinderClient(client, _auth())
+
+    _average = await fuel_finder.average_price_near("SW1A 1AA", "E10", station_count=1)
+
+    assert _average == 150.0
+
+
+async def test_average_price_near_rejects_a_non_positive_station_count() -> None:
+    # Without this guard, station_count=0's "stop once we have N matches"
+    # condition can never become true, so the method silently scans and
+    # averages the entire national dataset instead of rejecting the
+    # obviously-invalid request (PR #163 review).
+    client = _mock_client(_router(pfs_batches=[], price_batches=[]))
+    fuel_finder = FuelFinderClient(client, _auth())
+
+    with pytest.raises(ValueError, match="station_count"):
+        await fuel_finder.average_price_near("SW1A 1AA", "E10", station_count=0)
+
+
 async def test_average_price_near_uses_nearest_stations_that_report_the_fuel_type() -> (
     None
 ):

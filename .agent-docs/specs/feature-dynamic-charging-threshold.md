@@ -100,7 +100,13 @@ marker method:
   block in total isolation."
 - Reference extension config fields: `fuel_type` (`petrol` | `diesel`), `mpg` (float, required),
   `mi_per_kwh` (float, default `3.5` — see Further Notes for how that default was chosen),
-  `postcode`, `station_count` (int, default a small number such as `5`) and/or `radius_miles`,
+  `postcode`, `station_count` (int, required, default a small number such as `5`) and optionally
+  `radius_miles`. `radius_miles` is an upper-bound cap on `station_count`, not an alternative
+  selection mode: stations are always ranked nearest-first and averaging stops once
+  `station_count` matches are found; when `radius_miles` is also set, any station beyond it is
+  excluded even if fewer than `station_count` matches were found within range (clarified during
+  #158/#163's review — Copilot read the original "`station_count` and/or `radius_miles`" phrasing
+  as implying two mutually-exclusive modes, which was never the intent).
   `client_id`, `client_secret` (Fuel Finder OAuth2 client-credentials — from the operator's own
   GOV.UK Fuel Finder developer registration, not a shared app credential, matching the Volvo spec's
   precedent of per-operator API credentials).

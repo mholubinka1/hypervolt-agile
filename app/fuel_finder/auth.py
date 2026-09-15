@@ -64,7 +64,14 @@ class FuelFinderAuth:
     def _store_token(self, data: dict) -> str:
         _token = data["access_token"]
         self._access_token = _token
-        self._expires_at = datetime.now(UTC) + timedelta(seconds=data["expires_in"])
+        # A 90% margin, not the nominal expiry -- matches the existing
+        # Hypervolt REST client's own token caching
+        # (app/hypervolt/client/rest.py's _update_tokens), so a token with
+        # only a little real lifetime left isn't reused for a request that
+        # then races expiry due to clock skew or network latency.
+        self._expires_at = datetime.now(UTC) + timedelta(
+            seconds=int(data["expires_in"] * 0.9)
+        )
         return _token
 
     def _store_refresh_token(self, data: dict) -> None:
