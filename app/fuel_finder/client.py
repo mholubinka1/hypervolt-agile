@@ -1,5 +1,6 @@
 import math
 from dataclasses import dataclass
+from enum import Enum
 from logging import Logger, getLogger
 
 import httpx
@@ -16,6 +17,16 @@ logger: Logger = getLogger(APP_NAME)
 _BATCH_SIZE = 500
 _EARTH_RADIUS_MILES = 3958.8
 _GEOCODE_URL = "https://api.postcodes.io/postcodes/{postcode}"
+
+
+class FuelPriceFailure(Enum):
+    # The four distinct ways average_price_near() can fail to produce a
+    # price -- kept as a plain Enum (not IntEnum) since nothing compares a
+    # member to an int; callers branch on identity/isinstance instead.
+    GEOCODE_FAILED = "geocode_failed"
+    STATIONS_UNAVAILABLE = "stations_unavailable"
+    PRICES_UNAVAILABLE = "prices_unavailable"
+    NO_MATCHING_STATION = "no_matching_station"
 
 
 @dataclass
@@ -170,21 +181,21 @@ class FuelFinderClient:
         fuel_type: str,
         station_count: int,
         radius_miles: float | None = None,
-    ) -> float | None:
+    ) -> float | FuelPriceFailure:
         if station_count <= 0:
             raise ValueError(f"station_count must be positive, got {station_count}.")
 
         _location = await self._geocode(postcode)
         if _location is None:
-            return None
+            return FuelPriceFailure.GEOCODE_FAILED
         _latitude, _longitude = _location
 
         _stations = await self._fetch_all_stations()
         if _stations is None:
-            return None
+            return FuelPriceFailure.STATIONS_UNAVAILABLE
         _prices_by_node = await self._fetch_all_prices()
         if _prices_by_node is None:
-            return None
+            return FuelPriceFailure.PRICES_UNAVAILABLE
 
         # There's no location filter on the API itself, so nearest-station
         # selection has to be computed client-side: rank every returned
@@ -216,5 +227,5 @@ class FuelFinderClient:
             logger.warning(
                 f"No station near {postcode!r} reports fuel type {fuel_type!r}."
             )
-            return None
+            return FuelPriceFailure.NO_MATCHING_STATION
         return sum(_matching_prices) / len(_matching_prices)

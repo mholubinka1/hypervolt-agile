@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 from fuel_finder.auth import FuelFinderAuth
-from fuel_finder.client import FuelFinderClient
+from fuel_finder.client import FuelFinderClient, FuelPriceFailure
 
 _GEOCODE_RESULT = {
     "status": 200,
@@ -203,11 +203,11 @@ async def test_average_price_near_returns_none_when_the_postcode_does_not_geocod
     fuel_finder = FuelFinderClient(client, _auth())
 
     with caplog.at_level(logging.WARNING):
-        _average = await fuel_finder.average_price_near(
+        _result = await fuel_finder.average_price_near(
             "NOT A REAL POSTCODE", "E10", station_count=1
         )
 
-    assert _average is None
+    assert _result is FuelPriceFailure.GEOCODE_FAILED
     assert any(r.levelno == logging.WARNING for r in caplog.records)
 
 
@@ -227,9 +227,9 @@ async def test_average_price_near_returns_none_when_no_station_reports_the_fuel_
     client = _mock_client(_router(pfs_batches=[_stations], price_batches=[_prices]))
     fuel_finder = FuelFinderClient(client, _auth())
 
-    _average = await fuel_finder.average_price_near("SW1A 1AA", "E10", station_count=2)
+    _result = await fuel_finder.average_price_near("SW1A 1AA", "E10", station_count=2)
 
-    assert _average is None
+    assert _result is FuelPriceFailure.NO_MATCHING_STATION
 
 
 async def test_average_price_near_retries_once_after_a_401_and_succeeds() -> None:
@@ -296,9 +296,9 @@ async def test_average_price_near_returns_none_when_401_persists_after_refresh()
     _fuel_finder_auth = _auth()
     fuel_finder = FuelFinderClient(client, _fuel_finder_auth)
 
-    _average = await fuel_finder.average_price_near("SW1A 1AA", "E10", station_count=1)
+    _result = await fuel_finder.average_price_near("SW1A 1AA", "E10", station_count=1)
 
-    assert _average is None
+    assert _result is FuelPriceFailure.STATIONS_UNAVAILABLE
     # Proves the retry genuinely happened exactly once, not zero times (the
     # 401 silently swallowed) and not more than once (looping) -- a plain
     # assert on the final None result alone can't distinguish those cases.
@@ -319,11 +319,44 @@ async def test_average_price_near_returns_none_and_logs_a_warning_on_a_5xx(
     fuel_finder = FuelFinderClient(client, _auth())
 
     with caplog.at_level(logging.WARNING):
-        _average = await fuel_finder.average_price_near(
+        _result = await fuel_finder.average_price_near(
             "SW1A 1AA", "E10", station_count=1
         )
 
-    assert _average is None
+    assert _result is FuelPriceFailure.STATIONS_UNAVAILABLE
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+async def test_average_price_near_returns_prices_unavailable_when_only_prices_fail(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Every other failing-request test above fails on the FIRST authenticated
+    # call (/api/v1/pfs, the station list), so they all assert
+    # STATIONS_UNAVAILABLE -- none of them distinguishes it from
+    # PRICES_UNAVAILABLE. Here the station list fetch succeeds and only the
+    # price-list fetch (/api/v1/pfs/fuel-prices) 5xxs, proving
+    # average_price_near() reports the failure specific to whichever fetch
+    # actually failed, not just "the first thing that could fail".
+    _stations = [_station("s1", latitude=51.5, longitude=-0.14)]
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.postcodes.io":
+            return httpx.Response(200, json=_GEOCODE_RESULT)
+        if request.url.path == "/api/v1/pfs":
+            return httpx.Response(200, json=_stations)
+        if request.url.path == "/api/v1/pfs/fuel-prices":
+            return httpx.Response(500)
+        raise AssertionError(f"Unexpected request: {request.url}")
+
+    client = _mock_client(_handler)
+    fuel_finder = FuelFinderClient(client, _auth())
+
+    with caplog.at_level(logging.WARNING):
+        _result = await fuel_finder.average_price_near(
+            "SW1A 1AA", "E10", station_count=1
+        )
+
+    assert _result is FuelPriceFailure.PRICES_UNAVAILABLE
     assert any(r.levelno == logging.WARNING for r in caplog.records)
 
 
@@ -338,9 +371,9 @@ async def test_average_price_near_returns_none_on_a_network_level_exception() ->
     client = _mock_client(_handler)
     fuel_finder = FuelFinderClient(client, _auth())
 
-    _average = await fuel_finder.average_price_near("SW1A 1AA", "E10", station_count=1)
+    _result = await fuel_finder.average_price_near("SW1A 1AA", "E10", station_count=1)
 
-    assert _average is None
+    assert _result is FuelPriceFailure.STATIONS_UNAVAILABLE
 
 
 async def test_a_failure_does_not_leak_credentials_or_tokens_into_logs(
@@ -388,11 +421,11 @@ async def test_a_failure_does_not_leak_credentials_or_tokens_into_logs(
     fuel_finder = FuelFinderClient(client, auth)
 
     with caplog.at_level(logging.WARNING):
-        _average = await fuel_finder.average_price_near(
+        _result = await fuel_finder.average_price_near(
             "SW1A 1AA", "E10", station_count=1
         )
 
-    assert _average is None
+    assert _result is FuelPriceFailure.STATIONS_UNAVAILABLE
     # Confirms the failure really was logged (not a vacuous pass from an
     # empty caplog) before checking none of it carries the secrets.
     assert any("500" in r.message for r in caplog.records)

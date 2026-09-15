@@ -8,7 +8,7 @@ from common.constants import APP_NAME
 from common.polling import every
 from common.utils import is_null_or_empty
 from fuel_finder.auth import FuelFinderAuth
-from fuel_finder.client import FuelFinderClient
+from fuel_finder.client import FuelFinderClient, FuelPriceFailure
 
 # Deliberately does NOT call logging.config.dictConfig() -- see
 # extensions/saints_fc.py's identical comment: this module is loaded
@@ -161,18 +161,31 @@ class DynamicChargingThresholdExtension:
 
     async def _poll_once(self) -> None:
         try:
-            _price = await self._fuel_finder.average_price_near(
+            _result = await self._fuel_finder.average_price_near(
                 self._postcode,
                 self._fuel_type_code,
                 self._station_count,
                 self._radius_miles,
             )
-            if _price is None:
-                self._clear_cache(
-                    f"found no fuel price near {self._postcode!r} for fuel "
-                    f"type {self._fuel_type_code!r}"
-                )
+            if isinstance(_result, FuelPriceFailure):
+                _reason_by_failure = {
+                    FuelPriceFailure.GEOCODE_FAILED: (
+                        f"could not resolve postcode {self._postcode!r}"
+                    ),
+                    FuelPriceFailure.STATIONS_UNAVAILABLE: (
+                        "could not fetch the fuel station list"
+                    ),
+                    FuelPriceFailure.PRICES_UNAVAILABLE: (
+                        "could not fetch fuel prices"
+                    ),
+                    FuelPriceFailure.NO_MATCHING_STATION: (
+                        f"found no fuel price near {self._postcode!r} for fuel "
+                        f"type {self._fuel_type_code!r}"
+                    ),
+                }
+                self._clear_cache(_reason_by_failure[_result])
                 return
+            _price: float = _result
             if not math.isfinite(_price) or _price <= 0:
                 # FuelFinderClient passes the API's raw price straight
                 # through with no validation of its own -- a malformed

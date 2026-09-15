@@ -126,6 +126,26 @@ def _router(
     return _handler
 
 
+def _wire_custom_transport(
+    extension: DynamicChargingThresholdExtension,
+    handler: Any,
+) -> None:
+    # A lower-level sibling of _wire_mock_transport below for tests that need
+    # to simulate a specific failing leg of the chain (a bad geocode
+    # response, or an HTTP failure on a specific path) rather than a
+    # successful pfs/fuel-prices pagination -- mirrors the same
+    # rebuild-everything-from-one-mock-client approach used by the malformed-
+    # geocode test further down this file.
+    _mock_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url=_FUEL_FINDER_BASE_URL
+    )
+    extension._client = _mock_client
+    extension._auth = FuelFinderAuth(
+        _mock_client, client_id="the-client-id", client_secret="the-client-secret"
+    )
+    extension._fuel_finder = FuelFinderClient(_mock_client, extension._auth)
+
+
 def _wire_mock_transport(
     extension: DynamicChargingThresholdExtension,
     *,
@@ -397,16 +417,18 @@ async def test_a_successful_poll_caches_the_computed_margined_threshold() -> Non
     assert await extension.get_threshold() == pytest.approx(42.0)
 
 
-async def test_a_poll_finding_no_matching_fuel_type_clears_a_previously_cached_threshold() -> (
-    None
-):
-    # Scenario 10: average_price_near() returns None (the only nearby
-    # station doesn't report the requested fuel type) -- get_threshold()
-    # must fall back cleanly to None afterward, not raise. Seeds a real
-    # cached value from a prior successful poll first -- self._threshold
-    # starts at None by construction, so asserting None after a no-match
-    # poll alone would pass whether or not a *previously cached* value
-    # actually gets cleared.
+async def test_a_poll_finding_no_matching_fuel_type_clears_a_previously_cached_threshold(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Scenario 10: average_price_near() returns FuelPriceFailure.NO_MATCHING_STATION
+    # (the only nearby station doesn't report the requested fuel type) --
+    # get_threshold() must fall back cleanly to None afterward, not raise.
+    # Seeds a real cached value from a prior successful poll first --
+    # self._threshold starts at None by construction, so asserting None
+    # after a no-match poll alone would pass whether or not a *previously
+    # cached* value actually gets cleared. Also proves the warning log
+    # states this failure's own distinct wording (postcode + fuel type),
+    # not a generic message shared with the other three failure reasons.
     extension = DynamicChargingThresholdExtension(
         _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
     )
@@ -423,9 +445,143 @@ async def test_a_poll_finding_no_matching_fuel_type_clears_a_previously_cached_t
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
         price_batches=[[_price_entry("s1", [("B7_STANDARD", 150.0)])]],
     )
-    await extension._poll_once()
+    with caplog.at_level("WARNING"):
+        await extension._poll_once()
 
     assert await extension.get_threshold() is None
+    assert any(
+        "found no fuel price near 'SW1A 1AA' for fuel type 'E10'" in r.message
+        for r in caplog.records
+    )
+
+
+async def test_a_poll_with_a_postcode_that_does_not_geocode_logs_the_geocode_specific_reason(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # average_price_near() returns FuelPriceFailure.GEOCODE_FAILED when
+    # postcodes.io 404s -- _clear_cache's log line must state this reason's
+    # own wording (that the postcode itself couldn't be resolved), not the
+    # NO_MATCHING_STATION wording ("found no fuel price...") that used to be
+    # logged unconditionally for every failure before this change.
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.postcodes.io":
+            return httpx.Response(404, json={"status": 404, "error": "not found"})
+        raise AssertionError(f"Unexpected request: {request.url}")
+
+    _wire_custom_transport(extension, _handler)
+
+    with caplog.at_level("WARNING"):
+        await extension._poll_once()
+
+    assert await extension.get_threshold() is None
+    assert any(
+        "could not resolve postcode 'SW1A 1AA'" in r.message for r in caplog.records
+    )
+    assert not any("found no fuel price" in r.message for r in caplog.records)
+
+
+async def test_a_poll_with_an_unavailable_station_list_logs_the_stations_specific_reason(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # average_price_near() returns FuelPriceFailure.STATIONS_UNAVAILABLE when
+    # the /api/v1/pfs fetch fails outright (geocoding and auth both succeed
+    # here) -- _clear_cache's log line must state that the station list
+    # itself couldn't be fetched, distinct from a price-list failure or a
+    # genuine no-matching-station result.
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.postcodes.io":
+            return httpx.Response(200, json=_GEOCODE_RESULT)
+        if request.url.path == "/api/v1/oauth/generate_access_token":
+            return httpx.Response(
+                200,
+                json={
+                    "success": True,
+                    "data": {
+                        "access_token": "the-token",
+                        "token_type": "Bearer",
+                        "expires_in": 3600,
+                        "refresh_token": "the-refresh-token",
+                        "refresh_token_expires_in": 172800,
+                    },
+                    "message": "Operation successful",
+                },
+            )
+        if request.url.path == "/api/v1/pfs":
+            return httpx.Response(500)
+        raise AssertionError(f"Unexpected request: {request.url}")
+
+    _wire_custom_transport(extension, _handler)
+
+    with caplog.at_level("WARNING"):
+        await extension._poll_once()
+
+    assert await extension.get_threshold() is None
+    assert any(
+        "could not fetch the fuel station list" in r.message for r in caplog.records
+    )
+    assert not any("could not fetch fuel prices" in r.message for r in caplog.records)
+    assert not any("found no fuel price" in r.message for r in caplog.records)
+
+
+async def test_a_poll_with_an_unavailable_price_list_logs_the_prices_specific_reason(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # average_price_near() returns FuelPriceFailure.PRICES_UNAVAILABLE when
+    # the station list fetch succeeds but /api/v1/pfs/fuel-prices fails --
+    # _clear_cache's log line must state that fuel prices specifically
+    # couldn't be fetched, not the station-list wording used for the
+    # opposite failure above.
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.postcodes.io":
+            return httpx.Response(200, json=_GEOCODE_RESULT)
+        if request.url.path == "/api/v1/oauth/generate_access_token":
+            return httpx.Response(
+                200,
+                json={
+                    "success": True,
+                    "data": {
+                        "access_token": "the-token",
+                        "token_type": "Bearer",
+                        "expires_in": 3600,
+                        "refresh_token": "the-refresh-token",
+                        "refresh_token_expires_in": 172800,
+                    },
+                    "message": "Operation successful",
+                },
+            )
+        if request.url.path == "/api/v1/pfs":
+            return httpx.Response(
+                200,
+                content=json.dumps([_station("s1", 51.5, -0.14)]).encode(),
+                headers={"content-type": "application/json"},
+            )
+        if request.url.path == "/api/v1/pfs/fuel-prices":
+            return httpx.Response(500)
+        raise AssertionError(f"Unexpected request: {request.url}")
+
+    _wire_custom_transport(extension, _handler)
+
+    with caplog.at_level("WARNING"):
+        await extension._poll_once()
+
+    assert await extension.get_threshold() is None
+    assert any("could not fetch fuel prices" in r.message for r in caplog.records)
+    assert not any(
+        "could not fetch the fuel station list" in r.message for r in caplog.records
+    )
+    assert not any("found no fuel price" in r.message for r in caplog.records)
 
 
 @pytest.mark.parametrize("bad_price", [-150.0, 0.0, float("nan"), float("inf")])
