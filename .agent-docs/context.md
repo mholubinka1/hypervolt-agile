@@ -96,7 +96,7 @@ The generalised name (ADR 0021) for an operator-registered extension kind loaded
 _Avoid_: ThresholdProvider, generic extension
 
 **Dynamic charging threshold**:
-A PHEV-only, opt-in alternative to the static `price_limit_incl_vat` config value: a registered `BehaviourProvider` extension recomputes the charging threshold from local fuel price and the vehicle's MPG, so charging only happens when electricity is genuinely cheaper than driving on fuel. Falls back to the required static `price_limit_incl_vat` whenever the extension has no fresh value.
+A PHEV-only, opt-in complement to the static `price_limit_incl_vat` config value: a registered `BehaviourProvider` extension recomputes the charging threshold from local fuel price and the vehicle's MPG, so charging only happens when electricity is genuinely cheaper than driving on fuel. `price_limit_incl_vat` always acts as an ultimate ceiling (ADR 0022) — the effective limit is the lower of the two, so the extension can only make charging more conservative than the static cap, never less. Setting `price_limit_incl_vat` to `0` opts out of the cap entirely, deferring fully to the extension (requires `extensions.threshold` to be configured); when the extension has no fresh value that cycle, the scheduler uses its last cached fresh value instead.
 _Avoid_: fuel-aware threshold, smart threshold
 
 **Breakeven price per kWh**:
