@@ -111,9 +111,18 @@ class FakeThresholdProvider:
     assert result is not None
 
     with caplog.at_level(logging.WARNING):
-        value = await result.invoke("get_threshold")
+        first = await result.invoke("get_threshold")
+        # A second call through the same wrapper with the same invalid value
+        # proves _ThresholdValidatingProvider raises a consistent,
+        # dedupable exception shape across repeated calls -- the generic
+        # wrapper's own dedup (tested separately in
+        # tests/common/test_extensions.py) then correctly suppresses the
+        # repeat as an unchanged failure rather than this seam producing a
+        # different exception message on the second call.
+        second = await result.invoke("get_threshold")
 
-    assert value is None
+    assert first is None
+    assert second is None
     assert len(caplog.records) == 1
     assert (
         "charging threshold extension 'fuel_price' get_threshold() failed: "

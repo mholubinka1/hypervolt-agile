@@ -139,10 +139,17 @@ class Scheduler:
             await self._rebuild_on_new_prices()
 
     async def _rebuild_on_replug(self) -> None:
+        # Sampled before the shared routine's price-fetch await, matching
+        # this trigger's behaviour before the #172 refactor -- prepare()
+        # closes over this rather than re-sampling after the await, since a
+        # slow fetch would otherwise shift which periods pass the from-now
+        # filter and how fresh _last_schedule_update looks (Copilot review,
+        # PR #175).
+        _now = datetime.now(ZoneInfo("UTC"))
+
         def _prepare(new_prices: list[Price]) -> list[Price]:
             # No "has anything changed" pre-check here -- a replug always
             # rebuilds while invalidated, regardless of the price horizon.
-            _now = datetime.now(ZoneInfo("UTC"))
             self._agile_prices = new_prices
             self._time_until = max(price.valid_to for price in new_prices)
             self._last_schedule_update = _now
