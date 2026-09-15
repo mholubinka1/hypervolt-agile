@@ -33,3 +33,15 @@ this ADR. This feature pre-adopts that convention for its own kind: the referenc
 `BehaviourProvider` extension lives at `extensions/behaviours/dynamic_charging_threshold.py`, not
 flat in `extensions/`. Whoever eventually picks up #131 should find `extensions/behaviours/`
 already following the pattern it establishes, not something to migrate.
+
+**Added 2026-09-15**: the config-file side of this same "keyed by provider kind" shape gets the
+same treatment. #159 originally landed with a top-level `threshold_extension:` field on
+`AppConfig` — a name specific to this one feature, the config-schema mirror of the
+`ThresholdProvider`-vs-`BehaviourProvider` naming question this ADR already settled for the code
+side. Reshaped before merge into `extensions.threshold:`, under a new `ExtensionsConfig` model
+keyed by provider kind, so the still-unbuilt `VehicleProvider` (or any future kind) adds its own
+field there (`extensions.vehicles:` or similar) rather than needing another top-level,
+feature-specific config key. `led:` is deliberately untouched — LED's own `extensions:` list
+(themes resolved via `resolve()`/`resolve_fallback()`) is a different shape for a different reason
+(multiple simultaneous themes, priority-ordered) and this ADR does not fold it into
+`AppConfig.extensions`.

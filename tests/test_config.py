@@ -266,22 +266,23 @@ def test_extension_entry_defaults_config_to_an_empty_dict_when_omitted() -> None
     assert entry.config == {}
 
 
-def test_config_loader_parses_a_configured_threshold_extension(tmp_path: Path) -> None:
+def test_config_loader_parses_a_configured_extensions_threshold(tmp_path: Path) -> None:
     config_file = tmp_path / "config.yml"
     config_file.write_text(
         _VALID_CONFIG_YAML
-        + "\nthreshold_extension:\n  name: fuel_price\n  config:\n    api_key: xyz\n",
+        + "\nextensions:\n  threshold:\n    name: fuel_price\n    config:\n      api_key: xyz\n",
         encoding="utf-8",
     )
 
     app_config = ConfigLoader(config_file).get_config()
 
-    assert app_config.threshold_extension == ExtensionEntry(
+    assert app_config.extensions is not None
+    assert app_config.extensions.threshold == ExtensionEntry(
         name="fuel_price", config={"api_key": "xyz"}
     )
 
 
-def test_config_loader_defaults_threshold_extension_to_none_when_omitted(
+def test_config_loader_defaults_extensions_threshold_to_none_when_omitted(
     tmp_path: Path,
 ) -> None:
     config_file = tmp_path / "config.yml"
@@ -289,13 +290,13 @@ def test_config_loader_defaults_threshold_extension_to_none_when_omitted(
 
     app_config = ConfigLoader(config_file).get_config()
 
-    assert app_config.threshold_extension is None
+    assert app_config.extensions is None
 
 
-def test_config_loader_exits_when_price_limit_incl_vat_is_missing_even_with_a_threshold_extension(
+def test_config_loader_exits_when_price_limit_incl_vat_is_missing_even_with_an_extensions_threshold(
     tmp_path: Path,
 ) -> None:
-    # threshold_extension only supplies a dynamic override each cycle --
+    # extensions.threshold only supplies a dynamic override each cycle --
     # the static price_limit_incl_vat must still be present as the required
     # fallback, never made optional by configuring a provider.
     config_file = tmp_path / "config.yml"
@@ -311,8 +312,9 @@ schedule:
   total_charge_duration: 4
   update_every_mins: 30
   poll_every_secs: 10
-threshold_extension:
-  name: fuel_price
+extensions:
+  threshold:
+    name: fuel_price
 """,
         encoding="utf-8",
     )

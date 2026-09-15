@@ -88,11 +88,12 @@ marker method:
 
 ### Config schema
 
-- New top-level `AppConfig.threshold_extension: ExtensionEntry | None = None` — reuses the existing
+- New `AppConfig.extensions.threshold: ExtensionEntry | None = None`, under a new `ExtensionsConfig`
+  model keyed by provider kind (see ADR 0021's 2026-09-15 amendment) — reuses the existing
   `ExtensionEntry` (`name`, `config: dict`) shape LED extensions already use. A single optional
   entry, not a list: exactly one charging threshold is ever active. Loaded from the same
   `extensions/` directory via the existing `--extensions-dir` flag — no new CLI argument.
-- `price_limit_incl_vat` stays required on `Schedule` regardless of whether `threshold_extension` is
+- `price_limit_incl_vat` stays required on `Schedule` regardless of whether `extensions.threshold` is
   set — it is the fallback value, not replaced by this feature.
 - The extension's own `config:` dict (fuel type, MPG, electric efficiency, postcode, station
   count/radius, Fuel Finder OAuth credentials) is defined and validated by the extension itself, not
@@ -175,7 +176,7 @@ package for substantial integration logic:
 ### Scheduler wiring
 
 - `Scheduler` (`app/schedule/__init__.py`) gains an optional threshold-provider dependency (the
-  loaded `BehaviourProvider`'s wrapper, or `None` when `threshold_extension` isn't configured).
+  loaded `BehaviourProvider`'s wrapper, or `None` when `extensions.threshold` isn't configured).
 - `ScheduleBuilder` currently fixes `limit_exc_vat` at construction (`app/schedule/builder.py`). It
   needs to become updatable — e.g. a setter, or the value passed into `build()` instead of the
   constructor — so `Scheduler` can refresh it each rebuild rather than only at startup.

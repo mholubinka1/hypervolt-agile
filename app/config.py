@@ -142,12 +142,22 @@ class LedConfig(BaseModel):
     extensions: list[ExtensionEntry] = []
 
 
+class ExtensionsConfig(BaseModel):
+    # Keyed by provider kind, one field per kind -- e.g. `threshold` for the
+    # single active BehaviourProvider (ADR 0021). A future vehicle-provider
+    # kind lands here as its own field when it's actually built, not
+    # pre-provisioned now.
+    model_config = {"extra": "forbid"}
+
+    threshold: ExtensionEntry | None = None
+
+
 class AppConfig(BaseModel):
     octopus: Octopus
     hypervolt: Hypervolt
     schedule: Schedule
     led: LedConfig | None = None
-    threshold_extension: ExtensionEntry | None = None
+    extensions: ExtensionsConfig | None = None
     log_file: str | None = None
     log_level: str = "INFO"
 

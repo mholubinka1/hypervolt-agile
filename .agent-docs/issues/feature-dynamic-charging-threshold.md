@@ -37,8 +37,9 @@ See #124 directly — unchanged by this feature.
 Define the `BehaviourProvider` protocol (`__init__(config)`, `async get_threshold() -> float |
 None`, optional `start()`/`stop()` lifecycle hooks) loaded through the generalised loader from
 issue #124, using `get_threshold` as its marker method (ADR 0021). Add
-`AppConfig.threshold_extension: ExtensionEntry | None = None` — a single optional entry, not a
-list. `price_limit_incl_vat` stays required regardless of whether `threshold_extension` is set.
+`AppConfig.extensions.threshold: ExtensionEntry | None = None` (under a new `ExtensionsConfig`
+model keyed by provider kind — see ADR 0021's 2026-09-15 amendment) — a single optional entry, not
+a list. `price_limit_incl_vat` stays required regardless of whether `extensions.threshold` is set.
 Wire `main.py` to load it via the existing `--extensions-dir` flag, the same way LED extensions
 load today.
 
@@ -57,7 +58,7 @@ No real fuel-price integration exists yet at this point — prove the wiring wit
 
 - [ ] `BehaviourProvider` protocol is defined and loads through the shared loader using
       `get_threshold` as its marker method
-- [ ] `AppConfig.threshold_extension: ExtensionEntry | None` is added; `price_limit_incl_vat`
+- [ ] `AppConfig.extensions.threshold: ExtensionEntry | None` is added; `price_limit_incl_vat`
       remains required in all cases
 - [ ] No provider configured → static `price_limit_incl_vat` is used, identical to today's
       behaviour
@@ -134,7 +135,7 @@ LED and the planned Volvo extension). Any exception anywhere in the poll is caug
 inside the extension itself.
 
 This is the slice that makes the feature end-to-end usable: registering
-`threshold_extension: {name: behaviours/dynamic_charging_threshold, config: {...}}` in
+`extensions: {threshold: {name: behaviours/dynamic_charging_threshold, config: {...}}}` in
 `config.yml` now produces a live fuel-aware charging threshold in production.
 
 ### Acceptance criteria
