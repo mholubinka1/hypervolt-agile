@@ -205,12 +205,28 @@ class DynamicChargingThresholdExtension:
                     f"fuel price {_price!r}"
                 )
                 return
-            self._threshold = _threshold
-            logger.info(
-                "Dynamic charging threshold extension computed threshold "
-                f"{self._threshold:.2f}p/kWh incl VAT from fuel price "
-                f"{_price:.2f}p/litre."
+            _previous_display = (
+                None if self._threshold is None else f"{self._threshold:.2f}"
             )
+            self._threshold = _threshold
+            _display = f"{self._threshold:.2f}"
+            if _display != _previous_display:
+                # Every poll recomputes the threshold, but it only changes
+                # when the underlying fuel price actually moves -- logging
+                # unconditionally at info level would flood the log with an
+                # identical line on every cadence tick (e.g. every 30 min)
+                # even while the price is flat for hours. Compared at the
+                # same 2dp precision the log line itself displays, rather
+                # than exact float equality, so a sub-cent recomputation
+                # difference (e.g. from average_price_near()'s summation
+                # order varying between polls) doesn't defeat the
+                # suppression by looking like a "change" nobody would ever
+                # see in the log.
+                logger.info(
+                    "Dynamic charging threshold extension computed threshold "
+                    f"{_display}p/kWh incl VAT from fuel price "
+                    f"{_price:.2f}p/litre."
+                )
         except Exception as e:
             # Last-resort safety net for anything unexpected (e.g. a
             # config/type error in our own arithmetic) -- FuelFinderClient

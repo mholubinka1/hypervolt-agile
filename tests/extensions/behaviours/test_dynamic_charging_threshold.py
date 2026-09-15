@@ -494,6 +494,129 @@ async def test_a_poll_computing_an_underflowing_threshold_clears_a_previously_ca
     assert await extension.get_threshold() is None
 
 
+async def test_a_poll_with_an_unchanged_price_does_not_log_at_info_level(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # An unchanged fuel price recomputes the identical threshold every
+    # cadence tick -- must not repeat the info-level "computed threshold"
+    # line for a value that hasn't moved, or the log fills up with
+    # identical noise every 30 minutes.
+    extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    with caplog.at_level("INFO"):
+        await extension._poll_once()
+    assert any("computed threshold" in r.message for r in caplog.records)
+    caplog.clear()
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    with caplog.at_level("INFO"):
+        await extension._poll_once()
+
+    assert not any("computed threshold" in r.message for r in caplog.records)
+
+
+async def test_a_poll_with_a_sub_cent_threshold_difference_does_not_log_at_info_level(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The suppression compares at the same 2dp precision the log line
+    # itself displays, not exact float equality -- two prices close enough
+    # that the computed threshold rounds to the same displayed value must
+    # not re-log, even though the raw floats differ.
+    extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    _threshold_before = await extension.get_threshold()
+    caplog.clear()
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.00001)])]],
+    )
+    with caplog.at_level("INFO"):
+        await extension._poll_once()
+
+    assert await extension.get_threshold() != _threshold_before  # raw float moved
+    assert f"{_threshold_before:.2f}" == f"{await extension.get_threshold():.2f}"
+    assert not any("computed threshold" in r.message for r in caplog.records)
+
+
+async def test_a_poll_recomputing_the_same_threshold_after_a_cache_clear_logs_again(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A cache clear (e.g. a transient no-price-found poll) already logs its
+    # own WARNING via _clear_cache -- once the cache is empty, the next
+    # successful poll recovering the same numeric threshold as before the
+    # clear is itself informative (proof the extension is working again)
+    # and must log, not be suppressed as "unchanged".
+    extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    assert await extension.get_threshold() is not None
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("B7_STANDARD", 150.0)])]],  # no E10 match
+    )
+    await extension._poll_once()
+    assert await extension.get_threshold() is None
+    caplog.clear()
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    with caplog.at_level("INFO"):
+        await extension._poll_once()
+
+    assert any("computed threshold" in r.message for r in caplog.records)
+
+
+async def test_a_poll_with_a_changed_price_logs_at_info_level_again(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The counterpart to the unchanged-price test above: a genuinely new
+    # threshold must still be logged, proving the suppression is keyed on
+    # the value actually changing, not a blanket silence after the first
+    # poll.
+    extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    caplog.clear()
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 160.0)])]],
+    )
+    with caplog.at_level("INFO"):
+        await extension._poll_once()
+
+    assert any("computed threshold" in r.message for r in caplog.records)
+
+
 async def test_get_threshold_returns_none_instantly_before_any_poll_has_completed() -> (
     None
 ):

@@ -72,6 +72,8 @@ Every case below leaves `get_threshold()` returning `None` for that cycle and lo
 Dynamic charging threshold extension computed threshold 38.98p/kWh incl VAT from fuel price 171.50p/litre.
 ```
 
+Only logged when the displayed threshold changes from the previous poll — a flat fuel price across many polling cycles is expected to go quiet, not a sign the extension has stopped. It logs again as soon as the price moves, and also the first time a threshold is recomputed after a cycle with no cached value (e.g. recovering from one of the Failure handling cases above).
+
 The scheduler's own rebuild log line names the winning source (`static`, `dynamic`, `static cap`, `cached dynamic`).
 
 ## Troubleshooting
