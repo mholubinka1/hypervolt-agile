@@ -139,16 +139,16 @@ This is the slice that makes the feature end-to-end usable: registering
 
 ### Acceptance criteria
 
-- [ ] Breakeven/margin formula is implemented as a pure, standalone function and tested with
+- [x] Breakeven/margin formula is implemented as a pure, standalone function and tested with
       hand-picked inputs independent of any I/O
-- [ ] `mi_per_kwh` defaults to `3.5` when omitted from config
-- [ ] `extensions/behaviours/dynamic_charging_threshold.py` implements `BehaviourProvider` and
+- [x] `mi_per_kwh` defaults to `3.5` when omitted from config
+- [x] `extensions/behaviours/dynamic_charging_threshold.py` implements `BehaviourProvider` and
       loads via the same `--extensions-dir` mechanism as other extension kinds
-- [ ] The background poll runs on the `update_every_mins` cadence, not more often
-- [ ] `get_threshold()` never awaits a live API call — always returns from cache
-- [ ] Fuel Finder unavailable (any error case from #3) → `get_threshold()` returns `None` this
+- [x] The background poll runs on the `update_every_mins` cadence, not more often
+- [x] `get_threshold()` never awaits a live API call — always returns from cache
+- [x] Fuel Finder unavailable (any error case from #3) → `get_threshold()` returns `None` this
       cycle, and the scheduler falls back to the static threshold (via #2) rather than stalling
-- [ ] End-to-end: with valid fuel type/MPG/postcode/credentials configured, the app computes and
+- [x] End-to-end: with valid fuel type/MPG/postcode/credentials configured, the app computes and
       logs a dynamic threshold each rebuild and the schedule respects it
 
 ---
