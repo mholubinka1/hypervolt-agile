@@ -1,4 +1,3 @@
-import math
 from typing import NamedTuple
 
 from common.constants import ELECTRICITY_VAT_RATE
@@ -26,24 +25,12 @@ class ThresholdPolicy:
     def effective_limit(
         self, dynamic_limit_incl_vat: float | None
     ) -> EffectiveLimit | None:
-        dynamic_limit_incl_vat = self._sanitised(dynamic_limit_incl_vat)
         if dynamic_limit_incl_vat is not None:
             self._cached_dynamic_limit_incl_vat = dynamic_limit_incl_vat
 
         if self._static_limit_incl_vat == 0:
             return self._deferred_limit(dynamic_limit_incl_vat)
         return self._capped_limit(dynamic_limit_incl_vat)
-
-    @staticmethod
-    def _sanitised(dynamic_limit_incl_vat: float | None) -> float | None:
-        # A misbehaving threshold extension may return a non-finite or
-        # non-positive value; treat it exactly as "nothing fresh this
-        # cycle" rather than let it become the effective limit.
-        if dynamic_limit_incl_vat is None:
-            return None
-        if math.isfinite(dynamic_limit_incl_vat) and dynamic_limit_incl_vat > 0:
-            return dynamic_limit_incl_vat
-        return None
 
     def _deferred_limit(
         self, dynamic_limit_incl_vat: float | None

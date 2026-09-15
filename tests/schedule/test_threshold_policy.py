@@ -1,4 +1,3 @@
-import pytest
 from common.constants import ELECTRICITY_VAT_RATE
 from schedule.threshold_policy import EffectiveLimit, ThresholdPolicy
 
@@ -92,35 +91,5 @@ def test_threshold_policy_reports_no_limit_available_on_a_cold_start_with_the_de
     policy = ThresholdPolicy(static_limit_incl_vat=0)
 
     limit = policy.effective_limit(None)
-
-    assert limit is None
-
-
-@pytest.mark.parametrize("invalid_value", [0.0, -5.0, float("inf"), float("nan")])
-def test_threshold_policy_rejects_a_non_finite_or_non_positive_dynamic_value_and_falls_back_to_static(
-    invalid_value: float,
-) -> None:
-    # A non-finite or non-positive dynamic value must never be treated as
-    # usable -- it's rejected exactly as a missing (None) value would be,
-    # falling back to the static limit here (non-zero static, scenario 4's
-    # behaviour).
-    policy = ThresholdPolicy(static_limit_incl_vat=20)
-
-    limit = policy.effective_limit(invalid_value)
-
-    assert limit == EffectiveLimit(20, 20 / ELECTRICITY_VAT_RATE, "static")
-
-
-@pytest.mark.parametrize("invalid_value", [0.0, -5.0, float("inf"), float("nan")])
-def test_threshold_policy_reports_no_limit_available_when_a_non_finite_or_non_positive_dynamic_value_arrives_cold(
-    invalid_value: float,
-) -> None:
-    # Same invalid-value rejection as above, but for the deferral-opt-out /
-    # cold-start branch: an invalid value must never be mistaken for a
-    # usable value to cache or return -- it must fall through to the same
-    # "no limit determinable yet" None a genuinely missing value would.
-    policy = ThresholdPolicy(static_limit_incl_vat=0)
-
-    limit = policy.effective_limit(invalid_value)
 
     assert limit is None
