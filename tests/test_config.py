@@ -4,11 +4,13 @@ import pytest
 from pydantic import ValidationError
 
 from config import (
+    AppConfig,
     BuiltInLedTheme,
     ConfigLoader,
     CustomLedTheme,
     ExtensionEntry,
     ExtensionsConfig,
+    Hypervolt,
     LedConfig,
     Octopus,
     Schedule,
@@ -300,6 +302,51 @@ def test_config_loader_defaults_extensions_threshold_to_none_when_omitted(
     app_config = ConfigLoader(config_file).get_config()
 
     assert app_config.extensions is None
+
+
+def test_config_loader_rejects_the_legacy_top_level_threshold_extension_key(
+    tmp_path: Path,
+) -> None:
+    # Regression guard for the extensions.threshold rename (ADR 0021's
+    # 2026-09-15 amendment): AppConfig's extra="forbid" must reject the old
+    # top-level key outright rather than silently discarding it -- a config
+    # still on the old key would otherwise lose its dynamic threshold
+    # provider with no visible error, quietly falling back to the static
+    # price_limit_incl_vat.
+    config_file = tmp_path / "config.yml"
+    config_file.write_text(
+        _VALID_CONFIG_YAML
+        + "\nthreshold_extension:\n  name: fuel_price\n  config:\n    api_key: xyz\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        ConfigLoader(config_file)
+
+    assert exc_info.value.code == 1
+
+
+def test_app_config_rejects_an_unknown_top_level_key() -> None:
+    # General case behind the regression guard above -- mirrors
+    # LedConfig's and ExtensionsConfig's own unknown-key rejection tests.
+    _valid_kwargs = {
+        "octopus": Octopus(account_number="A-123", api_key="sk_test"),
+        "hypervolt": Hypervolt(username="user@example.com", password="secret"),
+        "schedule": Schedule(
+            total_charge_duration=4,
+            price_limit_incl_vat=15,
+            update_every_mins=30,
+            poll_every_secs=10,
+        ),
+    }
+    # Prove the valid kwargs alone construct cleanly -- otherwise the
+    # assertion below could pass for the wrong reason (an unrelated
+    # ValidationError from a missing/invalid required field), the same
+    # mistake this test itself first shipped with.
+    AppConfig(**_valid_kwargs)
+
+    with pytest.raises(ValidationError):
+        AppConfig(**_valid_kwargs, wibble=1)
 
 
 def test_config_loader_exits_when_price_limit_incl_vat_is_missing_even_with_an_extensions_threshold(

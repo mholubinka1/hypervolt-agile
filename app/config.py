@@ -161,7 +161,13 @@ class AppConfig(BaseModel):
     log_file: str | None = None
     log_level: str = "INFO"
 
-    model_config = {"populate_by_name": True}
+    # extra="forbid" -- a top-level key that no longer exists (e.g. the old
+    # threshold_extension:, renamed to extensions.threshold: -- ADR 0021's
+    # 2026-09-15 amendment) must fail loudly at startup rather than being
+    # silently dropped, which would otherwise degrade the charging schedule
+    # to its static fallback with no visible error. Matches LedConfig's and
+    # ExtensionsConfig's own extra="forbid" convention.
+    model_config = {"populate_by_name": True, "extra": "forbid"}
 
 
 class ConfigLoader:

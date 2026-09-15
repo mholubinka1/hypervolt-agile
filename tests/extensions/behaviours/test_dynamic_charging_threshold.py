@@ -261,6 +261,30 @@ def test_radius_miles_must_be_a_positive_finite_number_when_provided(
         DynamicChargingThresholdExtension(_valid_config(radius_miles=bad_radius_miles))
 
 
+def test_a_missing_update_every_mins_raises_value_error() -> None:
+    # update_every_mins is injected by load_threshold_extension (never
+    # operator-set -- see app/schedule/behaviour.py), but the extension's
+    # own construction-time validation must still reject a missing value
+    # the same way as any other required field, guarding every()'s interval
+    # arithmetic against a silently-absent cadence.
+    _config = _valid_config()
+    del _config["update_every_mins"]
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(_config)
+
+
+@pytest.mark.parametrize(
+    "bad_update_every_mins", [0, -30, "often", float("nan"), float("inf"), True]
+)
+def test_update_every_mins_must_be_a_positive_finite_number(
+    bad_update_every_mins: object,
+) -> None:
+    with pytest.raises(ValueError):
+        DynamicChargingThresholdExtension(
+            _valid_config(update_every_mins=bad_update_every_mins)
+        )
+
+
 async def test_radius_miles_excludes_a_station_beyond_the_configured_radius() -> None:
     # Scenario: radius_miles is an upper-bound cap, not an alternative
     # selection mode -- a farther station reporting a cheaper price is
