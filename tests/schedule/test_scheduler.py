@@ -77,6 +77,14 @@ class _FixedThresholdProvider:
         return self._value
 
 
+class _NoFreshValueThresholdProvider:
+    def __init__(self, config: dict) -> None:
+        self.config = config
+
+    async def get_threshold(self) -> float | None:
+        return None
+
+
 class _ChangingThresholdProvider:
     def __init__(self, values: list[float]) -> None:
         self._values = iter(values)
@@ -99,6 +107,37 @@ async def test_scheduler_uses_the_static_limit_when_no_threshold_provider_is_con
     scheduler = Scheduler(
         _agile_client(prices),
         _config(price_limit_incl_vat=100),
+    )
+
+    with caplog.at_level(logging.INFO):
+        scheduler.invalidate()
+        await scheduler.update()
+
+    assert len(scheduler.schedule) == 1
+    assert any("source: static)" in r.message for r in caplog.records)
+    assert not any("source: static cap)" in r.message for r in caplog.records)
+
+
+async def test_scheduler_falls_back_to_the_static_limit_when_the_threshold_provider_has_no_fresh_value(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Distinct from the "no threshold provider configured at all" test above:
+    # here a provider IS configured and wired through ExtensionWrapper.invoke(),
+    # it just has nothing fresh this cycle -- proving the None actually
+    # returned by invoke() flows through ThresholdPolicy to the static
+    # fallback, not just that the static-only code path works when there's
+    # no provider object to call in the first place.
+    _now = datetime.now(tz=_UTC)
+    prices = [_half_hour_price(50, 0, _now)]  # 50p exc VAT -- under a 100p limit
+    threshold_provider = ExtensionWrapper(
+        name="fake_threshold",
+        provider=_NoFreshValueThresholdProvider({}),
+        kind="charging threshold",
+    )
+    scheduler = Scheduler(
+        _agile_client(prices),
+        _config(price_limit_incl_vat=100),
+        threshold_provider=threshold_provider,
     )
 
     with caplog.at_level(logging.INFO):
