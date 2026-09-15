@@ -29,14 +29,19 @@ class _RebuildTrigger:
     (having already logged why). It is where each trigger's own
     "should we even try" logic lives; the shared routine has no built-in
     notion of it. `commit` runs immediately before the schedule is built,
-    once an effective limit is confirmed available -- a trigger with state
-    that must not update on a skipped/cold-start cycle (the new-prices
-    trigger's `_time_until`/`_agile_prices`, per PR #168) writes it here.
-    A trigger with nothing that needs gating this way can make `commit` a
-    no-op: replug always proceeds once invalidated (there is no skip path
-    to gate against), so it writes its own watermarks unconditionally
-    inside `prepare` instead. `finalize` runs after a schedule has been
-    successfully built and logged.
+    once an effective limit is confirmed available. The new-prices trigger
+    needs this: its own `prepare` compares the fetched price horizon
+    against `_time_until` to decide whether to even attempt a rebuild, so
+    writing `_time_until`/`_agile_prices` any earlier would make a skipped
+    cycle (e.g. a cold start with no limit yet) look identical to "already
+    seen" on the next call, permanently suppressing the retry (PR #168).
+    The replug trigger has no such self-referential pre-check -- it always
+    attempts a rebuild while invalidated, regardless of the price horizon
+    -- so an early write carries no equivalent risk; it writes its own
+    watermarks unconditionally inside `prepare` instead (unchanged from
+    this trigger's behaviour before this refactor), and `commit` is a
+    no-op for it. `finalize` runs after a schedule has been successfully
+    built and logged.
     """
 
     no_prices_warning: str
