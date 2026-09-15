@@ -56,7 +56,7 @@ class Hypervolt(BaseModel):
 
 class Schedule(BaseModel):
     duration: float = Field(..., alias="total_charge_duration", gt=0, le=24)
-    limit: float = Field(..., alias="price_limit_incl_vat", gt=0, le=100)
+    limit: float = Field(..., alias="price_limit_incl_vat", ge=0, le=100)
     frequency: int = Field(..., alias="update_every_mins", gt=0, le=1440)
     poll: int = Field(..., alias="poll_every_secs", ge=2, le=3600)
 
@@ -168,6 +168,21 @@ class AppConfig(BaseModel):
     # to its static fallback with no visible error. Matches LedConfig's and
     # ExtensionsConfig's own extra="forbid" convention.
     model_config = {"populate_by_name": True, "extra": "forbid"}
+
+    @model_validator(mode="after")
+    def zero_price_limit_requires_a_threshold_extension(self) -> AppConfig:
+        # price_limit_incl_vat: 0 is repurposed to mean "no cap, defer fully
+        # to the dynamic threshold extension" -- only meaningful when
+        # extensions.threshold is actually configured to defer to.
+        if self.schedule.limit == 0 and (
+            self.extensions is None or self.extensions.threshold is None
+        ):
+            raise ValueError(
+                "price_limit_incl_vat: 0 requires extensions.threshold to be "
+                "configured -- otherwise there is no dynamic threshold to "
+                "defer to."
+            )
+        return self
 
 
 class ConfigLoader:
