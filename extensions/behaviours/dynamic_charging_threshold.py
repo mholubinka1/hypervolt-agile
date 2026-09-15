@@ -150,6 +150,13 @@ class DynamicChargingThresholdExtension:
     async def get_threshold(self) -> float | None:
         return self._threshold
 
+    def _clear_cache(self, reason: str) -> None:
+        logger.warning(
+            f"Dynamic charging threshold extension {reason}; clearing the "
+            "cached threshold."
+        )
+        self._threshold = None
+
     async def _poll_once(self) -> None:
         try:
             _price = await self._fuel_finder.average_price_near(
@@ -159,12 +166,10 @@ class DynamicChargingThresholdExtension:
                 self._radius_miles,
             )
             if _price is None:
-                logger.warning(
-                    "Dynamic charging threshold extension found no fuel price "
-                    f"near {self._postcode!r} for fuel type "
-                    f"{self._fuel_type_code!r}; clearing the cached threshold."
+                self._clear_cache(
+                    f"found no fuel price near {self._postcode!r} for fuel "
+                    f"type {self._fuel_type_code!r}"
                 )
-                self._threshold = None
                 return
             if not math.isfinite(_price) or _price <= 0:
                 # FuelFinderClient passes the API's raw price straight
@@ -173,17 +178,34 @@ class DynamicChargingThresholdExtension:
                 # a threshold that silently breaks every schedule
                 # comparison (NaN never compares true; infinity accepts
                 # every price), rather than being treated as unavailable
-                # data the same way a missing price already is.
-                logger.warning(
-                    "Dynamic charging threshold extension received an "
-                    f"invalid fuel price {_price!r} near {self._postcode!r}; "
-                    "clearing the cached threshold."
+                # data the same way a missing price already is. A bool
+                # can't reach here in practice -- average_price_near()'s
+                # own sum()/len() division always normalises its return
+                # value to a plain float, even if a station's raw price
+                # were a JSON `true` (confirmed empirically: Python's true
+                # division on any int/bool/float mix always yields float).
+                self._clear_cache(
+                    f"received an invalid fuel price {_price!r} near "
+                    f"{self._postcode!r}"
                 )
-                self._threshold = None
                 return
-            self._threshold = _dynamic_threshold_incl_vat(
+            _threshold = _dynamic_threshold_incl_vat(
                 _price, self._mpg, self._mi_per_kwh
             )
+            if not math.isfinite(_threshold) or _threshold <= 0:
+                # The raw price alone being finite and positive doesn't
+                # guarantee the arithmetic stays finite -- an extreme but
+                # valid price (or mpg/mi_per_kwh at the edges of their own
+                # valid range) can still overflow to inf or underflow to
+                # exactly 0, which would cache a threshold accepting every
+                # (or no) electricity price. Same unavailable-data
+                # treatment as an invalid raw price.
+                self._clear_cache(
+                    f"computed an invalid threshold {_threshold!r} from "
+                    f"fuel price {_price!r}"
+                )
+                return
+            self._threshold = _threshold
             logger.info(
                 "Dynamic charging threshold extension computed threshold "
                 f"{self._threshold:.2f}p/kWh incl VAT from fuel price "

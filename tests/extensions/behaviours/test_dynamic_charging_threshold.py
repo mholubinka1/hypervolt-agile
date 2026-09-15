@@ -433,6 +433,67 @@ async def test_a_poll_receiving_an_invalid_fuel_price_clears_a_previously_cached
     assert await extension.get_threshold() is None
 
 
+async def test_a_poll_computing_an_overflowing_threshold_clears_a_previously_cached_threshold() -> (
+    None
+):
+    # A raw price can itself be finite and positive (passing the check
+    # above) while still overflowing to inf once multiplied through the
+    # breakeven formula -- 1e308p/litre is finite, but 1e308 * 4.54609
+    # already exceeds float's max representable value. Must be treated as
+    # unavailable data the same way an invalid raw price is, rather than
+    # caching an infinite threshold that would accept every electricity
+    # price.
+    extension = DynamicChargingThresholdExtension(_valid_config())
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    assert await extension.get_threshold() is not None
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 1e308)])]],
+    )
+    await extension._poll_once()
+
+    assert await extension.get_threshold() is None
+
+
+async def test_a_poll_computing_an_underflowing_threshold_clears_a_previously_cached_threshold() -> (
+    None
+):
+    # The other edge of the same guard: an extreme but valid mpg can drive
+    # the breakeven arithmetic to underflow to exactly 0.0 rather than
+    # overflowing -- 1e-300p/litre and a 1e300 mpg (both individually
+    # finite and positive, passing every earlier check) divide down past
+    # float's smallest representable positive value. Must be treated as
+    # unavailable data the same way an infinite threshold is, rather than
+    # caching a zero threshold that would accept no electricity price at
+    # all.
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(mpg=1e300, station_count=1)
+    )
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    assert await extension.get_threshold() is not None
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 1e-300)])]],
+    )
+    await extension._poll_once()
+
+    assert await extension.get_threshold() is None
+
+
 async def test_get_threshold_returns_none_instantly_before_any_poll_has_completed() -> (
     None
 ):
