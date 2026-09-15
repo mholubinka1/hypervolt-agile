@@ -150,7 +150,7 @@ async def test_scheduler_clamps_the_dynamic_threshold_to_the_static_price_limit(
         await scheduler.update()
 
     assert scheduler.schedule == []
-    assert any("static cap" in r.message for r in caplog.records)
+    assert any("source: static cap)" in r.message for r in caplog.records)
 
 
 async def test_scheduler_falls_back_to_the_static_limit_when_the_threshold_provider_has_no_fresh_value(
@@ -381,13 +381,15 @@ async def test_scheduler_skips_the_rebuild_when_the_static_limit_is_zero_and_no_
     # threshold, but the provider hasn't produced a fresh value yet and
     # nothing is cached from a prior cycle. The scheduler must not crash
     # or build a schedule from a guessed limit -- it should leave the
-    # schedule empty, warn about why, and remain invalidated so the next
-    # cycle can retry.
+    # schedule empty, warn about why, and retry on its own once the
+    # extension actually produces a value (proven behaviourally below by
+    # driving a second cycle, rather than asserting the private
+    # _invalidated flag directly).
     _now = datetime.now(tz=_UTC)
     prices = [_half_hour_price(30, 0, _now)]
     threshold_provider = ExtensionWrapper(
         name="fake_threshold",
-        provider=_NoFreshValueThresholdProvider({}),
+        provider=_ChangingThresholdProvider([None, 40.0]),
         kind="charging threshold",
     )
     scheduler = Scheduler(
@@ -402,7 +404,10 @@ async def test_scheduler_skips_the_rebuild_when_the_static_limit_is_zero_and_no_
 
     assert scheduler.schedule == []
     assert any(r.levelname == "WARNING" for r in caplog.records)
-    assert scheduler._invalidated is True
+
+    await scheduler.update()  # the extension now has a value -- retries on its own
+
+    assert len(scheduler.schedule) == 1  # 40p limit admits the 30p price
 
 
 async def test_scheduler_correctly_converts_the_dynamic_thresholds_incl_vat_pence_to_exc_vat() -> (
