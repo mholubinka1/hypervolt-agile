@@ -340,3 +340,122 @@ async def test_scheduler_correctly_converts_the_dynamic_thresholds_incl_vat_penc
     await scheduler.update()
 
     assert scheduler.schedule == []
+
+
+async def test_scheduler_uses_the_replug_specific_success_log_prefix(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # _RebuildTrigger routes a per-trigger success_log_prefix through the
+    # single shared _rebuild -- if replug's and new-prices' prefixes were
+    # ever swapped, every other test here (which only asserts on the
+    # source/value substring, not the prefix) would still pass silently.
+    _now = datetime.now(tz=_UTC)
+    scheduler = Scheduler(
+        _agile_client([_half_hour_price(50, 0, _now)]),
+        _config(price_limit_incl_vat=100),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await scheduler._rebuild_on_replug()
+
+    assert any(
+        "New Schedule created on car plugged in:" in r.message for r in caplog.records
+    )
+    assert not any("New schedule created:" in r.message for r in caplog.records)
+
+
+async def test_scheduler_uses_the_new_prices_specific_success_log_prefix(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Mirrors the replug test above for the other trigger's prefix.
+    _now = datetime.now(tz=_UTC)
+    scheduler = Scheduler(
+        _agile_client([_half_hour_price(50, 0, _now)]),
+        _config(price_limit_incl_vat=100),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await scheduler._rebuild_on_new_prices()
+
+    assert any("New schedule created:" in r.message for r in caplog.records)
+    assert not any(
+        "New Schedule created on car plugged in:" in r.message for r in caplog.records
+    )
+
+
+async def test_scheduler_warns_with_the_replug_specific_wording_when_no_prices_are_returned(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # no_prices_warning is another per-trigger string threaded through the
+    # shared _rebuild -- same swap risk as success_log_prefix above.
+    scheduler = Scheduler(_agile_client([]), _config(price_limit_incl_vat=100))
+
+    with caplog.at_level(logging.WARNING):
+        await scheduler._rebuild_on_replug()
+
+    assert any(
+        "No Agile prices returned. Skipping schedule rebuild." in r.message
+        for r in caplog.records
+    )
+    assert not any(
+        "No Agile prices returned. Skipping schedule update." in r.message
+        for r in caplog.records
+    )
+
+
+async def test_scheduler_warns_with_the_new_prices_specific_wording_when_no_prices_are_returned(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    scheduler = Scheduler(_agile_client([]), _config(price_limit_incl_vat=100))
+
+    with caplog.at_level(logging.WARNING):
+        await scheduler._rebuild_on_new_prices()
+
+    assert any(
+        "No Agile prices returned. Skipping schedule update." in r.message
+        for r in caplog.records
+    )
+    assert not any(
+        "No Agile prices returned. Skipping schedule rebuild." in r.message
+        for r in caplog.records
+    )
+
+
+async def test_scheduler_logs_the_replug_specific_exception_message_on_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # exception_message is the fourth per-trigger string threaded through
+    # the shared _rebuild's try/except -- same swap risk as the others.
+    _client = Mock(spec=AgileClient)
+    _client.get_upcoming_prices = AsyncMock(side_effect=RuntimeError("boom"))
+    scheduler = Scheduler(_client, _config(price_limit_incl_vat=100))
+
+    with caplog.at_level(logging.ERROR):
+        await scheduler._rebuild_on_replug()
+
+    assert any(
+        "Failed to rebuild schedule on car plugged in." in r.message
+        for r in caplog.records
+    )
+    assert not any(
+        "Failed to create charging schedule." in r.message for r in caplog.records
+    )
+
+
+async def test_scheduler_logs_the_new_prices_specific_exception_message_on_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _client = Mock(spec=AgileClient)
+    _client.get_upcoming_prices = AsyncMock(side_effect=RuntimeError("boom"))
+    scheduler = Scheduler(_client, _config(price_limit_incl_vat=100))
+
+    with caplog.at_level(logging.ERROR):
+        await scheduler._rebuild_on_new_prices()
+
+    assert any(
+        "Failed to create charging schedule." in r.message for r in caplog.records
+    )
+    assert not any(
+        "Failed to rebuild schedule on car plugged in." in r.message
+        for r in caplog.records
+    )
