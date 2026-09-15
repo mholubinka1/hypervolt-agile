@@ -441,6 +441,38 @@ async def test_scheduler_ignores_a_non_finite_or_non_positive_dynamic_threshold(
     assert any(r.levelname == "WARNING" for r in caplog.records)
 
 
+@pytest.mark.parametrize("invalid_value", [0.0, -5.0, float("inf"), float("nan")])
+async def test_scheduler_skips_the_rebuild_on_a_non_finite_or_non_positive_dynamic_threshold_with_no_static_cap(
+    invalid_value: float,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Same invalid-value rejection as the non-zero-static test above, but for
+    # the price_limit_incl_vat=0 / cold-start branch specifically: an invalid
+    # value must not be mistaken for a usable cached value, or get cached at
+    # all, when there's nothing else to fall back to -- it must fall through
+    # to the same "no limit determinable yet" skip as a genuinely absent
+    # value would.
+    _now = datetime.now(tz=_UTC)
+    prices = [_half_hour_price(30, 0, _now)]
+    threshold_provider = ExtensionWrapper(
+        name="fake_threshold",
+        provider=_FixedThresholdProvider({}, value=invalid_value),
+        kind="charging threshold",
+    )
+    scheduler = Scheduler(
+        _agile_client(prices),
+        _config_with_threshold_extension(price_limit_incl_vat=0),
+        threshold_provider=threshold_provider,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        scheduler.invalidate()
+        await scheduler.update()
+
+    assert scheduler.schedule == []
+    assert any(r.levelname == "WARNING" for r in caplog.records)
+
+
 async def test_scheduler_correctly_converts_the_dynamic_thresholds_incl_vat_pence_to_exc_vat() -> (
     None
 ):

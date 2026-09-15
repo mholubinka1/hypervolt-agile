@@ -48,14 +48,21 @@ cap, never less. An operator who wants the extension to have full, uncapped cont
 - `Scheduler.__init__` (`app/schedule/__init__.py`) gains `self._cached_dynamic_limit_incl_vat:
   float | None = None`, updated every time the threshold provider returns a fresh (non-`None`)
   value, regardless of whether the static limit is `0`.
-- `Scheduler._current_limit()` is rewritten to return `tuple[float, float, str] | None` (limit incl
-  VAT, limit exc VAT, source label) or `None` when no effective limit can be determined yet:
-  - Fetch the provider's fresh value first (if a provider is configured) and update the cache.
+- `Scheduler._current_limit()` is rewritten to return an `EffectiveLimit` NamedTuple (`incl_vat`,
+  `exc_vat`, `source`) or `None` when no effective limit can be determined yet:
+  - Fetch the provider's fresh value first (if a provider is configured). A fresh value that isn't
+    finite and positive (`0`, negative, `inf`, `NaN` — a misbehaving or buggy provider) is discarded
+    and logged as a warning, treated identically to the provider returning no fresh value at all,
+    before either caching or use — the static ceiling this feature exists to guarantee must not be
+    underminable by an unvalidated provider return.
+  - Otherwise update the cache with the fresh value.
   - `static_limit == 0`: use the fresh value if present (source `"dynamic"`); else the cached value
     if present (source `"cached dynamic"`); else return `None` (no limit determinable this cycle).
   - `static_limit > 0` and a fresh dynamic value is present: `min(dynamic, static)` — source
     `"dynamic"` when the dynamic value wins, `"static cap"` when the static value clamps it.
   - `static_limit > 0` and no fresh dynamic value: use the static value, source `"static"`.
+- The two rebuild call sites share this "no limit yet, warn and skip" path via a
+  `_effective_limit_or_warn` helper, parameterised only by the action description in the warning.
 - `Scheduler._rebuild_on_replug` and `_rebuild_on_new_prices` both handle a `None` result from
   `_current_limit()` by logging a warning and returning without building a schedule (leaving
   `_invalidated` / the update timer such that the next cycle retries naturally — no new retry
@@ -71,7 +78,10 @@ cap, never less. An operator who wants the extension to have full, uncapped cont
   the pass-through (dynamic <= static → dynamic wins), the zero-defers-and-caches case (static=0,
   fresh value then a later cycle with no fresh value uses the cache), the cold-start skip (static=0,
   no cached value yet → schedule stays empty and no exception), and the rebuild log naming the
-  correct source in each case.
+  correct source in each case, plus a non-finite/non-positive dynamic value (`0`, negative, `inf`,
+  `NaN`) being discarded rather than used or cached, both with a non-zero static limit (falls back
+  to static) and with `price_limit_incl_vat: 0` and nothing cached yet (falls through to the
+  cold-start skip).
 - Config-level tests in `tests/test_config.py`: `price_limit_incl_vat: 0` with no
   `extensions.threshold` configured raises `ValidationError`; `price_limit_incl_vat: 0` with
   `extensions.threshold` configured loads successfully. The existing
