@@ -453,6 +453,11 @@ async def test_a_poll_finding_no_matching_fuel_type_clears_a_previously_cached_t
         "found no fuel price near 'SW1A 1AA' for fuel type 'E10'" in r.message
         for r in caplog.records
     )
+    assert not any("could not resolve postcode" in r.message for r in caplog.records)
+    assert not any(
+        "could not fetch the fuel station list" in r.message for r in caplog.records
+    )
+    assert not any("could not fetch fuel prices" in r.message for r in caplog.records)
 
 
 async def test_a_poll_with_a_postcode_that_does_not_geocode_logs_the_geocode_specific_reason(

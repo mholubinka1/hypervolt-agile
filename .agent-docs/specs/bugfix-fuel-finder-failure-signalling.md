@@ -56,7 +56,7 @@ the caller reacts to it change.
   `_poll_once` currently does `if _price is None: self._clear_cache(<one generic message>)`. It now
   checks `isinstance(_result, FuelPriceFailure)` and passes a distinct, accurate message per member
   to `_clear_cache` (e.g. "could not resolve postcode `{postcode}`" for `GEOCODE_FAILED`, "could not
-  fetch the station list" for `STATIONS_UNAVAILABLE`, "could not fetch fuel prices" for
+  fetch the fuel station list" for `STATIONS_UNAVAILABLE`, "could not fetch fuel prices" for
   `PRICES_UNAVAILABLE`, and today's existing "found no fuel price near `{postcode}` for fuel type
   `{fuel_type}`" wording — now correctly scoped to only the `NO_MATCHING_STATION` case it actually
   describes). Everything downstream of that branch (clearing `self._threshold`, the exception
