@@ -86,8 +86,12 @@ extension/theme-loading function signatures, which is not part of the cycle and 
   (which tested `parse_window_date` via its old home), importing from `common.calendar_window`
   instead — matches this repo's own convention of one test file per module living alongside what it
   tests, and stops the test suite from silently exercising a function only through
-  `hypervolt.led`'s pass-through import once that's no longer the function's real home. No behaviour
-  change to the tests themselves, only their location and import line.
+  `hypervolt.led`'s pass-through import once that's no longer the function's real home. The moved
+  `parse_window_date` tests carry over unchanged. `window_for_year` moved into the same module but had
+  no dedicated test anywhere before this — it was only covered indirectly through `config.py`'s
+  validators and `led.py`'s `_resolve_from` — so this file also gains two direct tests for it
+  (same-year vs. year-wrap), a reasonable strengthening now that it has a real standalone home worth
+  testing directly, not required by the cycle-breaking goal itself.
 - `tests/hypervolt/test_led.py` and `tests/hypervolt/test_led_resolve_custom_themes.py`: both import
   `DEFAULT_BUILT_IN_THEMES` from `hypervolt.led` — unaffected, since `led.py` still defines and
   exports it (now derived rather than hand-written, but identical in value and type). No changes

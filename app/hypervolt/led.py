@@ -10,10 +10,13 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import yaml
 
-# Redundant "as Window" alias, deliberate: mypy's implicit_reexport=false would
-# otherwise treat Window as private to this module, breaking external
-# importers that still do `from hypervolt.led import Window` (e.g.
-# schedule/coordinator.py) now that Window is only imported here, not defined.
+# This comment describes only the "Window as Window" import two lines below
+# (isort keeps this group adjacent with no blank line, so it can't sit
+# directly above just that one line): the redundant-looking "as" alias is
+# deliberate -- mypy's implicit_reexport=false would otherwise treat Window
+# as private to this module, breaking external importers that still do
+# `from hypervolt.led import Window` (e.g. schedule/coordinator.py) now that
+# Window is only imported here, not defined.
 from common.calendar_window import DEFAULT_BUILT_IN_THEME_WINDOWS
 from common.calendar_window import Window as Window  # noqa: PLC0414
 from common.calendar_window import parse_window_date, window_for_year
