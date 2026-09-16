@@ -69,9 +69,11 @@ async def load_threshold_extension(
     # out of sync with it ("this avoids a redundant config field",
     # feature-dynamic-charging-threshold.md). entry (and entry.config) is
     # passed straight through untouched: extra_kwargs is a genuinely separate
-    # channel from the operator's own config dict, so a value the operator
-    # happens to write under this same key in their own config is never read,
-    # let alone overwritten.
+    # channel from the operator's own config dict, so this loader never reads
+    # or overwrites a same-named key the operator happens to write in their
+    # own config -- the provider itself remains free to read it from config
+    # if it chooses to (see the regression test proving the two values can
+    # legitimately differ).
     _wrappers = await _load_extensions(
         [entry],
         extensions_dir,
