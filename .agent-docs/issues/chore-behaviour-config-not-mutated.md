@@ -1,5 +1,7 @@
 # Issues: chore-behaviour-config-not-mutated
 
+> Work complete — PR ready to merge.
+
 ## Give the threshold extension its cadence as a constructor parameter, not an injected config key
 
 **GitHub issue**: #178
@@ -24,19 +26,19 @@ to accept it as a real constructor argument instead of reading it out of `config
 
 ### Acceptance criteria
 
-- [ ] `load_extensions` accepts an optional `extra_kwargs` dict and passes it to the provider
+- [x] `load_extensions` accepts an optional `extra_kwargs` dict and passes it to the provider
       constructor as keyword arguments; omitting it (or passing `None`) behaves exactly as today for
       every existing caller.
-- [ ] `load_threshold_extension` no longer calls `entry.model_copy(...)` — the `ExtensionEntry`
+- [x] `load_threshold_extension` no longer calls `entry.model_copy(...)` — the `ExtensionEntry`
       (and its `config` dict) it hands to the shared loader is the exact object the caller passed in.
-- [ ] `DynamicChargingThresholdExtension` receives its poll cadence via a constructor parameter, not
+- [x] `DynamicChargingThresholdExtension` receives its poll cadence via a constructor parameter, not
       by reading `config["update_every_mins"]`.
-- [ ] An operator who writes `update_every_mins` inside the threshold extension's own config block
+- [x] An operator who writes `update_every_mins` inside the threshold extension's own config block
       sees that value passed through to the extension's `config` dict untouched (available via
       `config.get("update_every_mins")` if the extension chooses to look), not overwritten with the
       loader-injected value — the two can now legitimately differ, proving the config is genuinely no
       longer rewritten.
-- [ ] Every existing test covering cadence injection, config loading, and the threshold extension's
+- [x] Every existing test covering cadence injection, config loading, and the threshold extension's
       own behaviour still passes, updated to the new constructor-parameter call shape rather than the
       old config-key shape.
 
