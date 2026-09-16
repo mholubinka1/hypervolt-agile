@@ -211,13 +211,37 @@ async def test_average_price_near_returns_geocode_failed_when_the_postcode_does_
     assert any(r.levelno == logging.WARNING for r in caplog.records)
 
 
-async def test_average_price_near_returns_geocode_failed_on_a_postcodes_io_http_error(
+async def test_average_price_near_returns_geocode_failed_on_a_postcodes_io_5xx(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # The 404 test above covers "postcode not recognised"; postcodes.io can
-    # also fail outright (5xx, or no response at all) -- a distinct code
-    # path inside _geocode's own try/except, not exercised by the 404 case,
-    # but which must map to the same GEOCODE_FAILED result.
+    # also fail with a 5xx -- a real HTTP response reaching _geocode's own
+    # raise_for_status() call, distinct from the 404 branch (which returns
+    # before ever calling raise_for_status()) and from a transport-level
+    # failure (no response at all, covered by the network-exception test
+    # below) -- but which must map to the same GEOCODE_FAILED result.
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    client = _mock_client(_handler)
+    fuel_finder = FuelFinderClient(client, _auth())
+
+    with caplog.at_level(logging.WARNING):
+        _result = await fuel_finder.average_price_near(
+            "SW1A 1AA", "E10", station_count=1
+        )
+
+    assert _result is FuelPriceFailure.GEOCODE_FAILED
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+async def test_average_price_near_returns_geocode_failed_on_a_network_level_exception(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A transport-level exception (no HTTP response at all) is a distinct
+    # code path from the 5xx test above -- it never reaches
+    # raise_for_status(), failing instead at the request itself -- but must
+    # map to the same GEOCODE_FAILED result.
     def _handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused", request=request)
 
