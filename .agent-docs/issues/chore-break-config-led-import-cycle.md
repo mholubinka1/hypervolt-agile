@@ -1,5 +1,7 @@
 # Issues: chore-break-config-led-import-cycle
 
+> Work complete — PR ready to merge.
+
 ## Extract calendar_window.py so config.py no longer imports from hypervolt/led.py
 
 **GitHub issue**: #180
@@ -28,17 +30,17 @@ this change, `config.py` imports nothing from `hypervolt.led`.
 
 ### Acceptance criteria
 
-- [ ] `config.py` has no import from `hypervolt.led` (grep confirms zero references).
-- [ ] `hypervolt/led.py`'s `DEFAULT_BUILT_IN_THEMES` is byte-for-byte equivalent in value to today's
+- [x] `config.py` has no import from `hypervolt.led` (grep confirms zero references).
+- [x] `hypervolt/led.py`'s `DEFAULT_BUILT_IN_THEMES` is byte-for-byte equivalent in value to today's
       hand-written literal, now derived from `common.calendar_window.DEFAULT_BUILT_IN_THEME_WINDOWS`.
-- [ ] `config.py`'s date-window validators (`must_be_a_valid_window_date`,
+- [x] `config.py`'s date-window validators (`must_be_a_valid_window_date`,
       `end_must_be_after_start`) behave identically to today — same accepted/rejected inputs, same
       error messages.
-- [ ] Every existing external importer of `Window`, `parse_window_date`, or `DEFAULT_BUILT_IN_THEMES`
+- [x] Every existing external importer of `Window`, `parse_window_date`, or `DEFAULT_BUILT_IN_THEMES`
       from `hypervolt.led` (e.g. `schedule/coordinator.py`, `tests/hypervolt/test_led.py`,
       `tests/schedule/test_coordinator.py`) continues to work unmodified.
-- [ ] `hypervolt/led.py`'s `TYPE_CHECKING` import of `config.py`'s types is unchanged.
-- [ ] Full test suite passes, including a moved `tests/common/test_calendar_window.py` (from
+- [x] `hypervolt/led.py`'s `TYPE_CHECKING` import of `config.py`'s types is unchanged.
+- [x] Full test suite passes, including a moved `tests/common/test_calendar_window.py` (from
       `tests/hypervolt/test_led_parse_window_date.py`) testing `parse_window_date` against its new
       home directly.
 
