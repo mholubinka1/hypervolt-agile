@@ -196,7 +196,7 @@ async def test_average_price_near_excludes_stations_outside_radius_miles() -> No
     assert _average == 130.0
 
 
-async def test_average_price_near_returns_none_when_the_postcode_does_not_geocode(
+async def test_average_price_near_returns_geocode_failed_when_the_postcode_does_not_geocode(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     client = _mock_client(_router(pfs_batches=[], price_batches=[], geocode_status=404))
@@ -211,11 +211,34 @@ async def test_average_price_near_returns_none_when_the_postcode_does_not_geocod
     assert any(r.levelno == logging.WARNING for r in caplog.records)
 
 
-async def test_average_price_near_returns_none_when_no_station_reports_the_fuel_type() -> (
+async def test_average_price_near_returns_geocode_failed_on_a_postcodes_io_http_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The 404 test above covers "postcode not recognised"; postcodes.io can
+    # also fail outright (5xx, or no response at all) -- a distinct code
+    # path inside _geocode's own try/except, not exercised by the 404 case,
+    # but which must map to the same GEOCODE_FAILED result.
+    def _handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    client = _mock_client(_handler)
+    fuel_finder = FuelFinderClient(client, _auth())
+
+    with caplog.at_level(logging.WARNING):
+        _result = await fuel_finder.average_price_near(
+            "SW1A 1AA", "E10", station_count=1
+        )
+
+    assert _result is FuelPriceFailure.GEOCODE_FAILED
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+async def test_average_price_near_returns_no_matching_station_when_no_station_reports_the_fuel_type() -> (
     None
 ):
     # Scenario 7: the mocked dataset sells other fuel types but never the
-    # requested one -- None, not an exception or an empty-list error.
+    # requested one -- FuelPriceFailure.NO_MATCHING_STATION, not an
+    # exception or an empty-list error.
     _stations = [
         _station("s1", latitude=51.5, longitude=-0.14),
         _station("s2", latitude=51.6, longitude=-0.14),
@@ -282,11 +305,12 @@ async def test_average_price_near_retries_once_after_a_401_and_succeeds() -> Non
     assert _pfs_auth_headers == ["Bearer stale-token", "Bearer fresh-token"]
 
 
-async def test_average_price_near_returns_none_when_401_persists_after_refresh() -> (
+async def test_average_price_near_returns_stations_unavailable_when_401_persists_after_refresh() -> (
     None
 ):
     # Scenario 9: the refresh doesn't fix it -- a second 401 on the retried
-    # request means give up and return None rather than looping forever.
+    # request means give up and return FuelPriceFailure.STATIONS_UNAVAILABLE
+    # rather than looping forever.
     def _handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "api.postcodes.io":
             return httpx.Response(200, json=_GEOCODE_RESULT)
@@ -301,11 +325,11 @@ async def test_average_price_near_returns_none_when_401_persists_after_refresh()
     assert _result is FuelPriceFailure.STATIONS_UNAVAILABLE
     # Proves the retry genuinely happened exactly once, not zero times (the
     # 401 silently swallowed) and not more than once (looping) -- a plain
-    # assert on the final None result alone can't distinguish those cases.
+    # assert on the final result alone can't distinguish those cases.
     _fuel_finder_auth.invalidate.assert_called_once()
 
 
-async def test_average_price_near_returns_none_and_logs_a_warning_on_a_5xx(
+async def test_average_price_near_returns_stations_unavailable_and_logs_a_warning_on_a_5xx(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Scenario 10: a 5xx from a data batch is caught, logged as a warning, and
@@ -360,7 +384,9 @@ async def test_average_price_near_returns_prices_unavailable_when_only_prices_fa
     assert any(r.levelno == logging.WARNING for r in caplog.records)
 
 
-async def test_average_price_near_returns_none_on_a_network_level_exception() -> None:
+async def test_average_price_near_returns_stations_unavailable_on_a_network_level_exception() -> (
+    None
+):
     # Scenario 10: a transport-level exception (no HTTP response at all) is
     # caught the same way as an HTTP-level 5xx.
     def _handler(request: httpx.Request) -> httpx.Response:

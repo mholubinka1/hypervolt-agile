@@ -245,11 +245,11 @@ class DynamicChargingThresholdExtension:
         except Exception as e:
             # Last-resort safety net for anything unexpected (e.g. a
             # config/type error in our own arithmetic) -- FuelFinderClient
-            # already catches and logs its own network/HTTP errors and
-            # returns None, so this is not duplicating that. A transient
-            # failure here should not wipe a still-valid cached threshold
-            # from a previous successful poll, so self._threshold is
-            # deliberately left untouched.
+            # already catches its own network/HTTP errors and returns a
+            # FuelPriceFailure (handled above, not here), so this is not
+            # duplicating that. A transient failure here should not wipe a
+            # still-valid cached threshold from a previous successful poll,
+            # so self._threshold is deliberately left untouched.
             logger.warning(
                 f"Dynamic charging threshold extension poll failed unexpectedly: "
                 f"{type(e).__name__}: {e}."
