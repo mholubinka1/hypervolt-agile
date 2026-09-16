@@ -7,10 +7,20 @@ from datetime import datetime
 from logging import Logger, getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
-from zoneinfo import ZoneInfo
 
 import yaml
-from common.constants import APP_NAME, TIMEZONE
+
+# This comment describes only the "Window as Window" import two lines below
+# (isort keeps this group adjacent with no blank line, so it can't sit
+# directly above just that one line): the redundant-looking "as" alias is
+# deliberate -- mypy's implicit_reexport=false would otherwise treat Window
+# as private to this module, breaking external importers that still do
+# `from hypervolt.led import Window` (e.g. schedule/coordinator.py) now that
+# Window is only imported here, not defined.
+from common.calendar_window import DEFAULT_BUILT_IN_THEME_WINDOWS
+from common.calendar_window import Window as Window  # noqa: PLC0414
+from common.calendar_window import parse_window_date, window_for_year
+from common.constants import APP_NAME
 from common.extensions import ExtensionWrapper as _GenericExtensionWrapper
 from common.extensions import load_extensions as _load_generic_extensions
 from common.logging import config
@@ -21,19 +31,12 @@ if TYPE_CHECKING:
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
-_LOCAL_TZ = ZoneInfo(TIMEZONE)
 _LED_COUNT = 51
 # Custom-theme colour maps live in a `themes/` directory at the repo root
 # (this file is app/hypervolt/led.py, so the root is three parents up). The
 # app reads from here, not the operator's config directory -- see ADR
 # "custom themes move to a repo themes/ directory".
 THEMES_DIR = Path(__file__).resolve().parents[2] / "themes"
-# A fixed leap year, shared by parse_window_date (so "02-29" parses) and by
-# config.py's end_must_be_after_start validator (so its chronological check
-# uses the same reference year as everything else that materialises a Window
-# into real dates) -- one named constant instead of the literal 2000 living
-# in two places.
-REFERENCE_ANCHOR_YEAR = 2000
 
 
 @dataclass(frozen=True)
@@ -96,56 +99,18 @@ def load_custom_effect(path: Path) -> list[dict[str, float]]:
     return _leds
 
 
-# (theme, (start_month, start_day, start_hour, start_minute), (end_month, end_day, end_hour, end_minute))
-# Year-agnostic, London local time. A window whose end month is earlier than its
-# start month wraps into the following year (e.g. party_mode spans New Year's Eve).
-Window = tuple[int, int, int, int]
+# DEFAULT_BUILT_IN_THEMES is derived from the shared raw catalog in
+# common.calendar_window rather than hand-written here -- this file no longer
+# owns the date-window shape, but its own DEFAULT_BUILT_IN_THEMES export is
+# still what other modules depend on (tests/hypervolt/test_led.py and
+# tests/hypervolt/test_led_resolve_custom_themes.py both import it, and
+# resolve_theme()/load_built_in_themes() elsewhere in this file work with
+# (LedTheme, Window, Window) tuples), so it's rebuilt here as LedTheme-wrapped
+# tuples rather than dropped.
 DEFAULT_BUILT_IN_THEMES: list[tuple[LedTheme, Window, Window]] = [
-    (LedTheme(effect_name="halloween_mode"), (10, 31, 0, 0), (11, 1, 6, 0)),
-    (LedTheme(effect_name="christmas_mode"), (12, 24, 0, 0), (12, 31, 6, 0)),
-    (LedTheme(effect_name="party_mode"), (12, 31, 6, 0), (1, 1, 6, 0)),
+    (LedTheme(effect_name=name), start, end)
+    for name, start, end in DEFAULT_BUILT_IN_THEME_WINDOWS
 ]
-
-
-def parse_window_date(value: str) -> Window:
-    # REFERENCE_ANCHOR_YEAR avoids Python's day-without-year parsing ambiguity
-    # (deprecated in 3.15) and lets "02-29" parse as a valid window boundary.
-    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            # Naive is fine here -- only the calendar fields are used, the
-            # result is never compared as an actual instant.
-            _parsed = datetime.strptime(  # noqa: DTZ007
-                f"{REFERENCE_ANCHOR_YEAR}-{value}", fmt
-            )
-            # strptime accepts single-digit fields ("2-3", "10-31 6:0") even
-            # though the documented grammar is strictly zero-padded -- a
-            # round-trip through the same format catches that silently-loose
-            # input, since re-formatting a valid one always yields it back.
-            if _parsed.strftime(fmt) != f"{REFERENCE_ANCHOR_YEAR}-{value}":
-                continue
-            return (_parsed.month, _parsed.day, _parsed.hour, _parsed.minute)
-        except ValueError:
-            continue
-    raise ValueError(
-        f"Invalid date window {value!r}: expected 'MM-DD' or 'MM-DD HH:MM'."
-    )
-
-
-def window_for_year(
-    start: Window, end: Window, anchor_year: int
-) -> tuple[datetime, datetime]:
-    # Public: also called from config.py's end_must_be_after_start validator
-    # to check chronological ordering at config-load time, not just here.
-    start_month, start_day, start_hour, start_minute = start
-    end_month, end_day, end_hour, end_minute = end
-    _start = datetime(
-        anchor_year, start_month, start_day, start_hour, start_minute, tzinfo=_LOCAL_TZ
-    )
-    _end_year = anchor_year + 1 if end_month < start_month else anchor_year
-    _end = datetime(
-        _end_year, end_month, end_day, end_hour, end_minute, tzinfo=_LOCAL_TZ
-    )
-    return _start, _end
 
 
 def _resolve_from(
