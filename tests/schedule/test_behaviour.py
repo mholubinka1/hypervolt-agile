@@ -8,8 +8,9 @@ from config import ExtensionEntry
 
 _VALID_PROVIDER_SOURCE = """
 class FakeThresholdProvider:
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, update_every_mins: int) -> None:
         self.config = config
+        self.update_every_mins = update_every_mins
 
     async def get_threshold(self) -> float | None:
         return 7.5
@@ -44,16 +45,48 @@ async def test_load_threshold_extension_injects_the_schedules_own_cadence(
 ) -> None:
     # The extension's own config block never sets its poll cadence directly
     # (feature-dynamic-charging-threshold.md: reusing schedule.update_every_mins
-    # "avoids a redundant config field") -- load_threshold_extension injects
-    # it instead, overriding anything an operator put under the same key.
+    # "avoids a redundant config field") -- load_threshold_extension hands
+    # it to the extension as its own constructor parameter instead, via
+    # extra_kwargs, not through entry.config.
     (tmp_path / "fuel_price.py").write_text(
         """
 class FakeThresholdProvider:
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, update_every_mins: int) -> None:
         self.config = config
+        self.update_every_mins = update_every_mins
 
     async def get_threshold(self) -> float | None:
-        return self.config["update_every_mins"]
+        return self.update_every_mins
+""",
+        encoding="utf-8",
+    )
+    entry = ExtensionEntry(name="fuel_price", config={})
+
+    result = await load_threshold_extension(entry, tmp_path, update_every_mins=15)
+
+    assert result is not None
+    assert await result.invoke("get_threshold") == 15
+
+
+async def test_load_threshold_extension_never_touches_an_operator_supplied_update_every_mins_key(
+    tmp_path: Path,
+) -> None:
+    # entry.config is now passed straight through to the extension untouched
+    # -- an operator who happens to write an "update_every_mins" key inside
+    # the extension's own config block (a reasonable thing to try, since
+    # every other tunable in that block lives there) must see it survive
+    # exactly as written, even though it's a completely different value from
+    # the scheduler's own cadence passed via the constructor's own
+    # update_every_mins parameter.
+    (tmp_path / "fuel_price.py").write_text(
+        """
+class FakeThresholdProvider:
+    def __init__(self, config: dict, update_every_mins: int) -> None:
+        self.config = config
+        self.update_every_mins = update_every_mins
+
+    async def get_threshold(self) -> float | None:
+        return self.config.get("update_every_mins")
 """,
         encoding="utf-8",
     )
@@ -62,7 +95,7 @@ class FakeThresholdProvider:
     result = await load_threshold_extension(entry, tmp_path, update_every_mins=15)
 
     assert result is not None
-    assert await result.invoke("get_threshold") == 15
+    assert await result.invoke("get_threshold") == 999
 
 
 async def test_load_threshold_extension_logs_the_charging_threshold_kind_label_on_failure(
@@ -97,8 +130,9 @@ async def test_load_threshold_extension_rejects_a_non_finite_or_non_positive_val
     (tmp_path / "fuel_price.py").write_text(
         f"""
 class FakeThresholdProvider:
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, update_every_mins: int) -> None:
         self.config = config
+        self.update_every_mins = update_every_mins
 
     async def get_threshold(self) -> float | None:
         return float("{invalid_value}")

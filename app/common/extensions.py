@@ -128,6 +128,7 @@ async def load_extensions(
     extensions_dir: Path,
     marker_method: str,
     kind: str,
+    extra_kwargs: dict[str, Any] | None = None,
 ) -> list[ExtensionWrapper]:
     _loaded: list[ExtensionWrapper] = []
     _extensions_dir = extensions_dir.resolve()
@@ -156,7 +157,7 @@ async def load_extensions(
             _provider_class = _load_provider_class(
                 _module_path, marker_method, _module_key
             )
-            _provider = _provider_class(entry.config)
+            _provider = _provider_class(entry.config, **(extra_kwargs or {}))
             if hasattr(_provider, "start"):
                 await _provider.start()
         except Exception as e:

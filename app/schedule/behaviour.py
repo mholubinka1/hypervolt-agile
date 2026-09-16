@@ -21,7 +21,7 @@ _KIND = "charging threshold extension"
 
 
 class BehaviourProvider(Protocol):
-    def __init__(self, config: dict[str, Any]) -> None: ...
+    def __init__(self, config: dict[str, Any], update_every_mins: int) -> None: ...
 
     async def get_threshold(self) -> float | None: ...
 
@@ -62,18 +62,24 @@ async def load_threshold_extension(
     # ever active (ADR 0021), unlike LED's list of extensions.
     if entry is None:
         return None
-    # update_every_mins is injected here, not set by the operator in the
-    # extension's own config block -- the spec deliberately reuses the
-    # schedule's own cadence rather than introducing a second, independently
-    # tunable interval that could drift out of sync with it ("this avoids a
-    # redundant config field", feature-dynamic-charging-threshold.md). Any
-    # operator-supplied value under this key in the extension's config is
-    # overridden, since that field isn't meant to be operator-configurable.
-    _entry = entry.model_copy(
-        update={"config": {**entry.config, "update_every_mins": update_every_mins}}
-    )
+    # update_every_mins is handed to the provider as its own constructor
+    # parameter, not set by the operator in the extension's own config block
+    # -- the spec deliberately reuses the schedule's own cadence rather than
+    # introducing a second, independently tunable interval that could drift
+    # out of sync with it ("this avoids a redundant config field",
+    # feature-dynamic-charging-threshold.md). entry (and entry.config) is
+    # passed straight through untouched: extra_kwargs is a genuinely separate
+    # channel from the operator's own config dict, so this loader never reads
+    # or overwrites a same-named key the operator happens to write in their
+    # own config -- the provider itself remains free to read it from config
+    # if it chooses to (see the regression test proving the two values can
+    # legitimately differ).
     _wrappers = await _load_extensions(
-        [_entry], extensions_dir, marker_method=_MARKER_METHOD, kind=_KIND
+        [entry],
+        extensions_dir,
+        marker_method=_MARKER_METHOD,
+        kind=_KIND,
+        extra_kwargs={"update_every_mins": update_every_mins},
     )
     if not _wrappers:
         return None
