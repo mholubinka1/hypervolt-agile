@@ -35,7 +35,7 @@ def _dynamic_threshold_incl_vat(
 
 
 class DynamicChargingThresholdExtension:
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any], update_every_mins: int) -> None:
         _fuel_type = config.get("fuel_type")
         # isinstance guard first -- a non-string, unhashable value (e.g. a
         # YAML list) would otherwise raise TypeError from the `in` check
@@ -77,7 +77,7 @@ class DynamicChargingThresholdExtension:
         self._client_id = self._require_credential(config, "client_id")
         self._client_secret = self._require_credential(config, "client_secret")
 
-        self._update_every_mins = self._require_number(config, "update_every_mins")
+        self._update_every_mins = update_every_mins
 
         self._client = httpx.AsyncClient(base_url=_FUEL_FINDER_BASE_URL)
         self._auth = FuelFinderAuth(self._client, self._client_id, self._client_secret)

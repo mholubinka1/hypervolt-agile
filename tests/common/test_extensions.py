@@ -69,6 +69,40 @@ async def test_load_extensions_loads_a_behaviour_provider_implementing_only_get_
     assert threshold == 12.5
 
 
+_FAKE_EXTRA_KWARGS_PROVIDER_SOURCE = """
+class FakeExtraKwargsProvider:
+    def __init__(self, config: dict, some_key: str) -> None:
+        self.config = config
+        self.some_key = some_key
+
+    async def get_widget(self) -> str:
+        return self.some_key
+"""
+
+
+async def test_load_extensions_passes_extra_kwargs_through_to_the_providers_constructor(
+    tmp_path: Path,
+) -> None:
+    # extra_kwargs is the seam behaviour.py uses to hand the threshold
+    # extension its own update_every_mins as a genuinely separate
+    # constructor parameter, rather than smuggling it into entry.config --
+    # proven here generically, against a fake provider, one layer below the
+    # threshold-specific wiring in tests/schedule/test_behaviour.py.
+    _write_extension(tmp_path, "fake_extra_kwargs", _FAKE_EXTRA_KWARGS_PROVIDER_SOURCE)
+    entries = [ExtensionEntry(name="fake_extra_kwargs", config={})]
+
+    result = await load_extensions(
+        entries,
+        tmp_path,
+        marker_method="get_widget",
+        kind="widget provider",
+        extra_kwargs={"some_key": "some_value"},
+    )
+
+    assert len(result) == 1
+    assert await result[0].invoke("get_widget") == "some_value"
+
+
 def _widget_provider_source(widget: str) -> str:
     # get_widget() deliberately reads WIDGET_NAME back through
     # sys.modules[__name__] rather than closing over a local/module-level
