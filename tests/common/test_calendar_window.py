@@ -1,5 +1,10 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import pytest
-from hypervolt.led import parse_window_date
+from common.calendar_window import parse_window_date, window_for_year
+
+_LONDON = ZoneInfo("Europe/London")
 
 
 def test_parse_window_date_defaults_time_to_midnight() -> None:
@@ -27,3 +32,23 @@ def test_parse_window_date_rejects_non_zero_padded_input(value: str) -> None:
     # like this must still fail fast, not silently parse to the wrong thing.
     with pytest.raises(ValueError):
         parse_window_date(value)
+
+
+def test_window_for_year_keeps_the_end_in_the_same_year_when_end_month_is_not_earlier() -> (
+    None
+):
+    _start, _end = window_for_year((10, 31, 0, 0), (11, 1, 6, 0), anchor_year=2026)
+
+    assert _start == datetime(2026, 10, 31, 0, 0, tzinfo=_LONDON)
+    assert _end == datetime(2026, 11, 1, 6, 0, tzinfo=_LONDON)
+
+
+def test_window_for_year_wraps_the_end_into_the_following_year_when_end_month_is_earlier() -> (
+    None
+):
+    # party_mode-shaped window: spans New Year's Eve, so the end month (1)
+    # is earlier than the start month (12) and must roll into anchor_year + 1.
+    _start, _end = window_for_year((12, 31, 6, 0), (1, 1, 6, 0), anchor_year=2026)
+
+    assert _start == datetime(2026, 12, 31, 6, 0, tzinfo=_LONDON)
+    assert _end == datetime(2027, 1, 1, 6, 0, tzinfo=_LONDON)

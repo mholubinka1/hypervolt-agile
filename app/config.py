@@ -7,23 +7,21 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from common.constants import APP_NAME
-from common.logging import config
-from common.utils import is_null_or_empty
-from hypervolt.led import (
-    DEFAULT_BUILT_IN_THEMES,
+from common.calendar_window import (
+    DEFAULT_BUILT_IN_THEME_WINDOWS,
     REFERENCE_ANCHOR_YEAR,
     parse_window_date,
     window_for_year,
 )
+from common.constants import APP_NAME
+from common.logging import config
+from common.utils import is_null_or_empty
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
-_RESERVED_LED_EFFECT_NAMES = {
-    theme.effect_name for theme, _, _ in DEFAULT_BUILT_IN_THEMES
-}
+_RESERVED_LED_EFFECT_NAMES = {name for name, _, _ in DEFAULT_BUILT_IN_THEME_WINDOWS}
 
 
 class Octopus(BaseModel):
