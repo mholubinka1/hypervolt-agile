@@ -94,10 +94,12 @@ class DynamicChargingThresholdExtension:
             or _value <= 0
         ):
             # A positive, finite number -- isfinite rejects a YAML `.nan` /
-            # `.inf`, which would otherwise poison every()'s interval maths
-            # (update_every_mins) or produce a nonsensical threshold (mpg,
-            # mi_per_kwh, radius_miles), matching saints_fc.py's own
-            # poll_interval_hours convention.
+            # `.inf`, which would otherwise produce a nonsensical threshold
+            # (mpg, mi_per_kwh, radius_miles), matching saints_fc.py's own
+            # poll_interval_hours convention. update_every_mins is no longer
+            # among these -- it arrives as its own trusted constructor
+            # parameter (AppConfig.schedule.frequency, already validated),
+            # not read from this config dict at all.
             raise ValueError(
                 f"{key} is required and must be a positive, finite number, got "
                 f"type {type(_value).__name__}."
