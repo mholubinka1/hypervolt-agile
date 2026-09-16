@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -30,6 +31,30 @@ class BehaviourProvider(Protocol):
     # required. Callers check via ExtensionWrapper/load_extensions instead.
 
 
+class _ThresholdValidatingProvider:
+    # Wraps a BehaviourProvider so its get_threshold() result is validated
+    # before the generic ExtensionWrapper's isolation/dedup logic ever sees
+    # it -- mirrors hypervolt.led's _LedThemeValidatingProvider, but checks a
+    # value range (finite and positive) rather than a type, since a
+    # threshold provider already returns a float | None by construction.
+    # Any other attribute (start, stop, ...) is delegated to the real
+    # provider untouched.
+    def __init__(self, provider: BehaviourProvider) -> None:
+        self._provider = provider
+
+    async def get_threshold(self) -> float | None:
+        _result = await self._provider.get_threshold()
+        if _result is not None and (not math.isfinite(_result) or _result <= 0):
+            raise ValueError(
+                f"get_threshold() returned {_result!r}, expected a finite "
+                "positive value or None"
+            )
+        return _result
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._provider, name)
+
+
 async def load_threshold_extension(
     entry: ExtensionEntry | None, extensions_dir: Path, update_every_mins: int
 ) -> ExtensionWrapper | None:
@@ -50,4 +75,11 @@ async def load_threshold_extension(
     _wrappers = await _load_extensions(
         [_entry], extensions_dir, marker_method=_MARKER_METHOD, kind=_KIND
     )
-    return _wrappers[0] if _wrappers else None
+    if not _wrappers:
+        return None
+    _wrapper = _wrappers[0]
+    return ExtensionWrapper(
+        name=_wrapper.name,
+        provider=_ThresholdValidatingProvider(_wrapper.provider),
+        kind=_KIND,
+    )
