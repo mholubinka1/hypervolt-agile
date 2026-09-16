@@ -30,7 +30,14 @@ def test_computes_the_dynamic_threshold_as_eighty_percent_of_the_fuel_breakeven_
     ) == pytest.approx(42.0)
 
 
+_DEFAULT_UPDATE_EVERY_MINS = 30
+
+
 def _valid_config(**overrides: Any) -> dict[str, Any]:
+    # update_every_mins deliberately isn't a key here -- the extension no
+    # longer reads it from config at all (it arrives as its own constructor
+    # parameter, see _DEFAULT_UPDATE_EVERY_MINS), so it has no place among
+    # the config fields this helper builds.
     _config: dict[str, Any] = {
         "fuel_type": "petrol",
         "mpg": 45.4609,
@@ -38,7 +45,6 @@ def _valid_config(**overrides: Any) -> dict[str, Any]:
         "station_count": 1,
         "client_id": "the-client-id",
         "client_secret": "the-client-secret",
-        "update_every_mins": 30,
     }
     _config.update(overrides)
     return _config
@@ -152,7 +158,9 @@ async def test_petrol_fuel_type_resolves_to_the_fuel_finder_e10_code() -> None:
     # present in the same fixture data -- proof it resolved the code
     # correctly, without reaching into a private attribute to check it
     # directly.
-    extension = DynamicChargingThresholdExtension(_valid_config(fuel_type="petrol"))
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(fuel_type="petrol"), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
@@ -171,7 +179,9 @@ async def test_diesel_fuel_type_resolves_to_the_fuel_finder_b7_standard_code() -
     # picking the diesel price specifically proves fuel_type: diesel
     # resolved to B7_STANDARD, not the petrol E10 price present in the same
     # fixture data.
-    extension = DynamicChargingThresholdExtension(_valid_config(fuel_type="diesel"))
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(fuel_type="diesel"), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
@@ -187,7 +197,10 @@ async def test_diesel_fuel_type_resolves_to_the_fuel_finder_b7_standard_code() -
 
 def test_an_unrecognised_fuel_type_raises_value_error() -> None:
     with pytest.raises(ValueError):
-        DynamicChargingThresholdExtension(_valid_config(fuel_type="lpg"))
+        DynamicChargingThresholdExtension(
+            _valid_config(fuel_type="lpg"),
+            update_every_mins=_DEFAULT_UPDATE_EVERY_MINS,
+        )
 
 
 def test_a_non_string_unhashable_fuel_type_raises_value_error_not_type_error() -> None:
@@ -195,20 +208,28 @@ def test_a_non_string_unhashable_fuel_type_raises_value_error_not_type_error() -
     # the same actionable ValueError as any other invalid fuel_type, not a
     # TypeError from the dict membership check.
     with pytest.raises(ValueError):
-        DynamicChargingThresholdExtension(_valid_config(fuel_type=["petrol"]))
+        DynamicChargingThresholdExtension(
+            _valid_config(fuel_type=["petrol"]),
+            update_every_mins=_DEFAULT_UPDATE_EVERY_MINS,
+        )
 
 
 @pytest.mark.parametrize("bad_postcode", [None, "", "   ", 12345])
 def test_postcode_must_be_a_non_blank_string(bad_postcode: object) -> None:
     with pytest.raises(ValueError):
-        DynamicChargingThresholdExtension(_valid_config(postcode=bad_postcode))
+        DynamicChargingThresholdExtension(
+            _valid_config(postcode=bad_postcode),
+            update_every_mins=_DEFAULT_UPDATE_EVERY_MINS,
+        )
 
 
 def test_a_missing_mpg_raises_value_error() -> None:
     _config = _valid_config()
     del _config["mpg"]
     with pytest.raises(ValueError):
-        DynamicChargingThresholdExtension(_config)
+        DynamicChargingThresholdExtension(
+            _config, update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+        )
 
 
 async def test_mi_per_kwh_defaults_to_three_point_five_when_omitted() -> None:
@@ -217,7 +238,9 @@ async def test_mi_per_kwh_defaults_to_three_point_five_when_omitted() -> None:
     # resulting cached threshold must match the default 3.5 mi/kWh.
     _config = _valid_config()
     assert "mi_per_kwh" not in _config
-    extension = DynamicChargingThresholdExtension(_config)
+    extension = DynamicChargingThresholdExtension(
+        _config, update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
@@ -235,20 +258,25 @@ def test_a_missing_station_count_raises_value_error() -> None:
     _config = _valid_config()
     del _config["station_count"]
     with pytest.raises(ValueError):
-        DynamicChargingThresholdExtension(_config)
+        DynamicChargingThresholdExtension(
+            _config, update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+        )
 
 
 @pytest.mark.parametrize("bad_mpg", [0, -10, "fast", float("nan"), float("inf"), True])
 def test_mpg_must_be_a_positive_finite_number(bad_mpg: object) -> None:
     with pytest.raises(ValueError):
-        DynamicChargingThresholdExtension(_valid_config(mpg=bad_mpg))
+        DynamicChargingThresholdExtension(
+            _valid_config(mpg=bad_mpg), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+        )
 
 
 @pytest.mark.parametrize("bad_station_count", [0, -1, 1.5, "5", True])
 def test_station_count_must_be_a_positive_int(bad_station_count: object) -> None:
     with pytest.raises(ValueError):
         DynamicChargingThresholdExtension(
-            _valid_config(station_count=bad_station_count)
+            _valid_config(station_count=bad_station_count),
+            update_every_mins=_DEFAULT_UPDATE_EVERY_MINS,
         )
 
 
@@ -259,7 +287,10 @@ def test_mi_per_kwh_must_be_a_positive_finite_number_when_provided(
     bad_mi_per_kwh: object,
 ) -> None:
     with pytest.raises(ValueError):
-        DynamicChargingThresholdExtension(_valid_config(mi_per_kwh=bad_mi_per_kwh))
+        DynamicChargingThresholdExtension(
+            _valid_config(mi_per_kwh=bad_mi_per_kwh),
+            update_every_mins=_DEFAULT_UPDATE_EVERY_MINS,
+        )
 
 
 @pytest.mark.parametrize(
@@ -269,31 +300,19 @@ def test_radius_miles_must_be_a_positive_finite_number_when_provided(
     bad_radius_miles: object,
 ) -> None:
     with pytest.raises(ValueError):
-        DynamicChargingThresholdExtension(_valid_config(radius_miles=bad_radius_miles))
-
-
-def test_a_missing_update_every_mins_raises_value_error() -> None:
-    # update_every_mins is injected by load_threshold_extension (never
-    # operator-set -- see app/schedule/behaviour.py), but the extension's
-    # own construction-time validation must still reject a missing value
-    # the same way as any other required field, guarding every()'s interval
-    # arithmetic against a silently-absent cadence.
-    _config = _valid_config()
-    del _config["update_every_mins"]
-    with pytest.raises(ValueError):
-        DynamicChargingThresholdExtension(_config)
-
-
-@pytest.mark.parametrize(
-    "bad_update_every_mins", [0, -30, "often", float("nan"), float("inf"), True]
-)
-def test_update_every_mins_must_be_a_positive_finite_number(
-    bad_update_every_mins: object,
-) -> None:
-    with pytest.raises(ValueError):
         DynamicChargingThresholdExtension(
-            _valid_config(update_every_mins=bad_update_every_mins)
+            _valid_config(radius_miles=bad_radius_miles),
+            update_every_mins=_DEFAULT_UPDATE_EVERY_MINS,
         )
+
+
+# update_every_mins is no longer read from config at all -- it arrives as
+# its own trusted constructor parameter (AppConfig.schedule.frequency,
+# already validated by Pydantic), not a value read out of the operator's own
+# free-form config dict, so there is no longer a "missing" or "invalid"
+# config-shaped case to test here. See
+# test_start_schedules_an_interval_poll_at_the_configured_cadence for
+# coverage of the constructor parameter itself.
 
 
 async def test_radius_miles_excludes_a_station_beyond_the_configured_radius() -> None:
@@ -303,7 +322,8 @@ async def test_radius_miles_excludes_a_station_beyond_the_configured_radius() ->
     # matches. Proven by observing the computed threshold reflects only the
     # in-radius station's price, not an average blended with the excluded one.
     extension = DynamicChargingThresholdExtension(
-        _valid_config(station_count=2, radius_miles=5)
+        _valid_config(station_count=2, radius_miles=5),
+        update_every_mins=_DEFAULT_UPDATE_EVERY_MINS,
     )
     _wire_mock_transport(
         extension,
@@ -331,7 +351,9 @@ def test_a_missing_or_blank_credential_raises_value_error(
     _config = _valid_config(**{credential_key: bad_value})
 
     with pytest.raises(ValueError):
-        DynamicChargingThresholdExtension(_config)
+        DynamicChargingThresholdExtension(
+            _config, update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+        )
 
 
 @pytest.mark.parametrize("credential_key", ["client_id", "client_secret"])
@@ -345,7 +367,9 @@ def test_a_non_string_credential_error_does_not_echo_the_value(
     _config = _valid_config(**{credential_key: 424242424242})
 
     with pytest.raises(ValueError) as _exc_info:
-        DynamicChargingThresholdExtension(_config)
+        DynamicChargingThresholdExtension(
+            _config, update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+        )
 
     assert "424242424242" not in str(_exc_info.value)
     assert "int" in str(_exc_info.value)
@@ -357,7 +381,8 @@ async def test_a_successful_poll_caches_the_computed_margined_threshold() -> Non
     # get_threshold() afterwards reflects the margined breakeven computed
     # from the price it found.
     extension = DynamicChargingThresholdExtension(
-        _valid_config(mpg=45.4609, station_count=1)
+        _valid_config(mpg=45.4609, station_count=1),
+        update_every_mins=_DEFAULT_UPDATE_EVERY_MINS,
     )
     _wire_mock_transport(
         extension,
@@ -382,7 +407,9 @@ async def test_a_poll_finding_no_matching_fuel_type_clears_a_previously_cached_t
     # starts at None by construction, so asserting None after a no-match
     # poll alone would pass whether or not a *previously cached* value
     # actually gets cleared.
-    extension = DynamicChargingThresholdExtension(_valid_config())
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
@@ -414,7 +441,9 @@ async def test_a_poll_receiving_an_invalid_fuel_price_clears_a_previously_cached
     # case, including NaN/Infinity -- _router builds responses via raw
     # content= rather than httpx's stricter json= helper specifically so
     # these non-finite values can round-trip through it.
-    extension = DynamicChargingThresholdExtension(_valid_config())
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
@@ -443,7 +472,9 @@ async def test_a_poll_computing_an_overflowing_threshold_clears_a_previously_cac
     # unavailable data the same way an invalid raw price is, rather than
     # caching an infinite threshold that would accept every electricity
     # price.
-    extension = DynamicChargingThresholdExtension(_valid_config())
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
@@ -474,7 +505,8 @@ async def test_a_poll_computing_an_underflowing_threshold_clears_a_previously_ca
     # caching a zero threshold that would accept no electricity price at
     # all.
     extension = DynamicChargingThresholdExtension(
-        _valid_config(mpg=1e300, station_count=1)
+        _valid_config(mpg=1e300, station_count=1),
+        update_every_mins=_DEFAULT_UPDATE_EVERY_MINS,
     )
     _wire_mock_transport(
         extension,
@@ -501,7 +533,9 @@ async def test_a_poll_with_an_unchanged_price_does_not_log_at_info_level(
     # cadence tick -- must not repeat the info-level "computed threshold"
     # line for a value that hasn't moved, or the log fills up with
     # identical noise every 30 minutes.
-    extension = DynamicChargingThresholdExtension(_valid_config())
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
@@ -530,7 +564,9 @@ async def test_a_poll_with_a_sub_cent_threshold_difference_does_not_log_at_info_
     # itself displays, not exact float equality -- two prices close enough
     # that the computed threshold rounds to the same displayed value must
     # not re-log, even though the raw floats differ.
-    extension = DynamicChargingThresholdExtension(_valid_config())
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
@@ -561,7 +597,9 @@ async def test_a_poll_recomputing_the_same_threshold_after_a_cache_clear_logs_ag
     # successful poll recovering the same numeric threshold as before the
     # clear is itself informative (proof the extension is working again)
     # and must log, not be suppressed as "unchanged".
-    extension = DynamicChargingThresholdExtension(_valid_config())
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
@@ -597,7 +635,9 @@ async def test_a_poll_with_a_changed_price_logs_at_info_level_again(
     # threshold must still be logged, proving the suppression is keyed on
     # the value actually changing, not a blanket silence after the first
     # poll.
-    extension = DynamicChargingThresholdExtension(_valid_config())
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
@@ -624,7 +664,9 @@ async def test_get_threshold_returns_none_instantly_before_any_poll_has_complete
     # httpx.MockTransport (or any transport at all) is wired up, so any
     # attempt to actually make a request would hang or error; a near-zero
     # timeout on the await proves it returns immediately.
-    extension = DynamicChargingThresholdExtension(_valid_config())
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
 
     _result = await asyncio.wait_for(extension.get_threshold(), timeout=0.01)
 
@@ -635,7 +677,7 @@ async def test_start_schedules_an_interval_poll_at_the_configured_cadence() -> N
     # Scenario 12: mirrors tests/extensions/test_saints_fc.py's own cadence
     # test shape -- update_every_mins (minutes) converted to seconds for
     # every().
-    extension = DynamicChargingThresholdExtension(_valid_config(update_every_mins=15))
+    extension = DynamicChargingThresholdExtension(_valid_config(), update_every_mins=15)
 
     with patch("behaviours.dynamic_charging_threshold.every", AsyncMock()) as _every:
         await extension.start()
@@ -648,7 +690,9 @@ async def test_stop_cancels_the_background_task_and_closes_the_http_client() -> 
     # Scenario 13: mirrors test_saints_fc.py's own stop() test -- the task
     # is cancelled cleanly and the extension's own httpx client is closed
     # (a closed client raises on any further use).
-    extension = DynamicChargingThresholdExtension(_valid_config())
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
@@ -673,7 +717,9 @@ async def test_an_unexpected_error_during_a_poll_is_caught_and_preserves_the_cac
     # get_threshold(). A transient failure like this should not wipe a
     # still-valid cached threshold from a previous successful poll, so the
     # last good value is left in place rather than cleared to None.
-    extension = DynamicChargingThresholdExtension(_valid_config())
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
     _wire_mock_transport(
         extension,
         pfs_batches=[[_station("s1", 51.5, -0.14)]],
