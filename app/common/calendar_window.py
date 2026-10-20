@@ -34,9 +34,7 @@ def parse_window_date(value: str) -> Window:
         try:
             # Naive is fine here -- only the calendar fields are used, the
             # result is never compared as an actual instant.
-            _parsed = datetime.strptime(  # noqa: DTZ007
-                f"{REFERENCE_ANCHOR_YEAR}-{value}", fmt
-            )
+            _parsed = datetime.strptime(f"{REFERENCE_ANCHOR_YEAR}-{value}", fmt)
             # strptime accepts single-digit fields ("2-3", "10-31 6:0") even
             # though the documented grammar is strictly zero-padded -- a
             # round-trip through the same format catches that silently-loose
