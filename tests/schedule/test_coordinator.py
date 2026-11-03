@@ -695,3 +695,4 @@ async def test_run_resumes_schedule_pushes_once_ultra_has_ended() -> None:
         await coordinator.run()
 
     charger_client.apply_schedule.assert_awaited_once()
+    charger_client.lock.assert_awaited_once()

@@ -49,6 +49,9 @@ resumes on its own.
 - The coordinator's "can push" gate returns false while the charger's activation mode is `ultra`.
   That gate already covers both schedule pushes and lock control, so no further change is needed
   there.
+- When Ultra ends and the charger then reports no applied schedule at all, the activation mode
+  is reset to `plug_and_charge` (the mode an absent or disabled schedule already maps to), so
+  `ultra` cannot linger in the charger state.
 - INFO lines on entering and leaving Ultra are emitted on the transition only, not each poll.
 - The startup `clear_schedule` is untouched: the charger refuses it under Axle and the app already
   logs that as a warning once per start.
@@ -75,6 +78,8 @@ resumes on its own.
 
 - Modelling, displaying or managing Ultra's `unique` sessions.
 - Changing the startup `clear_schedule` behaviour or its warning.
+- Unlocking the charger on entry to Ultra. If the app had the charger locked when Ultra began, it
+  stays locked until the user unlocks it; the app only stops issuing lock/unlock commands.
 - Any change to `octopus` mode handling.
 - Stopping other providers' modes beyond Axle; unknown provider types keep today's behaviour.
 

@@ -234,9 +234,9 @@ class HypervoltProtocol:
     ) -> None:
         _applied = result.get("applied") if result else None
         if not _applied:
-            # A missing schedule maps to plug_and_charge below; leaving Ultra this
-            # way must restore that mode, since a None mode would leave `ultra`
-            # sticky in the state and the coordinator stood down indefinitely.
+            # A missing schedule sends no mode, so leaving Ultra this way must set
+            # plug_and_charge explicitly, or `ultra` stays in the state and the
+            # coordinator stays stood down.
             _left_ultra = self._in_ultra
             self._track_ultra(False)
             logger.debug("schedules.get: no schedule on charger.")

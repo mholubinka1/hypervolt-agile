@@ -75,7 +75,7 @@ async def test_an_ultra_schedule_is_reported_as_ultra_mode_without_a_parse_warni
         await client._protocol.handle("schedules.get", _ULTRA_SCHEDULES_GET, None)
 
     delta = client._protocol._on_state_update.call_args.args[0]
-    assert delta.activation_mode.name == "ultra"
+    assert delta.activation_mode == ActivationMode.ultra
     assert delta.current_schedule == []
     assert "parse error" not in caplog.text
 
@@ -103,7 +103,7 @@ async def test_an_ultra_schedule_with_no_sessions_is_still_ultra_mode() -> None:
     await client._protocol.handle("schedules.get", _schedules_get("axle", []), None)
 
     delta = client._protocol._on_state_update.call_args.args[0]
-    assert delta.activation_mode.name == "ultra"
+    assert delta.activation_mode == ActivationMode.ultra
 
 
 async def test_entering_ultra_logs_one_info_across_repeated_polls(
@@ -135,7 +135,7 @@ async def test_leaving_ultra_logs_one_info_and_restores_the_normal_mode(
             )
 
     delta = client._protocol._on_state_update.call_args.args[0]
-    assert delta.activation_mode.name == "schedule"
+    assert delta.activation_mode == ActivationMode.schedule
     leaving = [r for r in caplog.records if "no longer" in r.getMessage()]
     assert len(leaving) == 1
     assert leaving[0].levelno == logging.INFO
