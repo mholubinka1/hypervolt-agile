@@ -22,6 +22,7 @@ class ActivationMode(Enum):
     plug_and_charge = (0,)
     schedule = (1,)
     octopus = (2,)
+    ultra = (3,)
 
 
 class ReleaseState(Enum):
