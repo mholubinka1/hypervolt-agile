@@ -47,7 +47,7 @@ schedule:
 #       client_id: your-fuel-finder-client-id         # Required -- from your own GOV.UK Fuel Finder developer registration (https://www.fuel-finder.service.gov.uk), not a shared app credential.
 #       client_secret: your-fuel-finder-client-secret  # Required -- see client_id above. Keep this file's permissions restricted; it's a real secret.
 #                                       # No separate poll-interval field here -- this extension re-polls on the same update_every_mins cadence set above under schedule:, since fuel prices move far less often than Agile electricity prices and don't need their own independent tuning.
-# database:                         # Optional: record the effective price limit (and its source) to a MariaDB/MySQL table on each schedule rebuild that resolves a limit, e.g. for Grafana. Omit the whole `database:` block to record nothing. The `fuel_price_threshold` table is created automatically at startup (retried on first write if the database was down); a database outage is logged as a warning and never stops charging.
+# database:                         # Optional: record the effective price limit (and its source) to a MariaDB table on each successful schedule rebuild that resolves a limit, e.g. for Grafana. Omit the whole `database:` block to record nothing. The `fuel_price_threshold` table is created automatically at startup (retried on first write if the database was down); a database outage is logged as a warning and never stops charging.
 #   host: mariadb                    # Required -- database hostname.
 #   port: 3306                       # Optional, default 3306.
 #   user: energy-monitor             # Required -- needs CREATE and INSERT on the database below.
