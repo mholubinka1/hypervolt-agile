@@ -291,7 +291,7 @@ async def test_a_naive_active_until_is_logged_without_a_predicted_end(
     # A third-party extension could hand back a naive active_until, which can't
     # be compared to the aware `now`. The activation line still logs -- just
     # without the ` until ...` clause -- rather than raising mid-cycle.
-    _naive_end = datetime(2026, 8, 25, 19, 0)  # noqa: DTZ001 -- naive on purpose
+    _naive_end = datetime(2026, 8, 25, 19, 0)
     coordinator, _ = _coordinator(led=LedConfig(enabled=True), is_charging=True)
 
     with (
