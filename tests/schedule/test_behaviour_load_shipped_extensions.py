@@ -76,6 +76,11 @@ async def test_shipped_dynamic_charging_threshold_extension_loads_through_the_sh
         assert result is not None
         assert result.name == "behaviours/dynamic_charging_threshold"
         assert await result.invoke("get_threshold") is None  # nothing cached yet
+        # invoke() returns None for a missing method too, so presence is
+        # checked directly -- the optional fuel-price accessor must survive the
+        # validating wrapper for the recorder to ever see a price.
+        assert hasattr(result.provider, "get_fuel_price")
+        assert await result.invoke("get_fuel_price") is None  # nothing cached yet
         await result.stop()
 
 

@@ -18,7 +18,7 @@ repos:
           'types-requests',
           'types-simplejson',
           'types-PyYAML',
-          'sqlalchemy-stubs',
+          'sqlalchemy>=2.0.52,<3.0',
           'pydantic',
         ]
   - repo: https://github.com/pycqa/isort
