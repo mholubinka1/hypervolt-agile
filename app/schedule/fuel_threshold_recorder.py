@@ -51,14 +51,17 @@ _fuel_price_threshold = Table(
 )
 
 
-def _storable(value: object, upper_bound: float) -> float | None:
+def _storable(value: object, scale: int, upper_bound: float) -> float | None:
     # A value the Numeric column cannot hold would fail the whole insert and
     # lose the valid limit row, so an unusable one is stored as NULL instead.
+    # The bound is checked after rounding to the column's scale: 9999.9996
+    # is under 10000 but rounds up to it.
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    if not math.isfinite(value) or not 0 < value < upper_bound:
+    if not math.isfinite(value):
         return None
-    return value
+    _rounded = round(value, scale)
+    return _rounded if 0 < _rounded < upper_bound else None
 
 
 def _utc_now() -> datetime:
@@ -158,10 +161,10 @@ class FuelThresholdRecorder:
                 insert(_fuel_price_threshold).values(
                     recorded_at=_recorded_at,
                     fuel_price_pence_per_litre=_storable(
-                        fuel_price_pence_per_litre, _MAX_FUEL_PRICE
+                        fuel_price_pence_per_litre, 3, _MAX_FUEL_PRICE
                     ),
                     dynamic_threshold_incl_vat=_storable(
-                        dynamic_threshold_incl_vat, _MAX_THRESHOLD
+                        dynamic_threshold_incl_vat, 6, _MAX_THRESHOLD
                     ),
                     effective_limit_incl_vat=effective_limit.incl_vat,
                     limit_source=effective_limit.source,

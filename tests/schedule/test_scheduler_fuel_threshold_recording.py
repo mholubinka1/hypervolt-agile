@@ -362,7 +362,11 @@ async def test_scheduler_builds_the_schedule_and_warns_when_the_database_hangs(
     assert "timed out" in caplog.text
 
 
-@pytest.mark.parametrize("fuel_price", [float("nan"), float("inf"), 10000.0, -1.0, 0.0])
+@pytest.mark.parametrize(
+    "fuel_price",
+    # 9999.9996 is under the bound but rounds up to 10000.000 in the column.
+    [float("nan"), float("inf"), 10000.0, 9999.9996, -1.0, 0.0],
+)
 async def test_scheduler_stores_null_fuel_price_but_keeps_the_limit_when_the_price_is_unusable(
     fuel_price: float,
 ) -> None:
