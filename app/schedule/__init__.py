@@ -1,3 +1,4 @@
+import asyncio
 import logging.config
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,6 +19,10 @@ from config import AppConfig
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
+
+# Telemetry only: the coordinator waits on update() before applying the
+# charging schedule, so a hung get_fuel_price() must not hold it up.
+_FUEL_PRICE_TIMEOUT_SECS = 5
 
 
 @dataclass(frozen=True)
@@ -252,9 +257,18 @@ class Scheduler:
                 # Only asked for alongside a fresh dynamic threshold, so a
                 # provider whose threshold is absent can't contribute a price.
                 if self._threshold_provider is not None and _dynamic_limit is not None:
-                    _fuel_price = await self._threshold_provider.invoke(
-                        "get_fuel_price"
-                    )
+                    try:
+                        _fuel_price = await asyncio.wait_for(
+                            self._threshold_provider.invoke("get_fuel_price"),
+                            _FUEL_PRICE_TIMEOUT_SECS,
+                        )
+                    except TimeoutError:
+                        logger.warning(
+                            f"Threshold extension '{self._threshold_provider.name}' "
+                            f"did not report a fuel price within "
+                            f"{_FUEL_PRICE_TIMEOUT_SECS:g}s; recording the row "
+                            "without a fuel price."
+                        )
                 await self._fuel_threshold_recorder.record(
                     _limit,
                     fuel_price_pence_per_litre=_fuel_price,

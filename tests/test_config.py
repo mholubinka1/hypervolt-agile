@@ -539,3 +539,38 @@ def test_app_config_rejects_a_database_password_that_is_not_text_without_echoing
         _app_config_with_database({**_DATABASE, "password": password})
 
     assert str(password) not in str(exc_info.value)
+
+
+def test_app_config_error_for_a_missing_section_echoes_no_secret_from_the_input() -> (
+    None
+):
+    _secrets = ["octo-key-9f3a", "hv-pass-7c1d", "db-pass-2b8e"]
+
+    with pytest.raises(ValidationError) as exc_info:
+        AppConfig.model_validate(
+            {
+                "database": {**_DATABASE, "password": _secrets[2]},
+                "octopus": {"account_number": "A-1", "api_key": _secrets[0]},
+                "hypervolt": {"username": "u", "password": _secrets[1]},
+            }
+        )
+
+    for _secret in _secrets:
+        assert _secret not in str(exc_info.value)
+
+
+def test_config_loader_does_not_log_secrets_when_a_section_is_missing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    config_file = tmp_path / "config.yml"
+    config_file.write_text(
+        'octopus:\n  account_number: "A-1"\n  api_key: "octo-key-9f3a"\n'
+        'hypervolt:\n  username: u\n  password: "hv-pass-7c1d"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit):
+        ConfigLoader(config_file)
+
+    assert "octo-key-9f3a" not in caplog.text
+    assert "hv-pass-7c1d" not in caplog.text

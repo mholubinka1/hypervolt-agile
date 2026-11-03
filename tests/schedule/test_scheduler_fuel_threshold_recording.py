@@ -313,6 +313,34 @@ class _ThresholdOnlyProvider:
         return 20.0
 
 
+class _FuelPriceHangingProvider(_ThresholdOnlyProvider):
+    async def get_fuel_price(self) -> float | None:
+        await asyncio.Event().wait()
+        return None
+
+
+async def test_scheduler_builds_the_schedule_and_stores_a_null_fuel_price_when_the_fuel_price_hangs(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("schedule._FUEL_PRICE_TIMEOUT_SECS", 0.05)
+    engine = _in_memory_database()
+    scheduler = _scheduler_with_provider(
+        engine, _FuelPriceHangingProvider(), static_limit=100
+    )
+
+    with caplog.at_level(logging.WARNING):
+        scheduler.invalidate()
+        await asyncio.wait_for(scheduler.update(), timeout=5)
+
+    (row,) = _stored_rows(engine)
+    assert row.fuel_price_pence_per_litre is None
+    assert float(row.dynamic_threshold_incl_vat) == 20
+    assert float(row.effective_limit_incl_vat) == 20
+    assert row.limit_source == "dynamic"
+    assert "'fuel'" in caplog.text
+    assert "without a fuel price" in caplog.text
+
+
 class _FuelPriceRaisingProvider(_ThresholdOnlyProvider):
     async def get_fuel_price(self) -> float | None:
         raise RuntimeError("boom")
@@ -389,13 +417,33 @@ async def test_scheduler_stores_null_fuel_price_but_keeps_the_limit_when_the_pri
     assert row.limit_source == "dynamic"
 
 
-async def test_scheduler_stores_null_dynamic_threshold_but_keeps_the_limit_when_the_threshold_exceeds_the_column() -> (
+async def test_scheduler_stores_a_large_dynamic_threshold_as_the_limit_when_the_static_limit_defers_fully() -> (
     None
 ):
     engine = _in_memory_database()
     scheduler = _scheduler_with_provider(
         engine,
         _FuelPriceReportingProvider(threshold=1500.0, fuel_price=140.5),
+        static_limit=0,
+    )
+
+    scheduler.invalidate()
+    await scheduler.update()
+
+    (row,) = _stored_rows(engine)
+    assert float(row.effective_limit_incl_vat) == 1500
+    assert float(row.dynamic_threshold_incl_vat) == 1500
+    assert float(row.fuel_price_pence_per_litre) == 140.5
+    assert row.limit_source == "dynamic"
+
+
+async def test_scheduler_stores_null_threshold_and_null_fuel_price_but_keeps_the_limit_when_the_threshold_exceeds_the_column() -> (
+    None
+):
+    engine = _in_memory_database()
+    scheduler = _scheduler_with_provider(
+        engine,
+        _FuelPriceReportingProvider(threshold=10_000_000.0, fuel_price=140.5),
         static_limit=100,
     )
 
@@ -404,6 +452,7 @@ async def test_scheduler_stores_null_dynamic_threshold_but_keeps_the_limit_when_
 
     (row,) = _stored_rows(engine)
     assert row.dynamic_threshold_incl_vat is None
+    assert row.fuel_price_pence_per_litre is None
     assert float(row.effective_limit_incl_vat) == 100
     assert row.limit_source == "static cap"
 

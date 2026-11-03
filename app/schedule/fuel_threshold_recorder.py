@@ -30,7 +30,7 @@ logger: Logger = getLogger(APP_NAME)
 _DATABASE_TIMEOUT_SECS = 5
 _RECORD_TIMEOUT_SECS = 10
 _MAX_FUEL_PRICE = 10000
-_MAX_THRESHOLD = 1000
+_MAX_THRESHOLD = 1_000_000
 
 _metadata = MetaData()
 _fuel_price_threshold = Table(
@@ -44,8 +44,8 @@ _fuel_price_threshold = Table(
     ),
     Column("recorded_at", DateTime, nullable=False),
     Column("fuel_price_pence_per_litre", Numeric(7, 3), nullable=True),
-    Column("dynamic_threshold_incl_vat", Numeric(9, 6), nullable=True),
-    Column("effective_limit_incl_vat", Numeric(9, 6), nullable=False),
+    Column("dynamic_threshold_incl_vat", Numeric(12, 6), nullable=True),
+    Column("effective_limit_incl_vat", Numeric(12, 6), nullable=False),
     Column("limit_source", String(20), nullable=False),
     Index("ix_fuel_price_threshold_recorded_at", "recorded_at"),
 )
@@ -162,16 +162,19 @@ class FuelThresholdRecorder:
         # spend seconds in create_all, and the row belongs to the rebuild.
         _recorded_at = self._clock().astimezone(UTC).replace(tzinfo=None)
         self._ensure_table()
+        _threshold = _storable(dynamic_threshold_incl_vat, 6, _MAX_THRESHOLD)
+        # A price is only meaningful beside the threshold it came with.
+        _fuel_price = (
+            _storable(fuel_price_pence_per_litre, 3, _MAX_FUEL_PRICE)
+            if _threshold is not None
+            else None
+        )
         with self._engine.begin() as connection:
             connection.execute(
                 insert(_fuel_price_threshold).values(
                     recorded_at=_recorded_at,
-                    fuel_price_pence_per_litre=_storable(
-                        fuel_price_pence_per_litre, 3, _MAX_FUEL_PRICE
-                    ),
-                    dynamic_threshold_incl_vat=_storable(
-                        dynamic_threshold_incl_vat, 6, _MAX_THRESHOLD
-                    ),
+                    fuel_price_pence_per_litre=_fuel_price,
+                    dynamic_threshold_incl_vat=_threshold,
                     effective_limit_incl_vat=effective_limit.incl_vat,
                     limit_source=effective_limit.source,
                 )

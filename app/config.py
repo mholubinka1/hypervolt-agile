@@ -203,7 +203,13 @@ class AppConfig(BaseModel):
     # silently dropped, which would otherwise degrade the charging schedule
     # to its static fallback with no visible error. Matches LedConfig's and
     # ExtensionsConfig's own extra="forbid" convention.
-    model_config = {"populate_by_name": True, "extra": "forbid"}
+    # hide_input_in_errors -- an error on one field otherwise echoes the whole
+    # input dict, passwords and API keys included, into the startup log.
+    model_config = {
+        "populate_by_name": True,
+        "extra": "forbid",
+        "hide_input_in_errors": True,
+    }
 
     @model_validator(mode="after")
     def zero_price_limit_requires_a_threshold_extension(self) -> AppConfig:
