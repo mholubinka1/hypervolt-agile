@@ -31,9 +31,8 @@ class ExtensionWrapper:
         # Required, not defaulted -- once more than one provider kind shares
         # this wrapper, a log line that doesn't name which kind produced it
         # is ambiguous the moment two kinds can share an extension name or a
-        # method name (see .agent-docs/review.md's "Ambiguous log line across
-        # multiplexed code paths" entry). Each caller (e.g. "LED theme
-        # extension") supplies its own label rather than a generic default.
+        # method name. Each caller (e.g. "LED theme extension") supplies its
+        # own label rather than a generic default.
         self._kind = kind
         # Keyed by the invoked method name -- distinct provider methods are
         # independent code paths (e.g. LED's resolve() and resolve_fallback(),
