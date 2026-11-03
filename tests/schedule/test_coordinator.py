@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
+from common.extensions import ExtensionWrapper as ThresholdExtensionWrapper
 from hypervolt.charger import HypervoltChargerClient
 from hypervolt.led import (
     THEMES_DIR,
@@ -18,6 +19,9 @@ from octopus.client import AgileClient
 from saints_fc import SaintsFcExtension
 from schedule import Scheduler
 from schedule.coordinator import ScheduleCoordinator
+from schedule.fuel_threshold_recorder import FuelThresholdRecorder
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import StaticPool
 
 from config import AppConfig, Hypervolt, LedConfig, Octopus, Schedule
 
@@ -640,6 +644,8 @@ async def test_run_applies_led_state_even_when_schedule_cannot_be_pushed() -> No
 
 def _plugged_in_coordinator(
     activation_mode: ActivationMode,
+    threshold_provider: ThresholdExtensionWrapper | None = None,
+    fuel_threshold_recorder: FuelThresholdRecorder | None = None,
 ) -> tuple[ScheduleCoordinator, HypervoltChargerClient]:
     charger_client = Mock(spec=HypervoltChargerClient)
     for _name in (
@@ -663,13 +669,61 @@ def _plugged_in_coordinator(
     agile_client = Mock(spec=AgileClient)
     agile_client.get_upcoming_prices = AsyncMock(return_value=[])
     scheduler = Scheduler(
-        agile_client=agile_client, config=_config(LedConfig(enabled=True))
+        agile_client=agile_client,
+        config=_config(LedConfig(enabled=True)),
+        threshold_provider=threshold_provider,
+        fuel_threshold_recorder=fuel_threshold_recorder,
     )
     coordinator = ScheduleCoordinator(
         scheduler=scheduler, config=_config(LedConfig(enabled=True))
     )
     coordinator._charger_client = charger_client
     return coordinator, charger_client
+
+
+class _MovingFuelPriceProvider:
+    def __init__(self) -> None:
+        self.fuel_price = 150.0
+
+    async def get_threshold(self) -> float:
+        return 20.0
+
+    async def get_fuel_price(self) -> float:
+        return self.fuel_price
+
+
+async def test_run_still_records_fuel_price_changes_while_ultra_is_active() -> None:
+    # Ultra only gates the schedule push and lock control, never the
+    # scheduler update, so the fuel timeline keeps following the price.
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
+    provider = _MovingFuelPriceProvider()
+    coordinator, charger_client = _plugged_in_coordinator(
+        ActivationMode.ultra,
+        threshold_provider=ThresholdExtensionWrapper(
+            name="fuel", provider=provider, kind="charging threshold"
+        ),
+        fuel_threshold_recorder=FuelThresholdRecorder(engine),
+    )
+
+    with patch("schedule.coordinator.resolve_theme", return_value=None):
+        await coordinator.run()
+        provider.fuel_price = 151.0
+        await coordinator.run()
+
+    with engine.connect() as connection:
+        _prices = [
+            float(row[0])
+            for row in connection.execute(
+                text(
+                    "SELECT fuel_price_pence_per_litre FROM fuel_price_threshold "
+                    "ORDER BY id"
+                )
+            )
+        ]
+    assert _prices == [150.0, 151.0]
+    charger_client.apply_schedule.assert_not_awaited()
 
 
 async def test_run_neither_pushes_a_schedule_nor_locks_while_ultra_is_active() -> None:

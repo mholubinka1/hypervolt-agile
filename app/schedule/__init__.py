@@ -259,7 +259,9 @@ class Scheduler:
                 # Only asked for alongside a fresh dynamic threshold, so a
                 # provider whose threshold is absent can't contribute a price.
                 if self._threshold_provider is not None and _dynamic_limit is not None:
-                    _fuel_price = await self._fetch_fuel_price(self._threshold_provider)
+                    _fuel_price = await self._invoke_bounded(
+                        self._threshold_provider, "get_fuel_price", "a fuel price"
+                    )
                 await self._fuel_threshold_recorder.record(
                     _limit,
                     fuel_price_pence_per_litre=_fuel_price,
@@ -268,25 +270,34 @@ class Scheduler:
         except Exception:
             logger.exception(trigger.exception_message)
 
-    async def _fetch_fuel_price(self, provider: ExtensionWrapper) -> float | None:
+    async def _invoke_bounded(
+        self, provider: ExtensionWrapper, method_name: str, what: str
+    ) -> float | None:
         try:
             return await asyncio.wait_for(
-                provider.invoke("get_fuel_price"), _FUEL_PRICE_TIMEOUT_SECS
+                provider.invoke(method_name), _FUEL_PRICE_TIMEOUT_SECS
             )
         except TimeoutError:
             # The per-cycle price-change check would otherwise stall every
-            # poll cycle for the full timeout while the accessor stays hung.
+            # poll cycle for the full timeout while an accessor stays hung.
             self._fuel_price_check_resumes_at = datetime.now(
                 ZoneInfo("UTC")
             ) + timedelta(minutes=self._update_freq)
             logger.warning(
-                f"Threshold extension '{provider.name}' "
-                f"did not report a fuel price within "
-                f"{_FUEL_PRICE_TIMEOUT_SECS:g}s; continuing without a fuel price."
+                f"Threshold extension '{provider.name}' did not report {what} "
+                f"within {_FUEL_PRICE_TIMEOUT_SECS:g}s; continuing without {what}."
             )
             return None
 
     async def _record_fuel_price_change(self) -> None:
+        # Telemetry runs ahead of the charger work in the coordinator's cycle,
+        # so nothing in it may be allowed to cost that cycle.
+        try:
+            await self._check_for_fuel_price_change()
+        except Exception:
+            logger.exception("Failed to check for a fuel price change.")
+
+    async def _check_for_fuel_price_change(self) -> None:
         if self._fuel_threshold_recorder is None or self._threshold_provider is None:
             return
         if (
@@ -294,10 +305,14 @@ class Scheduler:
             and datetime.now(ZoneInfo("UTC")) < self._fuel_price_check_resumes_at
         ):
             return
-        _price = await self._fetch_fuel_price(self._threshold_provider)
+        _price = await self._invoke_bounded(
+            self._threshold_provider, "get_fuel_price", "a fuel price"
+        )
         if _price is None:
             return
-        _dynamic = await self._threshold_provider.invoke("get_threshold")
+        _dynamic = await self._invoke_bounded(
+            self._threshold_provider, "get_threshold", "a threshold"
+        )
         if not self._fuel_threshold_recorder.fuel_price_changed(_price, _dynamic):
             return
         _limit = self._threshold_policy.effective_limit(_dynamic)

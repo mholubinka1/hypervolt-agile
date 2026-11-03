@@ -794,8 +794,13 @@ class _SwitchableFuelPriceProvider:
         self.fuel_price = fuel_price
         self.hangs = False
         self.fuel_price_calls = 0
+        self.hangs_on_threshold = False
+        self.threshold_calls = 0
 
     async def get_threshold(self) -> float:
+        self.threshold_calls += 1
+        if self.hangs_on_threshold:
+            await asyncio.Event().wait()
         return self.threshold
 
     async def get_fuel_price(self) -> float:
@@ -871,3 +876,75 @@ async def test_a_fuel_price_timeout_during_a_rebuild_also_backs_off_the_change_c
 
     assert provider.fuel_price_calls == 1
     assert [row.fuel_price_pence_per_litre for row in _stored_rows(engine)] == [None]
+
+
+async def test_a_hung_threshold_accessor_does_not_stall_the_price_change_check(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr("schedule._FUEL_PRICE_TIMEOUT_SECS", 0.05)
+    provider = _SwitchableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(
+        _in_memory_database(), provider, static_limit=100
+    )
+    await scheduler.update()
+    provider.hangs_on_threshold = True
+    provider.fuel_price = 151.0
+    calls_before_the_hang = provider.threshold_calls
+
+    with caplog.at_level(logging.WARNING):
+        # A bounded wait: an unbounded accessor call would hang this test.
+        await asyncio.wait_for(scheduler.update(), timeout=2)
+        await asyncio.wait_for(scheduler.update(), timeout=2)
+
+    assert provider.threshold_calls == calls_before_the_hang + 1
+    assert caplog.text.count("did not report a threshold") == 1
+
+
+class _BrokenChangeCheckRecorder(FuelThresholdRecorder):
+    def fuel_price_changed(
+        self, fuel_price: object, dynamic_threshold_incl_vat: object
+    ) -> bool:
+        raise RuntimeError("unexpected failure")
+
+
+async def test_an_unexpected_failure_in_the_price_change_check_does_not_escape_update(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    scheduler = Scheduler(
+        _agile_client(),
+        _config(price_limit_incl_vat=100),
+        threshold_provider=ExtensionWrapper(
+            name="fuel",
+            provider=_MutableFuelPriceProvider(threshold=20.0, fuel_price=150.0),
+            kind="charging threshold",
+        ),
+        fuel_threshold_recorder=_BrokenChangeCheckRecorder(_in_memory_database()),
+    )
+
+    with caplog.at_level(logging.ERROR):
+        await scheduler.update()
+
+    assert "fuel price change" in caplog.text
+
+
+async def test_the_first_price_to_appear_after_a_price_less_rebuild_is_recorded() -> (
+    None
+):
+    # The cold-start sequence seen in production: the rebuild runs before the
+    # extension's first poll, so its row has no price.
+    engine = _in_memory_database()
+    provider = _MutableFuelPriceProvider(threshold=20.0, fuel_price=None)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+    await scheduler.update()
+    provider.fuel_price = 150.0
+
+    await scheduler.update()
+
+    assert [
+        (
+            None
+            if row.fuel_price_pence_per_litre is None
+            else float(row.fuel_price_pence_per_litre)
+        )
+        for row in _stored_rows(engine)
+    ] == [None, 150.0]
