@@ -520,6 +520,10 @@
                 "value": "Fuel price (p/L)"
               },
               {
+                "id": "custom.axisLabel",
+                "value": "p/L"
+              },
+              {
                 "id": "color",
                 "value": {
                   "fixedColor": "orange",
@@ -545,6 +549,10 @@
               {
                 "id": "custom.axisPlacement",
                 "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "p/kWh"
               },
               {
                 "id": "color",

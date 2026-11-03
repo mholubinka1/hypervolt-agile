@@ -502,3 +502,14 @@ def test_app_config_rejects_an_invalid_database_block_without_echoing_the_passwo
         _app_config_with_database(database)
 
     assert "s3cret-db-pw" not in str(exc_info.value)
+
+
+def test_app_config_does_not_echo_an_integer_database_password_in_a_validation_error() -> (
+    None
+):
+    _database = {k: v for k, v in _DATABASE.items() if k != "host"}
+
+    with pytest.raises(ValidationError) as exc_info:
+        _app_config_with_database({**_database, "password": 8675309})
+
+    assert "8675309" not in str(exc_info.value)

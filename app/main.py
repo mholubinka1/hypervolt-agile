@@ -108,6 +108,7 @@ async def main() -> None:
     fuel_threshold_recorder: FuelThresholdRecorder | None = None
     if app_config.database:
         fuel_threshold_recorder = FuelThresholdRecorder.from_config(app_config.database)
+        await fuel_threshold_recorder.prepare()
 
     scheduler = Scheduler(
         agile_client,

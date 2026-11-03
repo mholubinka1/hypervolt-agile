@@ -1,4 +1,5 @@
 import asyncio
+import math
 from collections.abc import Callable
 from datetime import UTC, datetime
 from logging import Logger, getLogger
@@ -20,12 +21,15 @@ from sqlalchemy import (
     insert,
 )
 from sqlalchemy.engine import URL
+from sqlalchemy.exc import DBAPIError
 
 from config import DatabaseConfig
 
 logger: Logger = getLogger(APP_NAME)
 
 _DATABASE_TIMEOUT_SECS = 5
+_RECORD_TIMEOUT_SECS = 10
+_MAX_FUEL_PRICE = 10000
 
 _metadata = MetaData()
 _fuel_price_threshold = Table(
@@ -52,10 +56,14 @@ def _utc_now() -> datetime:
 
 class FuelThresholdRecorder:
     def __init__(
-        self, engine: Engine, clock: Callable[[], datetime] = _utc_now
+        self,
+        engine: Engine,
+        clock: Callable[[], datetime] = _utc_now,
+        timeout_secs: float = _RECORD_TIMEOUT_SECS,
     ) -> None:
         self._engine = engine
         self._clock = clock
+        self._timeout_secs = timeout_secs
         self._table_ready = False
 
     @classmethod
@@ -85,23 +93,52 @@ class FuelThresholdRecorder:
     def dispose(self) -> None:
         self._engine.dispose()
 
+    async def prepare(self) -> None:
+        await self._guarded(
+            self._ensure_table, "prepare the fuel price threshold table"
+        )
+
     async def record(
         self,
         effective_limit: EffectiveLimit,
         fuel_price_pence_per_litre: float | None = None,
         dynamic_threshold_incl_vat: float | None = None,
     ) -> None:
-        try:
-            await asyncio.to_thread(
-                self._insert,
+        # Numeric(7, 3) rejects these, which would lose the valid limit row.
+        if fuel_price_pence_per_litre is not None and not (
+            math.isfinite(fuel_price_pence_per_litre)
+            and 0 < fuel_price_pence_per_litre < _MAX_FUEL_PRICE
+        ):
+            fuel_price_pence_per_litre = None
+        await self._guarded(
+            lambda: self._insert(
                 effective_limit,
                 fuel_price_pence_per_litre,
                 dynamic_threshold_incl_vat,
+            ),
+            "record the fuel price threshold",
+        )
+
+    async def _guarded(self, work: Callable[[], None], action: str) -> None:
+        try:
+            await asyncio.wait_for(asyncio.to_thread(work), self._timeout_secs)
+        except TimeoutError:
+            logger.warning(
+                f"Could not {action}: timed out after {self._timeout_secs:g}s."
             )
         except Exception as e:
-            logger.warning(
-                f"Could not record the fuel price threshold: {type(e).__name__}."
-            )
+            # Never the driver message: it can carry the host and user.
+            _code = ""
+            if isinstance(e, DBAPIError) and e.orig is not None:
+                _first = e.orig.args[0] if e.orig.args else None
+                if isinstance(_first, int):
+                    _code = f" (MySQL error {_first})"
+            logger.warning(f"Could not {action}: {type(e).__name__}{_code}.")
+
+    def _ensure_table(self) -> None:
+        if not self._table_ready:
+            _metadata.create_all(self._engine, checkfirst=True)
+            self._table_ready = True
 
     def _insert(
         self,
@@ -109,9 +146,7 @@ class FuelThresholdRecorder:
         fuel_price_pence_per_litre: float | None,
         dynamic_threshold_incl_vat: float | None,
     ) -> None:
-        if not self._table_ready:
-            _metadata.create_all(self._engine, checkfirst=True)
-            self._table_ready = True
+        self._ensure_table()
         _recorded_at = self._clock().astimezone(UTC).replace(tzinfo=None)
         with self._engine.begin() as connection:
             connection.execute(

@@ -120,6 +120,14 @@ def test_fuel_price_timeline_puts_the_charging_limit_on_its_own_axis_and_looks_b
     properties = {p["id"]: p["value"] for p in limit_override["properties"]}
     assert properties["custom.axisPlacement"] == "right"
     assert properties["unit"] == "p/kwh"
+    assert properties["custom.axisLabel"] == "p/kWh"
+    fuel_override = next(
+        o
+        for o in panel["fieldConfig"]["overrides"]
+        if o["matcher"]["options"] == "fuel_price_p_per_litre"
+    )
+    fuel_properties = {p["id"]: p["value"] for p in fuel_override["properties"]}
+    assert fuel_properties["custom.axisLabel"] == "p/L"
     assert panel["timeFrom"]
 
 

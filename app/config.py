@@ -170,8 +170,10 @@ class DatabaseConfig(BaseModel):
     def mask_the_password_before_any_error_can_echo_it(cls, data: Any) -> Any:
         # A missing-field error echoes the whole raw input dict into the
         # startup log; wrapping the password first keeps it masked there.
-        if isinstance(data, dict) and isinstance(data.get("password"), str):
-            return {**data, "password": SecretStr(data["password"])}
+        if isinstance(data, dict) and data.get("password") is not None:
+            _password = data["password"]
+            if not isinstance(_password, SecretStr):
+                return {**data, "password": SecretStr(str(_password))}
         return data
 
 

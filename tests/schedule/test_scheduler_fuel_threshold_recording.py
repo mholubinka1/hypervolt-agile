@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import threading
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock
 from zoneinfo import ZoneInfo
@@ -137,6 +139,7 @@ async def test_scheduler_still_builds_the_schedule_and_hides_the_password_when_t
 
     assert scheduler.schedule
     assert "OperationalError" in caplog.text
+    assert "2003" in caplog.text
     assert _password not in caplog.text
 
 
@@ -329,3 +332,72 @@ async def test_scheduler_still_stores_the_row_with_a_null_fuel_price_when_the_ex
     assert row.fuel_price_pence_per_litre is None
     assert float(row.dynamic_threshold_incl_vat) == 20
     assert row.limit_source == "dynamic"
+
+
+async def test_scheduler_builds_the_schedule_and_warns_when_the_database_hangs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _release = threading.Event()
+
+    def _blocked_connection() -> None:
+        _release.wait(timeout=30)
+        raise RuntimeError("released")
+
+    engine = create_engine("sqlite://", creator=_blocked_connection)
+    recorder = FuelThresholdRecorder(engine, timeout_secs=0.05)
+    scheduler = Scheduler(
+        _agile_client(),
+        _config(price_limit_incl_vat=100),
+        fuel_threshold_recorder=recorder,
+    )
+
+    try:
+        with caplog.at_level(logging.WARNING):
+            scheduler.invalidate()
+            await asyncio.wait_for(scheduler.update(), timeout=5)
+    finally:
+        _release.set()
+
+    assert scheduler.schedule
+    assert "timed out" in caplog.text
+
+
+@pytest.mark.parametrize("fuel_price", [float("nan"), float("inf"), 10000.0, -1.0, 0.0])
+async def test_scheduler_stores_null_fuel_price_but_keeps_the_limit_when_the_price_is_unusable(
+    fuel_price: float,
+) -> None:
+    engine = _in_memory_database()
+    scheduler = _scheduler_with_provider(
+        engine,
+        _FuelPriceReportingProvider(threshold=20.0, fuel_price=fuel_price),
+        static_limit=100,
+    )
+
+    scheduler.invalidate()
+    await scheduler.update()
+
+    (row,) = _stored_rows(engine)
+    assert row.fuel_price_pence_per_litre is None
+    assert float(row.effective_limit_incl_vat) == 20
+    assert row.limit_source == "dynamic"
+
+
+async def test_prepare_creates_the_table_without_a_record_call() -> None:
+    engine = _in_memory_database()
+
+    await FuelThresholdRecorder(engine).prepare()
+
+    assert inspect(engine).has_table("fuel_price_threshold")
+
+
+async def test_prepare_warns_without_raising_or_leaking_the_password_when_the_database_is_unreachable(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _password = "s3cret-db-pw"
+    engine = create_engine(f"mysql+pymysql://user:{_password}@127.0.0.1:1/agile")
+
+    with caplog.at_level(logging.WARNING):
+        await FuelThresholdRecorder(engine).prepare()
+
+    assert "OperationalError" in caplog.text
+    assert _password not in caplog.text

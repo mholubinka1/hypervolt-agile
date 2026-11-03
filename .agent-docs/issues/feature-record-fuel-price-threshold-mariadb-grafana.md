@@ -62,7 +62,7 @@ Create `data/grafana/fuel-threshold.json`, an importable dashboard fragment usin
 
 - [ ] The artefact is valid JSON with the Agile prices panel copied faithfully from the existing dashboard.
 - [ ] The refId B query returns the latest effective limit at both ends of the time range from `fuel_price_threshold`.
-- [ ] The refId B override sets a dashed line, zero fill, and hides the series from legend, tooltip and axis labels.
+- [ ] The refId B override sets a dashed line, zero fill, and hides the series from legend and tooltip.
 - [ ] Every column referenced in the artefact's SQL exists in the table definition.
 - [ ] The merge steps are documented.
 
