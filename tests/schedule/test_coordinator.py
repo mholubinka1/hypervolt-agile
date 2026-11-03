@@ -13,6 +13,7 @@ from hypervolt.led import (
     Window,
     load_custom_effect,
 )
+from hypervolt.model import ActivationMode, LockStatus, ReleaseState
 from octopus.client import AgileClient
 from saints_fc import SaintsFcExtension
 from schedule import Scheduler
@@ -635,3 +636,59 @@ async def test_run_applies_led_state_even_when_schedule_cannot_be_pushed() -> No
         await coordinator.run()
 
     charger_client.apply_led_state.assert_awaited_once_with(0.0, None)
+
+
+def _plugged_in_coordinator(
+    activation_mode: ActivationMode,
+) -> tuple[ScheduleCoordinator, HypervoltChargerClient]:
+    charger_client = Mock(spec=HypervoltChargerClient)
+    for _name in (
+        "apply_led_state",
+        "refresh",
+        "verify_schedule",
+        "apply_schedule",
+        "lock",
+        "unlock",
+    ):
+        setattr(charger_client, _name, AsyncMock())
+    charger_client.is_connected = True
+    charger_client.charger_state = Mock(
+        car_plugged=True,
+        release_state=ReleaseState.DEFAULT,
+        is_charging=False,
+        lock_status=LockStatus.unlocked,
+        activation_mode=activation_mode,
+    )
+
+    agile_client = Mock(spec=AgileClient)
+    agile_client.get_upcoming_prices = AsyncMock(return_value=[])
+    scheduler = Scheduler(
+        agile_client=agile_client, config=_config(LedConfig(enabled=True))
+    )
+    coordinator = ScheduleCoordinator(
+        scheduler=scheduler, config=_config(LedConfig(enabled=True))
+    )
+    coordinator._charger_client = charger_client
+    return coordinator, charger_client
+
+
+async def test_run_neither_pushes_a_schedule_nor_locks_while_ultra_is_active() -> None:
+    coordinator, charger_client = _plugged_in_coordinator(ActivationMode.ultra)
+
+    with patch("schedule.coordinator.resolve_theme", return_value=None):
+        await coordinator.run()
+
+    charger_client.apply_schedule.assert_not_awaited()
+    charger_client.lock.assert_not_awaited()
+    charger_client.unlock.assert_not_awaited()
+    charger_client.refresh.assert_awaited_once()
+    charger_client.apply_led_state.assert_awaited_once()
+
+
+async def test_run_resumes_schedule_pushes_once_ultra_has_ended() -> None:
+    coordinator, charger_client = _plugged_in_coordinator(ActivationMode.schedule)
+
+    with patch("schedule.coordinator.resolve_theme", return_value=None):
+        await coordinator.run()
+
+    charger_client.apply_schedule.assert_awaited_once()
