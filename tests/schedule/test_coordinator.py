@@ -686,9 +686,12 @@ async def test_run_neither_pushes_a_schedule_nor_locks_while_ultra_is_active() -
 
 
 async def test_run_resumes_schedule_pushes_once_ultra_has_ended() -> None:
-    coordinator, charger_client = _plugged_in_coordinator(ActivationMode.schedule)
+    coordinator, charger_client = _plugged_in_coordinator(ActivationMode.ultra)
 
     with patch("schedule.coordinator.resolve_theme", return_value=None):
+        await coordinator.run()
+        charger_client.apply_schedule.assert_not_awaited()
+        charger_client.charger_state.activation_mode = ActivationMode.schedule
         await coordinator.run()
 
     charger_client.apply_schedule.assert_awaited_once()

@@ -3,7 +3,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 from hypervolt.client.websocket import HypervoltWebSocketClient
-from hypervolt.model import HypervoltCharger
+from hypervolt.model import ActivationMode, HypervoltCharger
+from hypervolt.state import HypervoltChargerState
 
 
 def _client() -> HypervoltWebSocketClient:
@@ -153,6 +154,21 @@ async def test_a_malformed_recurring_schedule_still_logs_the_parse_warning(
         )
 
     assert "parse error" in caplog.text
+
+
+async def test_ultra_ending_with_no_schedule_restores_a_normal_activation_mode() -> (
+    None
+):
+    client = _client()
+    state = HypervoltChargerState(HypervoltCharger(id="charger-1", maj_version=3))
+    client._protocol._on_state_update = AsyncMock(side_effect=state.update)
+
+    await client._protocol.handle("schedules.get", _ULTRA_SCHEDULES_GET, None)
+    assert state.activation_mode == ActivationMode.ultra
+
+    await client._protocol.handle("schedules.get", {"applied": None}, None)
+
+    assert state.activation_mode == ActivationMode.plug_and_charge
 
 
 async def test_ultra_ending_with_no_schedule_is_logged_and_a_return_is_logged_again(

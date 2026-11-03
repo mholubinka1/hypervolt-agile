@@ -234,9 +234,20 @@ class HypervoltProtocol:
     ) -> None:
         _applied = result.get("applied") if result else None
         if not _applied:
+            # A missing schedule maps to plug_and_charge below; leaving Ultra this
+            # way must restore that mode, since a None mode would leave `ultra`
+            # sticky in the state and the coordinator stood down indefinitely.
+            _left_ultra = self._in_ultra
             self._track_ultra(False)
             logger.debug("schedules.get: no schedule on charger.")
-            await self._on_state_update(HypervoltChargerStateDelta(current_schedule=[]))
+            await self._on_state_update(
+                HypervoltChargerStateDelta(
+                    activation_mode=(
+                        ActivationMode.plug_and_charge if _left_ultra else None
+                    ),
+                    current_schedule=[],
+                )
+            )
             return
 
         _is_ultra = _applied.get("type") == "axle"
