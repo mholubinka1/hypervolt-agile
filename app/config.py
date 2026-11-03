@@ -159,20 +159,23 @@ class ExtensionsConfig(BaseModel):
 class DatabaseConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
-    host: str
+    host: str = Field(..., min_length=1)
     port: int = Field(3306, ge=1, le=65535)
-    user: str
+    user: str = Field(..., min_length=1)
     password: SecretStr
-    name: str
+    name: str = Field(..., min_length=1)
 
     @model_validator(mode="before")
     @classmethod
     def mask_the_password_before_any_error_can_echo_it(cls, data: Any) -> Any:
         # A missing-field error echoes the whole raw input dict into the
-        # startup log; wrapping the password first keeps it masked there.
-        if isinstance(data, dict) and data.get("password") is not None:
-            _password = data["password"]
-            if not isinstance(_password, SecretStr):
+        # startup log; wrapping the password first keeps it masked there. Only
+        # text and numbers (a YAML `password: 12345`) are wrapped -- anything
+        # else is left for pydantic to reject rather than coerced into a
+        # literal password.
+        if isinstance(data, dict):
+            _password = data.get("password")
+            if isinstance(_password, (str, int)) and not isinstance(_password, bool):
                 return {**data, "password": SecretStr(str(_password))}
         return data
 

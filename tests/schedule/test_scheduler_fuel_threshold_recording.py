@@ -425,6 +425,49 @@ async def test_scheduler_stores_null_fuel_price_without_failing_the_rebuild_when
     assert "Failed to create" not in caplog.text
 
 
+async def test_scheduler_records_on_a_new_prices_rebuild_as_well_as_a_replug_rebuild() -> (
+    None
+):
+    # _rebuild_on_new_prices() is a second, independent trigger into the same
+    # _rebuild() -- a regression that wired recording into only the replug
+    # trigger would pass every other test in this file.
+    _now = datetime.now(tz=_UTC)
+    _later = _now + timedelta(hours=2)
+    _client = Mock(spec=AgileClient)
+    _client.get_upcoming_prices = AsyncMock(
+        side_effect=[
+            [
+                Price(
+                    value_exc_vat=50,
+                    valid_from=_now,
+                    valid_to=_now + timedelta(minutes=30),
+                )
+            ],
+            [
+                Price(
+                    value_exc_vat=50,
+                    valid_from=_later,
+                    valid_to=_later + timedelta(minutes=30),
+                )
+            ],
+        ]
+    )
+    engine = _in_memory_database()
+    scheduler = Scheduler(
+        _client,
+        _config(price_limit_incl_vat=100),
+        fuel_threshold_recorder=FuelThresholdRecorder(
+            engine, clock=lambda: _RECORDED_AT
+        ),
+    )
+
+    scheduler.invalidate()
+    await scheduler.update()
+    await scheduler._rebuild_on_new_prices()
+
+    assert len(_stored_rows(engine)) == 2
+
+
 async def test_prepare_creates_the_table_without_a_record_call() -> None:
     engine = _in_memory_database()
 

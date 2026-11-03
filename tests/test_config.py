@@ -493,6 +493,9 @@ def test_app_config_accepts_a_database_block_and_defaults_the_port() -> None:
     [
         {**_DATABASE, "extra_key": "x"},
         {k: v for k, v in _DATABASE.items() if k != "name"},
+        {**_DATABASE, "host": ""},
+        {**_DATABASE, "user": ""},
+        {**_DATABASE, "name": ""},
     ],
 )
 def test_app_config_rejects_an_invalid_database_block_without_echoing_the_password(
@@ -513,3 +516,11 @@ def test_app_config_does_not_echo_an_integer_database_password_in_a_validation_e
         _app_config_with_database({**_database, "password": 8675309})
 
     assert "8675309" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("password", [["a", "b"], {"key": "value"}, True])
+def test_app_config_rejects_a_database_password_that_is_not_text_or_a_number(
+    password: object,
+) -> None:
+    with pytest.raises(ValidationError):
+        _app_config_with_database({**_DATABASE, "password": password})
