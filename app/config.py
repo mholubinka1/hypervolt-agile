@@ -16,7 +16,13 @@ from common.calendar_window import (
 from common.constants import APP_NAME
 from common.logging import config
 from common.utils import is_null_or_empty
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
@@ -150,12 +156,44 @@ class ExtensionsConfig(BaseModel):
     threshold: ExtensionEntry | None = None
 
 
+class _NonTextPassword:
+    # Stands in for a non-text password so pydantic's type error can say what
+    # is wrong without echoing the secret -- and without coercing it, which
+    # would silently alter it (YAML reads an unquoted `12.50` as 12.5).
+    def __repr__(self) -> str:
+        return "<non-text password hidden -- quote it in config.yml>"
+
+
+class DatabaseConfig(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    host: str = Field(..., min_length=1)
+    port: int = Field(3306, ge=1, le=65535)
+    user: str = Field(..., min_length=1)
+    password: SecretStr
+    name: str = Field(..., min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def mask_the_password_before_any_error_can_echo_it(cls, data: Any) -> Any:
+        # A missing-field error echoes the whole raw input dict into the
+        # startup log; wrapping the password first keeps it masked there.
+        if isinstance(data, dict):
+            _password = data.get("password")
+            if isinstance(_password, str):
+                return {**data, "password": SecretStr(_password)}
+            if _password is not None and not isinstance(_password, SecretStr):
+                return {**data, "password": _NonTextPassword()}
+        return data
+
+
 class AppConfig(BaseModel):
     octopus: Octopus
     hypervolt: Hypervolt
     schedule: Schedule
     led: LedConfig | None = None
     extensions: ExtensionsConfig | None = None
+    database: DatabaseConfig | None = None
     log_file: str | None = None
     log_level: str = "INFO"
 
@@ -165,7 +203,13 @@ class AppConfig(BaseModel):
     # silently dropped, which would otherwise degrade the charging schedule
     # to its static fallback with no visible error. Matches LedConfig's and
     # ExtensionsConfig's own extra="forbid" convention.
-    model_config = {"populate_by_name": True, "extra": "forbid"}
+    # hide_input_in_errors -- an error on one field otherwise echoes the whole
+    # input dict, passwords and API keys included, into the startup log.
+    model_config = {
+        "populate_by_name": True,
+        "extra": "forbid",
+        "hide_input_in_errors": True,
+    }
 
     @model_validator(mode="after")
     def zero_price_limit_requires_a_threshold_extension(self) -> AppConfig:

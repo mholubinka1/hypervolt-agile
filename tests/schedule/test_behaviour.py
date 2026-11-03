@@ -101,11 +101,10 @@ class FakeThresholdProvider:
 async def test_load_threshold_extension_logs_the_charging_threshold_kind_label_on_failure(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # Regression guard mirroring the LED "kind" discriminator tests
-    # (.agent-docs/review.md, PR #161: "Untested discriminator/label
-    # propagation in a shared wrapper") -- a reverted or mismatched kind
-    # string here would pass every other test in this file silently, since
-    # they only assert the happy path.
+    # Regression guard mirroring the LED "kind" discriminator tests (a
+    # per-caller label in a shared wrapper needs a test that it reaches the
+    # output) -- a reverted or mismatched kind string here would pass every
+    # other test in this file silently, since they only assert the happy path.
     entry = ExtensionEntry(name="does-not-exist", config={})
 
     with caplog.at_level(logging.ERROR):

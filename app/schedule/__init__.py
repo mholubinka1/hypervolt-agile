@@ -1,3 +1,4 @@
+import asyncio
 import logging.config
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -11,12 +12,17 @@ from common.logging import config
 from common.model import ChargeSession, Price
 from octopus.client import AgileClient
 from schedule.builder import ScheduleBuilder
+from schedule.fuel_threshold_recorder import FuelThresholdRecorder
 from schedule.threshold_policy import ThresholdPolicy
 
 from config import AppConfig
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
+
+# Telemetry only: the coordinator waits on update() before applying the
+# charging schedule, so a hung get_fuel_price() must not hold it up.
+_FUEL_PRICE_TIMEOUT_SECS = 5
 
 
 @dataclass(frozen=True)
@@ -59,12 +65,14 @@ class Scheduler:
         agile_client: AgileClient,
         config: AppConfig,
         threshold_provider: ExtensionWrapper | None = None,
+        fuel_threshold_recorder: FuelThresholdRecorder | None = None,
     ) -> None:
         self._agile_client = agile_client
         self._timezone = TIMEZONE
         self._update_freq = config.schedule.frequency
         self._threshold_provider = threshold_provider
         self._threshold_policy = ThresholdPolicy(config.schedule.limit)
+        self._fuel_threshold_recorder = fuel_threshold_recorder
         self._builder = ScheduleBuilder(
             duration_hrs=config.schedule.duration,
             limit_exc_vat=config.schedule.limit / ELECTRICITY_VAT_RATE,
@@ -244,5 +252,27 @@ class Scheduler:
             for session in self._schedule:
                 logger.info(f"Session: {session.format(self._timezone)}.")
             trigger.finalize()
+            if self._fuel_threshold_recorder is not None:
+                _fuel_price: float | None = None
+                # Only asked for alongside a fresh dynamic threshold, so a
+                # provider whose threshold is absent can't contribute a price.
+                if self._threshold_provider is not None and _dynamic_limit is not None:
+                    try:
+                        _fuel_price = await asyncio.wait_for(
+                            self._threshold_provider.invoke("get_fuel_price"),
+                            _FUEL_PRICE_TIMEOUT_SECS,
+                        )
+                    except TimeoutError:
+                        logger.warning(
+                            f"Threshold extension '{self._threshold_provider.name}' "
+                            f"did not report a fuel price within "
+                            f"{_FUEL_PRICE_TIMEOUT_SECS:g}s; recording the row "
+                            "without a fuel price."
+                        )
+                await self._fuel_threshold_recorder.record(
+                    _limit,
+                    fuel_price_pence_per_litre=_fuel_price,
+                    dynamic_threshold_incl_vat=_dynamic_limit,
+                )
         except Exception:
             logger.exception(trigger.exception_message)

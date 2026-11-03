@@ -103,6 +103,10 @@ _Avoid_: fuel-aware threshold, smart threshold
 The electricity price at which a mile costs the same on electric as on fuel, derived from fuel price per litre, MPG, and the vehicle's electric efficiency (mi/kWh). The dynamic charging threshold is this value discounted by a fixed 20% margin, not the breakeven price itself.
 _Avoid_: parity price, equivalent price
 
+**Fuel threshold record** (`fuel_price_threshold` row):
+One timestamped snapshot, written on each schedule rebuild that resolves a limit, of the fuel price, the dynamic charging threshold, the effective limit and its source (`dynamic`, `cached dynamic`, `static`, `static cap`). It is written to the operator-configured MariaDB database (`database:` in `config.yml`) for the Grafana electricity dashboard and never gates scheduling — a database failure only drops that row.
+_Avoid_: threshold log, price history
+
 ## Boundaries
 
 **Octopus client**:

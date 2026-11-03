@@ -10,7 +10,7 @@ from behaviours.dynamic_charging_threshold import (
     _dynamic_threshold_incl_vat,
 )
 from fuel_finder.auth import FuelFinderAuth
-from fuel_finder.client import FuelFinderClient
+from fuel_finder.client import FuelFinderClient, FuelPriceFailure
 
 _FUEL_FINDER_BASE_URL = "https://www.fuel-finder.service.gov.uk"
 _GEOCODE_RESULT = {
@@ -910,3 +910,82 @@ async def test_an_unexpected_error_during_a_poll_is_caught_and_preserves_the_cac
 
     assert await extension.get_threshold() == _cached_before
     assert any("poll failed unexpectedly" in r.message for r in caplog.records)
+
+
+async def _extension_with_a_cached_fuel_price() -> DynamicChargingThresholdExtension:
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", [("E10", 150.0)])]],
+    )
+    await extension._poll_once()
+    return extension
+
+
+async def test_get_fuel_price_returns_none_before_any_poll_has_completed() -> None:
+    extension = DynamicChargingThresholdExtension(
+        _valid_config(), update_every_mins=_DEFAULT_UPDATE_EVERY_MINS
+    )
+
+    assert await extension.get_fuel_price() is None
+
+
+async def test_get_fuel_price_returns_the_pence_per_litre_from_the_last_successful_poll() -> (
+    None
+):
+    extension = await _extension_with_a_cached_fuel_price()
+
+    assert await extension.get_fuel_price() == pytest.approx(150.0)
+
+
+@pytest.mark.parametrize(
+    "later_prices",
+    [
+        pytest.param([("B7_STANDARD", 150.0)], id="no matching station"),
+        pytest.param([("E10", -150.0)], id="invalid raw price"),
+        pytest.param([("E10", 1e308)], id="invalid computed threshold"),
+    ],
+)
+async def test_get_fuel_price_returns_none_after_a_poll_that_clears_the_threshold(
+    later_prices: list[tuple[str, float]],
+) -> None:
+    extension = await _extension_with_a_cached_fuel_price()
+
+    _wire_mock_transport(
+        extension,
+        pfs_batches=[[_station("s1", 51.5, -0.14)]],
+        price_batches=[[_price_entry("s1", later_prices)]],
+    )
+    await extension._poll_once()
+
+    assert await extension.get_threshold() is None
+    assert await extension.get_fuel_price() is None
+
+
+async def test_get_fuel_price_returns_none_after_the_fuel_finder_becomes_unavailable() -> (
+    None
+):
+    extension = await _extension_with_a_cached_fuel_price()
+    extension._fuel_finder = AsyncMock(
+        average_price_near=AsyncMock(return_value=FuelPriceFailure.PRICES_UNAVAILABLE)
+    )
+
+    await extension._poll_once()
+
+    assert await extension.get_fuel_price() is None
+
+
+async def test_an_unexpected_error_during_a_poll_preserves_the_cached_fuel_price() -> (
+    None
+):
+    extension = await _extension_with_a_cached_fuel_price()
+    extension._fuel_finder = AsyncMock(
+        average_price_near=AsyncMock(side_effect=RuntimeError("boom"))
+    )
+
+    await extension._poll_once()
+
+    assert await extension.get_fuel_price() == pytest.approx(150.0)

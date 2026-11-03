@@ -454,3 +454,123 @@ extensions:
         ConfigLoader(config_file)
 
     assert exc_info.value.code == 1
+
+
+_DATABASE = {
+    "host": "db.local",
+    "user": "agile",
+    "password": "s3cret-db-pw",
+    "name": "agile",
+}
+
+
+def _app_config_with_database(database: dict) -> AppConfig:
+    return AppConfig.model_validate(
+        {
+            "octopus": {"account_number": "A-1", "api_key": "key"},
+            "hypervolt": {"username": "u", "password": "p"},
+            "schedule": {
+                "total_charge_duration": 4,
+                "price_limit_incl_vat": 30,
+                "update_every_mins": 30,
+                "poll_every_secs": 10,
+            },
+            "database": database,
+        }
+    )
+
+
+def test_app_config_accepts_a_database_block_and_defaults_the_port() -> None:
+    _database = _app_config_with_database(_DATABASE).database
+
+    assert _database is not None
+    assert _database.port == 3306
+    assert _database.password.get_secret_value() == "s3cret-db-pw"
+
+
+@pytest.mark.parametrize(
+    "database",
+    [
+        {**_DATABASE, "extra_key": "x"},
+        {k: v for k, v in _DATABASE.items() if k != "name"},
+        {**_DATABASE, "host": ""},
+        {**_DATABASE, "user": ""},
+        {**_DATABASE, "name": ""},
+    ],
+)
+def test_app_config_rejects_an_invalid_database_block_without_echoing_the_password(
+    database: dict,
+) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        _app_config_with_database(database)
+
+    assert "s3cret-db-pw" not in str(exc_info.value)
+
+
+def test_app_config_does_not_echo_an_integer_database_password_in_a_validation_error() -> (
+    None
+):
+    _database = {k: v for k, v in _DATABASE.items() if k != "host"}
+
+    with pytest.raises(ValidationError) as exc_info:
+        _app_config_with_database({**_database, "password": 8675309})
+
+    assert "8675309" not in str(exc_info.value)
+
+
+def test_app_config_does_not_echo_a_decimal_database_password_in_a_validation_error() -> (
+    None
+):
+    _database = {k: v for k, v in _DATABASE.items() if k != "host"}
+
+    with pytest.raises(ValidationError) as exc_info:
+        _app_config_with_database({**_database, "password": 12.5})
+
+    assert "12.5" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("password", [12345, 12.5, True, ["a", "b"], {"key": "value"}])
+def test_app_config_rejects_a_database_password_that_is_not_text_without_echoing_it(
+    password: object,
+) -> None:
+    # YAML reads an unquoted `12.50` as 12.5 -- coercing it to "12.5" would
+    # silently change the password, so it is rejected instead.
+    with pytest.raises(ValidationError) as exc_info:
+        _app_config_with_database({**_DATABASE, "password": password})
+
+    assert str(password) not in str(exc_info.value)
+
+
+def test_app_config_error_for_a_missing_section_echoes_no_secret_from_the_input() -> (
+    None
+):
+    _secrets = ["octo-key-9f3a", "hv-pass-7c1d", "db-pass-2b8e"]
+
+    with pytest.raises(ValidationError) as exc_info:
+        AppConfig.model_validate(
+            {
+                "database": {**_DATABASE, "password": _secrets[2]},
+                "octopus": {"account_number": "A-1", "api_key": _secrets[0]},
+                "hypervolt": {"username": "u", "password": _secrets[1]},
+            }
+        )
+
+    for _secret in _secrets:
+        assert _secret not in str(exc_info.value)
+
+
+def test_config_loader_does_not_log_secrets_when_a_section_is_missing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    config_file = tmp_path / "config.yml"
+    config_file.write_text(
+        'octopus:\n  account_number: "A-1"\n  api_key: "octo-key-9f3a"\n'
+        'hypervolt:\n  username: u\n  password: "hv-pass-7c1d"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit):
+        ConfigLoader(config_file)
+
+    assert "octo-key-9f3a" not in caplog.text
+    assert "hv-pass-7c1d" not in caplog.text

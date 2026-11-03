@@ -25,10 +25,12 @@ class BehaviourProvider(Protocol):
 
     async def get_threshold(self) -> float | None: ...
 
-    # start()/stop() are optional lifecycle hooks (ADR 0005) -- deliberately
-    # not declared here, same reasoning as LedThemeProvider in
-    # hypervolt/led.py: a Protocol member would make them structurally
-    # required. Callers check via ExtensionWrapper/load_extensions instead.
+    # start()/stop() are optional lifecycle hooks (ADR 0005), and
+    # get_fuel_price() -> float | None is an optional report of the fuel price
+    # (pence per litre) behind the threshold -- deliberately not declared
+    # here, same reasoning as LedThemeProvider in hypervolt/led.py: a Protocol
+    # member would make them structurally required. Callers check via
+    # ExtensionWrapper/load_extensions instead.
 
 
 class _ThresholdValidatingProvider:

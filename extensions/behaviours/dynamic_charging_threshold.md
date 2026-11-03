@@ -9,6 +9,7 @@ PHEV-only. Computes a live price/kWh charging threshold from local fuel prices a
 3. Converts that average to a breakeven price per kWh, using `mpg` and `mi_per_kwh`.
 4. Applies a fixed 20% safety margin below breakeven.
 5. Caches the result; re-polls on the `schedule.update_every_mins` cadence.
+6. Also exposes the cached average fuel price (pence per litre) through the optional `get_fuel_price()`, cleared whenever the threshold is. When the app has a [`database:` block](../../README.md#recording-the-charging-limit-for-grafana), that price is stored beside the threshold for Grafana.
 
 ### Interaction with `price_limit_incl_vat`
 
