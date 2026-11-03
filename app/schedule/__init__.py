@@ -21,7 +21,8 @@ logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
 # Telemetry only: the coordinator waits on update() before applying the
-# charging schedule, so a hung get_fuel_price() must not hold it up.
+# charging schedule, so a hung get_fuel_price() or get_threshold() in the
+# price-change check must not hold it up.
 _FUEL_PRICE_TIMEOUT_SECS = 5
 
 
@@ -315,6 +316,8 @@ class Scheduler:
         )
         if not self._fuel_threshold_recorder.fuel_price_changed(_price, _dynamic):
             return
+        # Also refreshes the policy's cached dynamic value, as a rebuild does:
+        # the freshest value is the right one to fall back on later.
         _limit = self._threshold_policy.effective_limit(_dynamic)
         if _limit is None:
             return
