@@ -11,6 +11,7 @@ from common.logging import config
 from common.model import ChargeSession, Price
 from octopus.client import AgileClient
 from schedule.builder import ScheduleBuilder
+from schedule.fuel_threshold_recorder import FuelThresholdRecorder
 from schedule.threshold_policy import ThresholdPolicy
 
 from config import AppConfig
@@ -59,12 +60,14 @@ class Scheduler:
         agile_client: AgileClient,
         config: AppConfig,
         threshold_provider: ExtensionWrapper | None = None,
+        fuel_threshold_recorder: FuelThresholdRecorder | None = None,
     ) -> None:
         self._agile_client = agile_client
         self._timezone = TIMEZONE
         self._update_freq = config.schedule.frequency
         self._threshold_provider = threshold_provider
         self._threshold_policy = ThresholdPolicy(config.schedule.limit)
+        self._fuel_threshold_recorder = fuel_threshold_recorder
         self._builder = ScheduleBuilder(
             duration_hrs=config.schedule.duration,
             limit_exc_vat=config.schedule.limit / ELECTRICITY_VAT_RATE,
@@ -232,6 +235,8 @@ class Scheduler:
             if _limit is None:
                 logger.warning(trigger.no_threshold_warning)
                 return
+            if self._fuel_threshold_recorder is not None:
+                await self._fuel_threshold_recorder.record(_limit)
             trigger.commit(_new_prices)
             self._builder.update_limit(_limit.exc_vat)
             self._schedule, self._average_price_per_kwh = self._builder.build(

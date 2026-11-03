@@ -16,7 +16,13 @@ from common.calendar_window import (
 from common.constants import APP_NAME
 from common.logging import config
 from common.utils import is_null_or_empty
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
@@ -150,12 +156,32 @@ class ExtensionsConfig(BaseModel):
     threshold: ExtensionEntry | None = None
 
 
+class DatabaseConfig(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    host: str
+    port: int = Field(3306, ge=1, le=65535)
+    user: str
+    password: SecretStr
+    name: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def mask_the_password_before_any_error_can_echo_it(cls, data: Any) -> Any:
+        # A missing-field error echoes the whole raw input dict into the
+        # startup log; wrapping the password first keeps it masked there.
+        if isinstance(data, dict) and isinstance(data.get("password"), str):
+            return {**data, "password": SecretStr(data["password"])}
+        return data
+
+
 class AppConfig(BaseModel):
     octopus: Octopus
     hypervolt: Hypervolt
     schedule: Schedule
     led: LedConfig | None = None
     extensions: ExtensionsConfig | None = None
+    database: DatabaseConfig | None = None
     log_file: str | None = None
     log_level: str = "INFO"
 

@@ -23,6 +23,7 @@ from octopus.postcode import is_valid_postcode
 from schedule import Scheduler
 from schedule.behaviour import load_threshold_extension
 from schedule.coordinator import ScheduleCoordinator
+from schedule.fuel_threshold_recorder import FuelThresholdRecorder
 
 from config import ConfigLoader
 
@@ -104,8 +105,15 @@ async def main() -> None:
             app_config.schedule.frequency,
         )
 
+    fuel_threshold_recorder: FuelThresholdRecorder | None = None
+    if app_config.database:
+        fuel_threshold_recorder = FuelThresholdRecorder.from_config(app_config.database)
+
     scheduler = Scheduler(
-        agile_client, app_config, threshold_provider=threshold_provider
+        agile_client,
+        app_config,
+        threshold_provider=threshold_provider,
+        fuel_threshold_recorder=fuel_threshold_recorder,
     )
     coordinator = ScheduleCoordinator(
         scheduler,
@@ -146,6 +154,8 @@ async def main() -> None:
             await extension.stop()
         if threshold_provider is not None:
             await threshold_provider.stop()
+        if fuel_threshold_recorder is not None:
+            fuel_threshold_recorder.dispose()
 
 
 if __name__ == "__main__":

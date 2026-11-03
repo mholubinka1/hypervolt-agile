@@ -47,5 +47,11 @@ schedule:
 #       client_id: your-fuel-finder-client-id         # Required -- from your own GOV.UK Fuel Finder developer registration (https://www.fuel-finder.service.gov.uk), not a shared app credential.
 #       client_secret: your-fuel-finder-client-secret  # Required -- see client_id above. Keep this file's permissions restricted; it's a real secret.
 #                                       # No separate poll-interval field here -- this extension re-polls on the same update_every_mins cadence set above under schedule:, since fuel prices move far less often than Agile electricity prices and don't need their own independent tuning.
+# database:                         # Optional: record the effective price limit (and its source) to a MariaDB/MySQL table on every schedule rebuild, e.g. for Grafana. Omit the whole `database:` block to record nothing. The `fuel_price_threshold` table is created automatically on first write; a database outage is logged as a warning and never stops charging.
+#   host: mariadb                    # Required -- database hostname.
+#   port: 3306                       # Optional, default 3306.
+#   user: hypervolt_agile            # Required -- needs CREATE and INSERT on the database below.
+#   password: your-database-password # Required -- keep this file's permissions restricted; it's a real secret.
+#   name: hypervolt_agile            # Required -- database (schema) name; it must already exist.
 # log_file: /logs/hypervolt-agile-scheduler.log   # Omit to log to console only. In Docker, /logs is bind-mounted from whatever host directory you chose for logs -- see this repo's README.
 # log_level: INFO                # Console log level (default: INFO). File log level is always INFO.

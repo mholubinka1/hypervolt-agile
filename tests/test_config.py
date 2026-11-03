@@ -454,3 +454,51 @@ extensions:
         ConfigLoader(config_file)
 
     assert exc_info.value.code == 1
+
+
+_DATABASE = {
+    "host": "db.local",
+    "user": "agile",
+    "password": "s3cret-db-pw",
+    "name": "agile",
+}
+
+
+def _app_config_with_database(database: dict) -> AppConfig:
+    return AppConfig.model_validate(
+        {
+            "octopus": {"account_number": "A-1", "api_key": "key"},
+            "hypervolt": {"username": "u", "password": "p"},
+            "schedule": {
+                "total_charge_duration": 4,
+                "price_limit_incl_vat": 30,
+                "update_every_mins": 30,
+                "poll_every_secs": 10,
+            },
+            "database": database,
+        }
+    )
+
+
+def test_app_config_accepts_a_database_block_and_defaults_the_port() -> None:
+    _database = _app_config_with_database(_DATABASE).database
+
+    assert _database is not None
+    assert _database.port == 3306
+    assert _database.password.get_secret_value() == "s3cret-db-pw"
+
+
+@pytest.mark.parametrize(
+    "database",
+    [
+        {**_DATABASE, "extra_key": "x"},
+        {k: v for k, v in _DATABASE.items() if k != "name"},
+    ],
+)
+def test_app_config_rejects_an_invalid_database_block_without_echoing_the_password(
+    database: dict,
+) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        _app_config_with_database(database)
+
+    assert "s3cret-db-pw" not in str(exc_info.value)
