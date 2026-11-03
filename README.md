@@ -96,6 +96,18 @@ Each shipped extension's own README (linked above) covers its config and behavio
 
 ---
 
+## Recording the Charging Limit for Grafana
+
+An optional `database:` block in `config.yml` (see `config/config.yml.template`) makes every schedule rebuild store one row in a MariaDB/MySQL `fuel_price_threshold` table: a UTC timestamp, the effective limit incl VAT and its source (`dynamic`, `cached dynamic`, `static` or `static cap`) and, when a [Behaviour Provider](#extensions) reports them, the fuel price (pence per litre) and the dynamic threshold. The table is created on the first write. A database outage logs a warning and never affects charging.
+
+[data/grafana/fuel-threshold.json](data/grafana/fuel-threshold.json) is an importable Grafana dashboard that charts this data. To add it to an existing electricity dashboard rather than importing it alongside:
+
+1. In Grafana, **Dashboards → New → Import**, upload the file and select your MySQL data source for `DS_MYSQL`.
+2. Open each panel's menu and choose **More… → Copy**, then **Paste panel** into the dashboard you want it on.
+3. The Agile prices panel is a copy of the existing one with a second query (`B`) that draws the effective limit as a dashed horizontal line. Keep its panel id aligned with the "+24h" and "now" annotations, which filter on it.
+
+---
+
 ## Deployment
 
 ### Docker
