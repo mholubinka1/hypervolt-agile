@@ -1,5 +1,7 @@
 # Issues: bugfix-ultra-mode-stand-down
 
+> Work complete — PR ready to merge.
+
 ## Detect Ultra from schedules.get and stop the parse warning
 
 **Blocked by**: None
@@ -16,15 +18,15 @@ unchanged. Add `ultra` to the activation modes.
 
 ### Acceptance criteria
 
-- [ ] Given an Axle `schedules.get` payload with `unique` sessions, when it is handled, then the
+- [x] Given an Axle `schedules.get` payload with `unique` sessions, when it is handled, then the
       emitted state has activation mode `ultra` and no sessions, and no warning is logged
-- [ ] Given an Axle payload with an empty session list, when it is handled, then activation mode
+- [x] Given an Axle payload with an empty session list, when it is handled, then activation mode
       is still `ultra`
-- [ ] Given the previous poll was normal and the next is Axle, then exactly one INFO line says Ultra
+- [x] Given the previous poll was normal and the next is Axle, then exactly one INFO line says Ultra
       is active, and further Axle polls log no additional line
-- [ ] Given the previous poll was Axle and the next is a normal recurring payload, then exactly one
+- [x] Given the previous poll was Axle and the next is a normal recurring payload, then exactly one
       INFO line says Ultra has ended and the normal activation mode is restored
-- [ ] Given a malformed recurring payload, when it is handled, then the existing parse warning is
+- [x] Given a malformed recurring payload, when it is handled, then the existing parse warning is
       still logged
 
 ---
@@ -43,11 +45,11 @@ a restart. LED themes and charger-state refresh keep running throughout.
 
 ### Acceptance criteria
 
-- [ ] Given the car is plugged in and activation mode is `ultra`, when the coordinator runs, then no
+- [x] Given the car is plugged in and activation mode is `ultra`, when the coordinator runs, then no
       schedule is applied and no lock or unlock is issued
-- [ ] Given activation mode changes from `ultra` back to `schedule`, when the coordinator next runs,
+- [x] Given activation mode changes from `ultra` back to `schedule`, when the coordinator next runs,
       then schedule application and lock control resume
-- [ ] Given activation mode is `ultra`, when the coordinator runs, then charger state refresh and LED
+- [x] Given activation mode is `ultra`, when the coordinator runs, then charger state refresh and LED
       state application still happen
 
 ---
