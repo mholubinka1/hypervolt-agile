@@ -85,6 +85,7 @@ class Scheduler:
         self._schedule: list[ChargeSession] = []
         self._average_price_per_kwh: float | None = None
         self._invalidated: bool = False
+        self._fuel_price_check_resumes_at: datetime | None = None
 
     @property
     def schedule(self) -> list[ChargeSession]:
@@ -267,13 +268,17 @@ class Scheduler:
         except Exception:
             logger.exception(trigger.exception_message)
 
-    @staticmethod
-    async def _fetch_fuel_price(provider: ExtensionWrapper) -> float | None:
+    async def _fetch_fuel_price(self, provider: ExtensionWrapper) -> float | None:
         try:
             return await asyncio.wait_for(
                 provider.invoke("get_fuel_price"), _FUEL_PRICE_TIMEOUT_SECS
             )
         except TimeoutError:
+            # The per-cycle price-change check would otherwise stall every
+            # poll cycle for the full timeout while the accessor stays hung.
+            self._fuel_price_check_resumes_at = datetime.now(
+                ZoneInfo("UTC")
+            ) + timedelta(minutes=self._update_freq)
             logger.warning(
                 f"Threshold extension '{provider.name}' "
                 f"did not report a fuel price within "
@@ -283,6 +288,11 @@ class Scheduler:
 
     async def _record_fuel_price_change(self) -> None:
         if self._fuel_threshold_recorder is None or self._threshold_provider is None:
+            return
+        if (
+            self._fuel_price_check_resumes_at is not None
+            and datetime.now(ZoneInfo("UTC")) < self._fuel_price_check_resumes_at
+        ):
             return
         _price = await self._fetch_fuel_price(self._threshold_provider)
         if _price is None:

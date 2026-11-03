@@ -37,7 +37,7 @@ The tracer bullet. `FuelThresholdRecorder` remembers the last fuel price it stor
 
 ### What to build
 
-Extract the fuel price accessor call, with its 5s `asyncio.wait_for` bound and timeout warning, into one helper shared by the rebuild path and the new change check. After a timeout the change check is skipped for one update interval, so a hung or slow third-party accessor cannot slow charging control on every poll cycle. The rebuild path keeps its own once-per-rebuild call and its existing degrade-to-no-price behaviour.
+The fuel price accessor call, with its 5s `asyncio.wait_for` bound and timeout warning, is one helper shared by the rebuild path and the change check (extracted in the previous slice so the per-cycle check was never unbounded). This slice adds the backoff: after a timeout in either caller the change check is skipped for one update interval, so a hung or slow third-party accessor cannot slow charging control on every poll cycle. The rebuild path keeps its own once-per-rebuild call and its existing degrade-to-no-price behaviour.
 
 ### Acceptance criteria
 

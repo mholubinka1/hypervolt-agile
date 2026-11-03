@@ -786,3 +786,88 @@ async def test_scheduler_with_a_recorder_but_no_threshold_provider_checks_nothin
     await scheduler.update()
 
     assert len(_stored_rows(engine)) == 1
+
+
+class _SwitchableFuelPriceProvider:
+    def __init__(self, threshold: float, fuel_price: float) -> None:
+        self.threshold = threshold
+        self.fuel_price = fuel_price
+        self.hangs = False
+        self.fuel_price_calls = 0
+
+    async def get_threshold(self) -> float:
+        return self.threshold
+
+    async def get_fuel_price(self) -> float:
+        self.fuel_price_calls += 1
+        if self.hangs:
+            await asyncio.Event().wait()
+        return self.fuel_price
+
+
+async def test_a_hung_fuel_price_accessor_is_not_called_again_within_the_update_interval(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr("schedule._FUEL_PRICE_TIMEOUT_SECS", 0.05)
+    provider = _SwitchableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(
+        _in_memory_database(), provider, static_limit=100
+    )
+    await scheduler.update()  # first call: the due rebuild, accessor answers
+    provider.hangs = True
+    calls_before_the_hang = provider.fuel_price_calls
+
+    with caplog.at_level(logging.WARNING):
+        await scheduler.update()  # the change check hits the hang and times out
+        await scheduler.update()  # inside the backoff: accessor is left alone
+        await scheduler.update()
+
+    assert provider.fuel_price_calls == calls_before_the_hang + 1
+    assert caplog.text.count("did not report a fuel price") == 1
+
+
+async def test_price_change_recording_resumes_once_the_backoff_interval_has_passed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("schedule._FUEL_PRICE_TIMEOUT_SECS", 0.05)
+    engine = _in_memory_database()
+    provider = _SwitchableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+    await scheduler.update()
+    provider.hangs = True
+    await scheduler.update()  # times out and backs off for one update interval
+    provider.hangs = False
+    provider.fuel_price = 151.0
+
+    await scheduler.update()  # still inside the backoff
+    assert len(_stored_rows(engine)) == 1
+
+    class _ThirtyOneMinutesLater(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[no-untyped-def]
+            return super().now(tz) + timedelta(minutes=31)
+
+    monkeypatch.setattr("schedule.datetime", _ThirtyOneMinutesLater)
+    await scheduler.update()
+
+    assert [float(row.fuel_price_pence_per_litre) for row in _stored_rows(engine)] == [
+        150.0,
+        151.0,
+    ]
+
+
+async def test_a_fuel_price_timeout_during_a_rebuild_also_backs_off_the_change_check(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr("schedule._FUEL_PRICE_TIMEOUT_SECS", 0.05)
+    provider = _SwitchableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    provider.hangs = True
+    engine = _in_memory_database()
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+
+    with caplog.at_level(logging.WARNING):
+        await scheduler.update()  # the rebuild's own fetch hangs
+        await scheduler.update()
+
+    assert provider.fuel_price_calls == 1
+    assert [row.fuel_price_pence_per_litre for row in _stored_rows(engine)] == [None]
