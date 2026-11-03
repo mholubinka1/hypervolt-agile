@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sqlite3
 import threading
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
@@ -606,3 +607,344 @@ async def test_prepare_warns_without_raising_or_leaking_the_password_when_the_da
 
     assert "OperationalError" in caplog.text
     assert _password not in caplog.text
+
+
+class _MutableFuelPriceProvider:
+    def __init__(self, threshold: float | None, fuel_price: float | None) -> None:
+        self.threshold = threshold
+        self.fuel_price = fuel_price
+
+    async def get_threshold(self) -> float | None:
+        return self.threshold
+
+    async def get_fuel_price(self) -> float | None:
+        return self.fuel_price
+
+
+async def test_scheduler_records_a_new_row_when_the_fuel_price_changes_between_rebuilds() -> (
+    None
+):
+    engine = _in_memory_database()
+    provider = _MutableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+
+    await scheduler.update()  # first call: the due rebuild records row 1
+    provider.fuel_price = 151.25
+    provider.threshold = 21.0
+    await scheduler.update()  # no rebuild is due: only a price change can write
+
+    assert [
+        (
+            float(row.fuel_price_pence_per_litre),
+            float(row.dynamic_threshold_incl_vat),
+            float(row.effective_limit_incl_vat),
+            row.limit_source,
+        )
+        for row in _stored_rows(engine)
+    ] == [(150.0, 20.0, 20.0, "dynamic"), (151.25, 21.0, 21.0, "dynamic")]
+
+
+async def test_scheduler_writes_no_further_rows_while_the_fuel_price_stays_the_same() -> (
+    None
+):
+    engine = _in_memory_database()
+    provider = _MutableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+
+    for _ in range(3):
+        await scheduler.update()
+
+    assert len(_stored_rows(engine)) == 1
+
+
+async def test_scheduler_writes_nothing_when_the_fuel_price_moves_by_less_than_a_tenth_of_a_penny() -> (
+    None
+):
+    engine = _in_memory_database()
+    provider = _MutableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+    await scheduler.update()
+
+    provider.fuel_price = 150.0004
+    await scheduler.update()
+
+    assert len(_stored_rows(engine)) == 1
+
+
+async def test_scheduler_records_the_static_cap_as_the_source_when_the_price_changes_under_a_static_cap() -> (
+    None
+):
+    engine = _in_memory_database()
+    provider = _MutableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=10)
+    await scheduler.update()
+
+    provider.fuel_price = 151.0
+    provider.threshold = 21.0
+    await scheduler.update()
+
+    _last = _stored_rows(engine)[-1]
+    assert float(_last.fuel_price_pence_per_litre) == 151.0
+    assert float(_last.dynamic_threshold_incl_vat) == 21.0
+    assert float(_last.effective_limit_incl_vat) == 10
+    assert _last.limit_source == "static cap"
+
+
+async def test_scheduler_does_not_count_the_same_price_returning_after_an_outage_as_a_change() -> (
+    None
+):
+    engine = _in_memory_database()
+    provider = _MutableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+    await scheduler.update()
+
+    provider.fuel_price = None
+    await scheduler.update()
+    provider.fuel_price = 150.0
+    await scheduler.update()
+
+    assert len(_stored_rows(engine)) == 1
+
+
+async def test_scheduler_writes_one_row_when_a_rebuild_and_a_price_change_share_a_cycle() -> (
+    None
+):
+    engine = _in_memory_database()
+    provider = _MutableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+    await scheduler.update()
+
+    provider.fuel_price = 151.0
+    scheduler.invalidate()
+    await scheduler.update()
+
+    assert len(_stored_rows(engine)) == 2
+
+
+async def test_scheduler_attempts_a_failing_database_once_per_price_change_not_once_per_cycle() -> (
+    None
+):
+    _connection_attempts: list[int] = []
+
+    def _failing_connection() -> None:
+        _connection_attempts.append(1)
+        raise sqlite3.OperationalError("database is down")
+
+    engine = create_engine("sqlite://", creator=_failing_connection)
+    provider = _MutableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = Scheduler(
+        _agile_client(),
+        _config(price_limit_incl_vat=100),
+        threshold_provider=ExtensionWrapper(
+            name="fuel", provider=provider, kind="charging threshold"
+        ),
+        fuel_threshold_recorder=FuelThresholdRecorder(engine),
+    )
+    await scheduler.update()
+    _after_first_cycle = len(_connection_attempts)
+
+    provider.fuel_price = 151.0
+    for _ in range(4):
+        await scheduler.update()
+
+    assert len(_connection_attempts) == _after_first_cycle + 1
+
+
+async def test_scheduler_writes_the_row_once_the_dynamic_threshold_appears_after_the_price() -> (
+    None
+):
+    engine = _in_memory_database()
+    provider = _MutableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+    await scheduler.update()
+
+    provider.fuel_price = 151.0
+    provider.threshold = None
+    await scheduler.update()
+    assert len(_stored_rows(engine)) == 1
+
+    provider.threshold = 21.0
+    await scheduler.update()
+
+    assert float(_stored_rows(engine)[-1].fuel_price_pence_per_litre) == 151.0
+    assert len(_stored_rows(engine)) == 2
+
+
+async def test_scheduler_with_a_recorder_but_no_threshold_provider_checks_nothing_for_price_changes() -> (
+    None
+):
+    engine = _in_memory_database()
+    scheduler = Scheduler(
+        _agile_client(),
+        _config(price_limit_incl_vat=100),
+        fuel_threshold_recorder=FuelThresholdRecorder(
+            engine, clock=lambda: _RECORDED_AT
+        ),
+    )
+    await scheduler.update()
+
+    await scheduler.update()
+
+    assert len(_stored_rows(engine)) == 1
+
+
+class _SwitchableFuelPriceProvider:
+    def __init__(self, threshold: float, fuel_price: float) -> None:
+        self.threshold = threshold
+        self.fuel_price = fuel_price
+        self.hangs = False
+        self.fuel_price_calls = 0
+        self.hangs_on_threshold = False
+        self.threshold_calls = 0
+
+    async def get_threshold(self) -> float:
+        self.threshold_calls += 1
+        if self.hangs_on_threshold:
+            await asyncio.Event().wait()
+        return self.threshold
+
+    async def get_fuel_price(self) -> float:
+        self.fuel_price_calls += 1
+        if self.hangs:
+            await asyncio.Event().wait()
+        return self.fuel_price
+
+
+async def test_a_hung_fuel_price_accessor_is_not_called_again_within_the_update_interval(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr("schedule._FUEL_PRICE_TIMEOUT_SECS", 0.05)
+    provider = _SwitchableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(
+        _in_memory_database(), provider, static_limit=100
+    )
+    await scheduler.update()  # first call: the due rebuild, accessor answers
+    provider.hangs = True
+    calls_before_the_hang = provider.fuel_price_calls
+
+    with caplog.at_level(logging.WARNING):
+        await scheduler.update()  # the change check hits the hang and times out
+        await scheduler.update()  # inside the backoff: accessor is left alone
+        await scheduler.update()
+
+    assert provider.fuel_price_calls == calls_before_the_hang + 1
+    assert caplog.text.count("did not report a fuel price") == 1
+
+
+async def test_price_change_recording_resumes_once_the_backoff_interval_has_passed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("schedule._FUEL_PRICE_TIMEOUT_SECS", 0.05)
+    engine = _in_memory_database()
+    provider = _SwitchableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+    await scheduler.update()
+    provider.hangs = True
+    await scheduler.update()  # times out and backs off for one update interval
+    provider.hangs = False
+    provider.fuel_price = 151.0
+
+    await scheduler.update()  # still inside the backoff
+    assert len(_stored_rows(engine)) == 1
+
+    class _ThirtyOneMinutesLater(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[no-untyped-def]
+            return super().now(tz) + timedelta(minutes=31)
+
+    monkeypatch.setattr("schedule.datetime", _ThirtyOneMinutesLater)
+    await scheduler.update()
+
+    assert [float(row.fuel_price_pence_per_litre) for row in _stored_rows(engine)] == [
+        150.0,
+        151.0,
+    ]
+
+
+async def test_a_fuel_price_timeout_during_a_rebuild_also_backs_off_the_change_check(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr("schedule._FUEL_PRICE_TIMEOUT_SECS", 0.05)
+    provider = _SwitchableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    provider.hangs = True
+    engine = _in_memory_database()
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+
+    with caplog.at_level(logging.WARNING):
+        await scheduler.update()  # the rebuild's own fetch hangs
+        await scheduler.update()
+
+    assert provider.fuel_price_calls == 1
+    assert [row.fuel_price_pence_per_litre for row in _stored_rows(engine)] == [None]
+
+
+async def test_a_hung_threshold_accessor_does_not_stall_the_price_change_check(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr("schedule._FUEL_PRICE_TIMEOUT_SECS", 0.05)
+    provider = _SwitchableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
+    scheduler = _scheduler_with_provider(
+        _in_memory_database(), provider, static_limit=100
+    )
+    await scheduler.update()
+    provider.hangs_on_threshold = True
+    provider.fuel_price = 151.0
+    calls_before_the_hang = provider.threshold_calls
+
+    with caplog.at_level(logging.WARNING):
+        # A bounded wait: an unbounded accessor call would hang this test.
+        await asyncio.wait_for(scheduler.update(), timeout=2)
+        await asyncio.wait_for(scheduler.update(), timeout=2)
+
+    assert provider.threshold_calls == calls_before_the_hang + 1
+    assert caplog.text.count("did not report a threshold") == 1
+
+
+class _BrokenChangeCheckRecorder(FuelThresholdRecorder):
+    def fuel_price_changed(
+        self, fuel_price: object, dynamic_threshold_incl_vat: object
+    ) -> bool:
+        raise RuntimeError("unexpected failure")
+
+
+async def test_an_unexpected_failure_in_the_price_change_check_does_not_escape_update(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    scheduler = Scheduler(
+        _agile_client(),
+        _config(price_limit_incl_vat=100),
+        threshold_provider=ExtensionWrapper(
+            name="fuel",
+            provider=_MutableFuelPriceProvider(threshold=20.0, fuel_price=150.0),
+            kind="charging threshold",
+        ),
+        fuel_threshold_recorder=_BrokenChangeCheckRecorder(_in_memory_database()),
+    )
+
+    with caplog.at_level(logging.ERROR):
+        await scheduler.update()
+
+    assert "fuel price change" in caplog.text
+
+
+async def test_the_first_price_to_appear_after_a_price_less_rebuild_is_recorded() -> (
+    None
+):
+    # The cold-start sequence seen in production: the rebuild runs before the
+    # extension's first poll, so its row has no price.
+    engine = _in_memory_database()
+    provider = _MutableFuelPriceProvider(threshold=20.0, fuel_price=None)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+    await scheduler.update()
+    provider.fuel_price = 150.0
+
+    await scheduler.update()
+
+    assert [
+        (
+            None
+            if row.fuel_price_pence_per_litre is None
+            else float(row.fuel_price_pence_per_litre)
+        )
+        for row in _stored_rows(engine)
+    ] == [None, 150.0]

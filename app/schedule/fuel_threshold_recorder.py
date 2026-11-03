@@ -68,6 +68,17 @@ def _storable(value: object, scale: int, upper_bound: float) -> float | None:
     return _rounded if 0 < _rounded < upper_bound else None
 
 
+def _storable_pair(
+    fuel_price: object, dynamic_threshold: object
+) -> tuple[float | None, float | None]:
+    _threshold = _storable(dynamic_threshold, 6, _MAX_THRESHOLD)
+    # A price is only meaningful beside the threshold it came with.
+    _price = (
+        _storable(fuel_price, 3, _MAX_FUEL_PRICE) if _threshold is not None else None
+    )
+    return _price, _threshold
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -83,6 +94,7 @@ class FuelThresholdRecorder:
         self._clock = clock
         self._timeout_secs = timeout_secs
         self._table_ready = False
+        self._last_fuel_price: float | None = None
 
     @classmethod
     def from_config(cls, database: DatabaseConfig) -> "FuelThresholdRecorder":
@@ -122,14 +134,26 @@ class FuelThresholdRecorder:
         fuel_price_pence_per_litre: float | None = None,
         dynamic_threshold_incl_vat: float | None = None,
     ) -> None:
+        _price, _threshold = _storable_pair(
+            fuel_price_pence_per_litre, dynamic_threshold_incl_vat
+        )
+        if _price is not None:
+            # Remembered before the write so a failing database is attempted
+            # once per price change rather than once per cycle.
+            self._last_fuel_price = _price
         await self._guarded(
-            lambda: self._insert(
-                effective_limit,
-                fuel_price_pence_per_litre,
-                dynamic_threshold_incl_vat,
-            ),
+            lambda: self._insert(effective_limit, _price, _threshold),
             "record the fuel price threshold",
         )
+
+    def fuel_price_changed(
+        self, fuel_price: object, dynamic_threshold_incl_vat: object
+    ) -> bool:
+        # Asks what a row for this pair would actually store, so a pair whose
+        # price record() would drop (an unstorable threshold) is never a
+        # change -- otherwise every cycle would write another price-less row.
+        _price, _ = _storable_pair(fuel_price, dynamic_threshold_incl_vat)
+        return _price is not None and _price != self._last_fuel_price
 
     async def _guarded(self, work: Callable[[], None], action: str) -> None:
         try:
@@ -162,19 +186,12 @@ class FuelThresholdRecorder:
         # spend seconds in create_all, and the row belongs to the rebuild.
         _recorded_at = self._clock().astimezone(UTC).replace(tzinfo=None)
         self._ensure_table()
-        _threshold = _storable(dynamic_threshold_incl_vat, 6, _MAX_THRESHOLD)
-        # A price is only meaningful beside the threshold it came with.
-        _fuel_price = (
-            _storable(fuel_price_pence_per_litre, 3, _MAX_FUEL_PRICE)
-            if _threshold is not None
-            else None
-        )
         with self._engine.begin() as connection:
             connection.execute(
                 insert(_fuel_price_threshold).values(
                     recorded_at=_recorded_at,
-                    fuel_price_pence_per_litre=_fuel_price,
-                    dynamic_threshold_incl_vat=_threshold,
+                    fuel_price_pence_per_litre=fuel_price_pence_per_litre,
+                    dynamic_threshold_incl_vat=dynamic_threshold_incl_vat,
                     effective_limit_incl_vat=effective_limit.incl_vat,
                     limit_source=effective_limit.source,
                 )
