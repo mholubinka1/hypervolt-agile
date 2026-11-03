@@ -156,6 +156,14 @@ class ExtensionsConfig(BaseModel):
     threshold: ExtensionEntry | None = None
 
 
+class _NonTextPassword:
+    # Stands in for a non-text password so pydantic's type error can say what
+    # is wrong without echoing the secret -- and without coercing it, which
+    # would silently alter it (YAML reads an unquoted `12.50` as 12.5).
+    def __repr__(self) -> str:
+        return "<non-text password hidden -- quote it in config.yml>"
+
+
 class DatabaseConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
@@ -169,16 +177,13 @@ class DatabaseConfig(BaseModel):
     @classmethod
     def mask_the_password_before_any_error_can_echo_it(cls, data: Any) -> Any:
         # A missing-field error echoes the whole raw input dict into the
-        # startup log; wrapping the password first keeps it masked there. Only
-        # text and numbers (a YAML `password: 12345` or `12.5`) are wrapped --
-        # anything else is left for pydantic to reject rather than coerced
-        # into a literal password.
+        # startup log; wrapping the password first keeps it masked there.
         if isinstance(data, dict):
             _password = data.get("password")
-            if isinstance(_password, (str, int, float)) and not isinstance(
-                _password, bool
-            ):
-                return {**data, "password": SecretStr(str(_password))}
+            if isinstance(_password, str):
+                return {**data, "password": SecretStr(_password)}
+            if _password is not None and not isinstance(_password, SecretStr):
+                return {**data, "password": _NonTextPassword()}
         return data
 
 

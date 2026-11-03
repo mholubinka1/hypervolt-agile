@@ -176,3 +176,17 @@ def test_dashboard_is_importable_with_the_shared_mysql_datasource_input() -> Non
     assert [i["name"] for i in dashboard["__inputs"]] == ["DS_MYSQL"]
     assert dashboard["uid"] == "fuel-threshold"
     assert any(v["name"] == "region" for v in dashboard["templating"]["list"])
+
+
+def test_fuel_price_timeline_leaves_a_gap_where_no_price_was_recorded() -> None:
+    # NULL price rows are poll outages (static or cached-dynamic limits) --
+    # bridging them would draw a fuel price that was never observed.
+    panel = _panel_titled("Fuel price vs effective charging limit")
+
+    price_override = next(
+        o
+        for o in panel["fieldConfig"]["overrides"]
+        if o["matcher"]["options"] == "fuel_price_p_per_litre"
+    )
+    properties = {p["id"]: p["value"] for p in price_override["properties"]}
+    assert properties["custom.spanNulls"] is False

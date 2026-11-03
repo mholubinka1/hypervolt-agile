@@ -529,9 +529,13 @@ def test_app_config_does_not_echo_a_decimal_database_password_in_a_validation_er
     assert "12.5" not in str(exc_info.value)
 
 
-@pytest.mark.parametrize("password", [["a", "b"], {"key": "value"}, True])
-def test_app_config_rejects_a_database_password_that_is_not_text_or_a_number(
+@pytest.mark.parametrize("password", [12345, 12.5, True, ["a", "b"], {"key": "value"}])
+def test_app_config_rejects_a_database_password_that_is_not_text_without_echoing_it(
     password: object,
 ) -> None:
-    with pytest.raises(ValidationError):
+    # YAML reads an unquoted `12.50` as 12.5 -- coercing it to "12.5" would
+    # silently change the password, so it is rejected instead.
+    with pytest.raises(ValidationError) as exc_info:
         _app_config_with_database({**_DATABASE, "password": password})
+
+    assert str(password) not in str(exc_info.value)

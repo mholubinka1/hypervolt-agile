@@ -154,8 +154,10 @@ class FuelThresholdRecorder:
         fuel_price_pence_per_litre: float | None,
         dynamic_threshold_incl_vat: float | None,
     ) -> None:
-        self._ensure_table()
+        # Stamped before the table check: the first write after an outage can
+        # spend seconds in create_all, and the row belongs to the rebuild.
         _recorded_at = self._clock().astimezone(UTC).replace(tzinfo=None)
+        self._ensure_table()
         with self._engine.begin() as connection:
             connection.execute(
                 insert(_fuel_price_threshold).values(

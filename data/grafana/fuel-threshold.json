@@ -520,6 +520,10 @@
                 "value": "Fuel price (p/L)"
               },
               {
+                "id": "custom.spanNulls",
+                "value": false
+              },
+              {
                 "id": "custom.axisLabel",
                 "value": "p/L"
               },

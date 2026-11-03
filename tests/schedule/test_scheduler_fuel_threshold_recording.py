@@ -11,6 +11,7 @@ from common.model import Price
 from octopus.client import AgileClient
 from schedule import Scheduler
 from schedule.fuel_threshold_recorder import FuelThresholdRecorder
+from schedule.threshold_policy import EffectiveLimit
 from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.pool import StaticPool
 
@@ -487,6 +488,25 @@ async def test_scheduler_stores_no_fuel_price_beside_a_missing_dynamic_threshold
     (row,) = _stored_rows(engine)
     assert row.dynamic_threshold_incl_vat is None
     assert row.fuel_price_pence_per_litre is None
+
+
+async def test_record_is_timestamped_before_the_slow_first_time_table_creation() -> (
+    None
+):
+    engine = _in_memory_database()
+    _table_existed_when_stamped: list[bool] = []
+
+    def _clock() -> datetime:
+        _table_existed_when_stamped.append(
+            inspect(engine).has_table("fuel_price_threshold")
+        )
+        return _RECORDED_AT
+
+    await FuelThresholdRecorder(engine, clock=_clock).record(
+        EffectiveLimit(20.0, 19.0, "dynamic")
+    )
+
+    assert _table_existed_when_stamped == [False]
 
 
 async def test_prepare_creates_the_table_without_a_record_call() -> None:

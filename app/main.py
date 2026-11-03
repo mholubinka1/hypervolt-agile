@@ -106,7 +106,7 @@ async def main() -> None:
         )
 
     fuel_threshold_recorder: FuelThresholdRecorder | None = None
-    if app_config.database:
+    if app_config.database is not None:
         fuel_threshold_recorder = FuelThresholdRecorder.from_config(app_config.database)
         await fuel_threshold_recorder.prepare()
 
