@@ -104,7 +104,7 @@ An optional `database:` block in `config.yml` (see `config/config.yml.template`)
 
 1. In Grafana, **Dashboards → New → Import**, upload the file and select your MySQL data source for `DS_MYSQL`.
 2. Open each panel's menu and choose **More… → Copy**, then **Paste panel** into the dashboard you want it on.
-3. The Agile prices panel is a copy of the existing one with a second query (`B`) that draws the effective limit as a dashed horizontal line. Keep its panel id aligned with the "+24h" and "now" annotations, which filter on it.
+3. The Agile prices panel is a copy of the existing one with a second query (`B`) that draws the effective limit as a dashed horizontal line. Grafana gives a pasted panel a new id, so open the dashboard's JSON model and set the pasted Agile prices panel's `id` to the one in the "+24h" and "now" annotations' `filter.ids` (or update those annotations to the new id) — otherwise their vertical lines silently stop showing on it.
 
 ---
 

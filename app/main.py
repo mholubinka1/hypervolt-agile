@@ -156,7 +156,10 @@ async def main() -> None:
         if threshold_provider is not None:
             await threshold_provider.stop()
         if fuel_threshold_recorder is not None:
-            fuel_threshold_recorder.dispose()
+            try:
+                fuel_threshold_recorder.dispose()
+            except Exception:
+                logger.exception("Error closing fuel threshold recorder.")
 
 
 if __name__ == "__main__":

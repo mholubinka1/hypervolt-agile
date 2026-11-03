@@ -382,6 +382,45 @@ async def test_scheduler_stores_null_fuel_price_but_keeps_the_limit_when_the_pri
     assert row.limit_source == "dynamic"
 
 
+async def test_scheduler_stores_null_dynamic_threshold_but_keeps_the_limit_when_the_threshold_exceeds_the_column() -> (
+    None
+):
+    engine = _in_memory_database()
+    scheduler = _scheduler_with_provider(
+        engine,
+        _FuelPriceReportingProvider(threshold=1500.0, fuel_price=140.5),
+        static_limit=100,
+    )
+
+    scheduler.invalidate()
+    await scheduler.update()
+
+    (row,) = _stored_rows(engine)
+    assert row.dynamic_threshold_incl_vat is None
+    assert float(row.effective_limit_incl_vat) == 100
+    assert row.limit_source == "static cap"
+
+
+async def test_scheduler_stores_null_fuel_price_without_failing_the_rebuild_when_the_extension_returns_a_non_number(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    engine = _in_memory_database()
+    scheduler = _scheduler_with_provider(
+        engine,
+        _FuelPriceReportingProvider(threshold=20.0, fuel_price="unavailable"),  # type: ignore[arg-type]
+        static_limit=100,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        scheduler.invalidate()
+        await scheduler.update()
+
+    (row,) = _stored_rows(engine)
+    assert row.fuel_price_pence_per_litre is None
+    assert float(row.effective_limit_incl_vat) == 20
+    assert "Failed to create" not in caplog.text
+
+
 async def test_prepare_creates_the_table_without_a_record_call() -> None:
     engine = _in_memory_database()
 

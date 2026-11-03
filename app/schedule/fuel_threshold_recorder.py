@@ -30,6 +30,7 @@ logger: Logger = getLogger(APP_NAME)
 _DATABASE_TIMEOUT_SECS = 5
 _RECORD_TIMEOUT_SECS = 10
 _MAX_FUEL_PRICE = 10000
+_MAX_THRESHOLD = 1000
 
 _metadata = MetaData()
 _fuel_price_threshold = Table(
@@ -48,6 +49,16 @@ _fuel_price_threshold = Table(
     Column("limit_source", String(20), nullable=False),
     Index("ix_fuel_price_threshold_recorded_at", "recorded_at"),
 )
+
+
+def _storable(value: object, upper_bound: float) -> float | None:
+    # A value the Numeric column cannot hold would fail the whole insert and
+    # lose the valid limit row, so an unusable one is stored as NULL instead.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(value) or not 0 < value < upper_bound:
+        return None
+    return value
 
 
 def _utc_now() -> datetime:
@@ -104,12 +115,6 @@ class FuelThresholdRecorder:
         fuel_price_pence_per_litre: float | None = None,
         dynamic_threshold_incl_vat: float | None = None,
     ) -> None:
-        # Numeric(7, 3) rejects these, which would lose the valid limit row.
-        if fuel_price_pence_per_litre is not None and not (
-            math.isfinite(fuel_price_pence_per_litre)
-            and 0 < fuel_price_pence_per_litre < _MAX_FUEL_PRICE
-        ):
-            fuel_price_pence_per_litre = None
         await self._guarded(
             lambda: self._insert(
                 effective_limit,
@@ -152,8 +157,12 @@ class FuelThresholdRecorder:
             connection.execute(
                 insert(_fuel_price_threshold).values(
                     recorded_at=_recorded_at,
-                    fuel_price_pence_per_litre=fuel_price_pence_per_litre,
-                    dynamic_threshold_incl_vat=dynamic_threshold_incl_vat,
+                    fuel_price_pence_per_litre=_storable(
+                        fuel_price_pence_per_litre, _MAX_FUEL_PRICE
+                    ),
+                    dynamic_threshold_incl_vat=_storable(
+                        dynamic_threshold_incl_vat, _MAX_THRESHOLD
+                    ),
                     effective_limit_incl_vat=effective_limit.incl_vat,
                     limit_source=effective_limit.source,
                 )
