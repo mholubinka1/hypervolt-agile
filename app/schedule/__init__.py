@@ -103,6 +103,7 @@ class Scheduler:
 
     async def update(self) -> None:
         await self._update_charging_schedule()
+        await self._record_fuel_price_change()
         self._prune_schedule()
 
     def should_verify(self) -> bool:
@@ -257,18 +258,7 @@ class Scheduler:
                 # Only asked for alongside a fresh dynamic threshold, so a
                 # provider whose threshold is absent can't contribute a price.
                 if self._threshold_provider is not None and _dynamic_limit is not None:
-                    try:
-                        _fuel_price = await asyncio.wait_for(
-                            self._threshold_provider.invoke("get_fuel_price"),
-                            _FUEL_PRICE_TIMEOUT_SECS,
-                        )
-                    except TimeoutError:
-                        logger.warning(
-                            f"Threshold extension '{self._threshold_provider.name}' "
-                            f"did not report a fuel price within "
-                            f"{_FUEL_PRICE_TIMEOUT_SECS:g}s; recording the row "
-                            "without a fuel price."
-                        )
+                    _fuel_price = await self._fetch_fuel_price(self._threshold_provider)
                 await self._fuel_threshold_recorder.record(
                     _limit,
                     fuel_price_pence_per_litre=_fuel_price,
@@ -276,3 +266,35 @@ class Scheduler:
                 )
         except Exception:
             logger.exception(trigger.exception_message)
+
+    @staticmethod
+    async def _fetch_fuel_price(provider: ExtensionWrapper) -> float | None:
+        try:
+            return await asyncio.wait_for(
+                provider.invoke("get_fuel_price"), _FUEL_PRICE_TIMEOUT_SECS
+            )
+        except TimeoutError:
+            logger.warning(
+                f"Threshold extension '{provider.name}' "
+                f"did not report a fuel price within "
+                f"{_FUEL_PRICE_TIMEOUT_SECS:g}s; continuing without a fuel price."
+            )
+            return None
+
+    async def _record_fuel_price_change(self) -> None:
+        if self._fuel_threshold_recorder is None or self._threshold_provider is None:
+            return
+        _price = await self._fetch_fuel_price(self._threshold_provider)
+        if _price is None:
+            return
+        _dynamic = await self._threshold_provider.invoke("get_threshold")
+        if not self._fuel_threshold_recorder.fuel_price_changed(_price, _dynamic):
+            return
+        _limit = self._threshold_policy.effective_limit(_dynamic)
+        if _limit is None:
+            return
+        await self._fuel_threshold_recorder.record(
+            _limit,
+            fuel_price_pence_per_litre=_price,
+            dynamic_threshold_incl_vat=_dynamic,
+        )
