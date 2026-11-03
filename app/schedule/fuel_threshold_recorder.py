@@ -58,9 +58,13 @@ def _storable(value: object, scale: int, upper_bound: float) -> float | None:
     # is under 10000 but rounds up to it.
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    if not math.isfinite(value):
+    try:
+        _number = float(value)
+    except OverflowError:
         return None
-    _rounded = round(value, scale)
+    if not math.isfinite(_number):
+        return None
+    _rounded = round(_number, scale)
     return _rounded if 0 < _rounded < upper_bound else None
 
 
