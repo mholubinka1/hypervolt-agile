@@ -468,6 +468,27 @@ async def test_scheduler_records_on_a_new_prices_rebuild_as_well_as_a_replug_reb
     assert len(_stored_rows(engine)) == 2
 
 
+async def test_scheduler_stores_no_fuel_price_beside_a_missing_dynamic_threshold() -> (
+    None
+):
+    # A third-party extension whose threshold was rejected or absent but whose
+    # price accessor still answers must not leave a price next to a NULL
+    # threshold in the same row.
+    engine = _in_memory_database()
+    scheduler = _scheduler_with_provider(
+        engine,
+        _FuelPriceReportingProvider(threshold=None, fuel_price=140.5),
+        static_limit=100,
+    )
+
+    scheduler.invalidate()
+    await scheduler.update()
+
+    (row,) = _stored_rows(engine)
+    assert row.dynamic_threshold_incl_vat is None
+    assert row.fuel_price_pence_per_litre is None
+
+
 async def test_prepare_creates_the_table_without_a_record_call() -> None:
     engine = _in_memory_database()
 

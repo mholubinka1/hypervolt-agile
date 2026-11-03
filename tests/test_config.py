@@ -518,6 +518,17 @@ def test_app_config_does_not_echo_an_integer_database_password_in_a_validation_e
     assert "8675309" not in str(exc_info.value)
 
 
+def test_app_config_does_not_echo_a_decimal_database_password_in_a_validation_error() -> (
+    None
+):
+    _database = {k: v for k, v in _DATABASE.items() if k != "host"}
+
+    with pytest.raises(ValidationError) as exc_info:
+        _app_config_with_database({**_database, "password": 12.5})
+
+    assert "12.5" not in str(exc_info.value)
+
+
 @pytest.mark.parametrize("password", [["a", "b"], {"key": "value"}, True])
 def test_app_config_rejects_a_database_password_that_is_not_text_or_a_number(
     password: object,

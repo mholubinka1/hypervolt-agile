@@ -249,7 +249,9 @@ class Scheduler:
             trigger.finalize()
             if self._fuel_threshold_recorder is not None:
                 _fuel_price: float | None = None
-                if self._threshold_provider is not None:
+                # Only alongside a fresh dynamic threshold, so a row never
+                # pairs a fuel price with a NULL threshold.
+                if self._threshold_provider is not None and _dynamic_limit is not None:
                     _fuel_price = await self._threshold_provider.invoke(
                         "get_fuel_price"
                     )

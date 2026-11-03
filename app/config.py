@@ -170,12 +170,14 @@ class DatabaseConfig(BaseModel):
     def mask_the_password_before_any_error_can_echo_it(cls, data: Any) -> Any:
         # A missing-field error echoes the whole raw input dict into the
         # startup log; wrapping the password first keeps it masked there. Only
-        # text and numbers (a YAML `password: 12345`) are wrapped -- anything
-        # else is left for pydantic to reject rather than coerced into a
-        # literal password.
+        # text and numbers (a YAML `password: 12345` or `12.5`) are wrapped --
+        # anything else is left for pydantic to reject rather than coerced
+        # into a literal password.
         if isinstance(data, dict):
             _password = data.get("password")
-            if isinstance(_password, (str, int)) and not isinstance(_password, bool):
+            if isinstance(_password, (str, int, float)) and not isinstance(
+                _password, bool
+            ):
                 return {**data, "password": SecretStr(str(_password))}
         return data
 

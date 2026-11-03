@@ -50,8 +50,8 @@ schedule:
 # database:                         # Optional: record the effective price limit (and its source) to a MariaDB/MySQL table on every schedule rebuild, e.g. for Grafana. Omit the whole `database:` block to record nothing. The `fuel_price_threshold` table is created automatically at startup (retried on first write if the database was down); a database outage is logged as a warning and never stops charging.
 #   host: mariadb                    # Required -- database hostname.
 #   port: 3306                       # Optional, default 3306.
-#   user: hypervolt_agile            # Required -- needs CREATE and INSERT on the database below.
+#   user: energy-monitor             # Required -- needs CREATE and INSERT on the database below.
 #   password: your-database-password # Required -- keep this file's permissions restricted; it's a real secret.
-#   name: hypervolt_agile            # Required -- database (schema) name; it must already exist.
+#   name: home_monitoring            # Required -- database (schema) name; it must already exist. Use the one your Grafana MySQL data source reads, or the dashboard's fuel panels will show no rows.
 # log_file: /logs/hypervolt-agile-scheduler.log   # Omit to log to console only. In Docker, /logs is bind-mounted from whatever host directory you chose for logs -- see this repo's README.
 # log_level: INFO                # Console log level (default: INFO). File log level is always INFO.
