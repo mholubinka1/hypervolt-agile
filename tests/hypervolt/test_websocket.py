@@ -1,9 +1,16 @@
 import logging
+from datetime import time
 from unittest.mock import AsyncMock
 
 import pytest
 from hypervolt.client.websocket import HypervoltWebSocketClient
-from hypervolt.model import ActivationMode, HypervoltCharger
+from hypervolt.model import (
+    ActivationMode,
+    ChargingMode,
+    DayOfWeek,
+    HypervoltCharger,
+    HypervoltSession,
+)
 from hypervolt.state import HypervoltChargerState
 
 
@@ -82,11 +89,10 @@ async def test_an_ultra_schedule_is_reported_as_ultra_mode_without_a_parse_warni
 
 _RECURRING_SESSION = {
     "session_type": "recurring",
-    "start_time": "23:00:00",
-    "end_time": "05:00:00",
-    "days": [0, 1, 2, 3, 4, 5, 6],
+    "start_time": "23:00",
+    "end_time": "05:00",
+    "days": ["monday"],
     "mode": "boost",
-    "max_power_watt": 7400,
 }
 
 
@@ -136,6 +142,15 @@ async def test_leaving_ultra_logs_one_info_and_restores_the_normal_mode(
 
     delta = client._protocol._on_state_update.call_args.args[0]
     assert delta.activation_mode == ActivationMode.schedule
+    assert "parse error" not in caplog.text
+    assert delta.current_schedule == [
+        HypervoltSession(
+            start=time(23, 0),
+            end=time(5, 0),
+            day_of_week=DayOfWeek.monday,
+            charge_mode=ChargingMode.boost,
+        )
+    ]
     leaving = [r for r in caplog.records if "no longer" in r.getMessage()]
     assert len(leaving) == 1
     assert leaving[0].levelno == logging.INFO
@@ -169,6 +184,18 @@ async def test_ultra_ending_with_no_schedule_restores_a_normal_activation_mode()
     await client._protocol.handle("schedules.get", {"applied": None}, None)
 
     assert state.activation_mode == ActivationMode.plug_and_charge
+
+
+async def test_no_schedule_on_a_charger_never_in_ultra_leaves_the_mode_untouched() -> (
+    None
+):
+    client = _client()
+
+    await client._protocol.handle("schedules.get", {"applied": None}, None)
+
+    delta = client._protocol._on_state_update.call_args.args[0]
+    assert delta.activation_mode is None
+    assert delta.current_schedule == []
 
 
 async def test_ultra_ending_with_no_schedule_is_logged_and_a_return_is_logged_again(
