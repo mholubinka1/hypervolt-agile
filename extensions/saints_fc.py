@@ -31,11 +31,11 @@ _DEFAULT_TEAM_ID = 134778
 # once-an-hour check catches the update well before kick-off without leaning
 # on the shared test key. Configurable for an operator on a personal key.
 _DEFAULT_POLL_INTERVAL_HOURS = 1
-# TheSportsDB's free tier needs no registration: "3" is a public, shared test
+# TheSportsDB's free tier needs no registration: "123" is a public, shared test
 # key documented by TheSportsDB itself, embedded directly in the URL path
 # rather than sent as a header. Kept as a config default (not hardcoded) so
 # an operator can drop in a personal key later purely via config.yml.
-_DEFAULT_API_KEY = "3"
+_DEFAULT_API_KEY = "123"
 _API_BASE_URL_TEMPLATE = "https://www.thesportsdb.com/api/v1/json/{api_key}"
 _SAINTS_FC_THEME = "saints_fc.yaml"
 # The match window: from 30 minutes before kick-off until three hours after.

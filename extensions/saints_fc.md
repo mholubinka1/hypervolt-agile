@@ -23,7 +23,7 @@ Lights the charger's LED strip for Southampton FC match days, using live fixture
      extensions: # highest priority — checked before custom_themes and built_in_themes
        - name: saints_fc
          config:
-           api_key: "3" # optional, default "3" — TheSportsDB's free shared key; swap for a personal key for dedicated rate limits
+           api_key: "123" # optional, default "123" — TheSportsDB's free shared key; swap for a personal key for dedicated rate limits
            team_id: 134778 # optional, default 134778 — a TheSportsDB team ID
            poll_interval_hours: 1 # optional, default 1 — fixture re-check interval, in hours
    ```
