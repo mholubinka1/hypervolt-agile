@@ -44,6 +44,7 @@ class HypervoltProtocol:
         self._reconnecting: bool = False
         self._consecutive_lock_failures: int = 0
         self._pilot_unplugged_at: datetime | None = None
+        self._in_ultra: bool = False
 
         self._handlers: dict[str, Callable[..., Awaitable[None]]] = {
             "login": self._on_login_response,
@@ -233,8 +234,30 @@ class HypervoltProtocol:
     ) -> None:
         _applied = result.get("applied") if result else None
         if not _applied:
+            # A missing schedule sends no mode, so leaving Ultra this way must set
+            # plug_and_charge explicitly, or `ultra` stays in the state and the
+            # coordinator stays stood down.
+            _left_ultra = self._in_ultra
+            self._track_ultra(False)
             logger.debug("schedules.get: no schedule on charger.")
-            await self._on_state_update(HypervoltChargerStateDelta(current_schedule=[]))
+            await self._on_state_update(
+                HypervoltChargerStateDelta(
+                    activation_mode=(
+                        ActivationMode.plug_and_charge if _left_ultra else None
+                    ),
+                    current_schedule=[],
+                )
+            )
+            return
+
+        _is_ultra = _applied.get("type") == "axle"
+        self._track_ultra(_is_ultra)
+        if _is_ultra:
+            await self._on_state_update(
+                HypervoltChargerStateDelta(
+                    activation_mode=ActivationMode.ultra, current_schedule=[]
+                )
+            )
             return
 
         _enabled = _applied.get("enabled")
@@ -269,6 +292,16 @@ class HypervoltProtocol:
     # endregion
 
     # region Helpers
+
+    def _track_ultra(self, is_ultra: bool) -> None:
+        if is_ultra == self._in_ultra:
+            return
+        self._in_ultra = is_ultra
+        logger.info(
+            "schedules.get: Ultra schedule detected; standing down."
+            if is_ultra
+            else "schedules.get: Ultra schedule no longer applied."
+        )
 
     def _parse_sessions(self, applied: dict) -> list[HypervoltSession]:
         _sessions = []

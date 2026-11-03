@@ -41,8 +41,8 @@ _Avoid_: charger status
 **Charging mode** (`ChargingMode`: `boost`, `eco`, `super_eco`):
 The charger's native power-delivery mode, independent of scheduling.
 
-**Activation mode** (`ActivationMode`: `plug_and_charge`, `schedule`, `octopus`):
-The charger's source of charging instructions; this app operates by driving the charger while it's in `octopus`/`schedule`-compatible mode.
+**Activation mode** (`ActivationMode`: `plug_and_charge`, `schedule`, `octopus`, `ultra`):
+The charger's source of charging instructions; this app operates by driving the charger while it's in `octopus`/`schedule`-compatible mode. In `ultra` (Hypervolt Ultra, reported as `type: "axle"`) the charger's energy provider owns its own `unique` sessions, so the app stands down — no schedule pushes and no lock control.
 
 **Release state** (`ReleaseState`: `DEFAULT`, `RELEASED`):
 Tracks user cancellation — when a user stops a charge via the Hypervolt app, the charger enters `RELEASED` and the scheduler holds back from re-locking until the car is re-plugged.

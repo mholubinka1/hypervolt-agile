@@ -9,7 +9,7 @@ from common.logging import config
 from common.utils import format_duration
 from hypervolt.charger import HypervoltChargerClient
 from hypervolt.led import ExtensionWrapper, LedTheme, Window, resolve_theme
-from hypervolt.model import HypervoltSession, LockStatus, ReleaseState
+from hypervolt.model import ActivationMode, HypervoltSession, LockStatus, ReleaseState
 from schedule import Scheduler
 
 from config import AppConfig
@@ -158,7 +158,9 @@ class ScheduleCoordinator:
             return False
         _state = self._charger_client.charger_state
         return (
-            _state.car_plugged is True and _state.release_state != ReleaseState.RELEASED
+            _state.car_plugged is True
+            and _state.release_state != ReleaseState.RELEASED
+            and _state.activation_mode != ActivationMode.ultra
         )
 
     def _should_unlock(self) -> bool:
