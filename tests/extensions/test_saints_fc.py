@@ -103,7 +103,7 @@ async def test_poll_once_uses_the_default_api_key_and_team_id_when_omitted() -> 
     # tomorrow -> four requests per poll.
     assert len(_captured_urls) == 4
     assert all(
-        url.startswith("https://www.thesportsdb.com/api/v1/json/3/")
+        url.startswith("https://www.thesportsdb.com/api/v1/json/123/")
         for url in _captured_urls
     )
     assert any("id=134778" in url for url in _captured_urls)
