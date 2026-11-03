@@ -236,7 +236,16 @@ class Scheduler:
                 logger.warning(trigger.no_threshold_warning)
                 return
             if self._fuel_threshold_recorder is not None:
-                await self._fuel_threshold_recorder.record(_limit)
+                _fuel_price: float | None = None
+                if self._threshold_provider is not None:
+                    _fuel_price = await self._threshold_provider.invoke(
+                        "get_fuel_price"
+                    )
+                await self._fuel_threshold_recorder.record(
+                    _limit,
+                    fuel_price_pence_per_litre=_fuel_price,
+                    dynamic_threshold_incl_vat=_dynamic_limit,
+                )
             trigger.commit(_new_prices)
             self._builder.update_limit(_limit.exc_vat)
             self._schedule, self._average_price_per_kwh = self._builder.build(

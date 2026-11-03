@@ -55,8 +55,15 @@ def _agile_client() -> Mock:
 
 
 def _threshold_provider(*values: float | None) -> Mock:
+    _remaining_thresholds = iter(values)
+
+    async def _answer(method_name: str) -> float | None:
+        if method_name == "get_threshold":
+            return next(_remaining_thresholds)
+        return None
+
     _provider = Mock(spec=ExtensionWrapper)
-    _provider.invoke = AsyncMock(side_effect=list(values))
+    _provider.invoke = AsyncMock(side_effect=_answer)
     return _provider
 
 
@@ -75,7 +82,8 @@ def _stored_rows(engine: Engine) -> list:
         return list(
             connection.execute(
                 text(
-                    "SELECT recorded_at, effective_limit_incl_vat, limit_source "
+                    "SELECT recorded_at, effective_limit_incl_vat, limit_source, "
+                    "fuel_price_pence_per_litre, dynamic_threshold_incl_vat "
                     "FROM fuel_price_threshold ORDER BY id"
                 )
             )
@@ -200,3 +208,124 @@ async def test_scheduler_stores_which_source_produced_the_effective_limit(
     _last = _stored_rows(engine)[-1]
     assert float(_last.effective_limit_incl_vat) == expected_limit
     assert _last.limit_source == expected_source
+
+
+class _FuelPriceReportingProvider:
+    def __init__(self, threshold: float | None, fuel_price: float | None) -> None:
+        self._threshold = threshold
+        self._fuel_price = fuel_price
+
+    async def get_threshold(self) -> float | None:
+        return self._threshold
+
+    async def get_fuel_price(self) -> float | None:
+        return self._fuel_price
+
+
+async def test_scheduler_stores_the_fuel_price_and_dynamic_threshold_alongside_the_effective_limit() -> (
+    None
+):
+    engine = _in_memory_database()
+    scheduler = Scheduler(
+        _agile_client(),
+        _config(price_limit_incl_vat=100),
+        threshold_provider=ExtensionWrapper(
+            name="fuel",
+            provider=_FuelPriceReportingProvider(threshold=20.0, fuel_price=140.5),
+            kind="charging threshold",
+        ),
+        fuel_threshold_recorder=FuelThresholdRecorder(
+            engine, clock=lambda: _RECORDED_AT
+        ),
+    )
+
+    scheduler.invalidate()
+    await scheduler.update()
+
+    (row,) = _stored_rows(engine)
+    assert float(row.fuel_price_pence_per_litre) == 140.5
+    assert float(row.dynamic_threshold_incl_vat) == 20
+    assert float(row.effective_limit_incl_vat) == 20
+    assert row.limit_source == "dynamic"
+
+
+def _scheduler_with_provider(
+    engine: Engine, provider: object, static_limit: float
+) -> Scheduler:
+    return Scheduler(
+        _agile_client(),
+        _config(price_limit_incl_vat=static_limit),
+        threshold_provider=ExtensionWrapper(
+            name="fuel", provider=provider, kind="charging threshold"
+        ),
+        fuel_threshold_recorder=FuelThresholdRecorder(
+            engine, clock=lambda: _RECORDED_AT
+        ),
+    )
+
+
+async def test_scheduler_stores_null_price_and_threshold_with_a_static_source_when_the_poll_failed_and_the_cache_cleared() -> (
+    None
+):
+    engine = _in_memory_database()
+    scheduler = _scheduler_with_provider(
+        engine,
+        _FuelPriceReportingProvider(threshold=None, fuel_price=None),
+        static_limit=100,
+    )
+
+    scheduler.invalidate()
+    await scheduler.update()
+
+    (row,) = _stored_rows(engine)
+    assert row.fuel_price_pence_per_litre is None
+    assert row.dynamic_threshold_incl_vat is None
+    assert row.limit_source == "static"
+
+
+async def test_scheduler_stores_null_price_and_threshold_with_a_cached_dynamic_source_when_the_poll_failed() -> (
+    None
+):
+    engine = _in_memory_database()
+    provider = _FuelPriceReportingProvider(threshold=20.0, fuel_price=140.5)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=0)
+    scheduler.invalidate()
+    await scheduler.update()
+
+    provider._threshold = None
+    provider._fuel_price = None
+    scheduler.invalidate()
+    await scheduler.update()
+
+    _last = _stored_rows(engine)[-1]
+    assert _last.fuel_price_pence_per_litre is None
+    assert _last.dynamic_threshold_incl_vat is None
+    assert _last.limit_source == "cached dynamic"
+
+
+class _ThresholdOnlyProvider:
+    async def get_threshold(self) -> float | None:
+        return 20.0
+
+
+class _FuelPriceRaisingProvider(_ThresholdOnlyProvider):
+    async def get_fuel_price(self) -> float | None:
+        raise RuntimeError("boom")
+
+
+@pytest.mark.parametrize(
+    "provider", [_ThresholdOnlyProvider(), _FuelPriceRaisingProvider()]
+)
+async def test_scheduler_still_stores_the_row_with_a_null_fuel_price_when_the_extension_cannot_report_one(
+    provider: object,
+) -> None:
+    engine = _in_memory_database()
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
+
+    scheduler.invalidate()
+    await scheduler.update()
+
+    (row,) = _stored_rows(engine)
+    assert row.fuel_price_pence_per_litre is None
+    assert float(row.dynamic_threshold_incl_vat) == 20
+    assert row.limit_source == "dynamic"

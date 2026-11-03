@@ -83,6 +83,7 @@ class DynamicChargingThresholdExtension:
         self._auth = FuelFinderAuth(self._client, self._client_id, self._client_secret)
         self._fuel_finder = FuelFinderClient(self._client, self._auth)
         self._threshold: float | None = None
+        self._fuel_price: float | None = None
         self._task: asyncio.Task | None = None
 
     def _require_number(self, config: dict[str, Any], key: str) -> float:
@@ -152,12 +153,16 @@ class DynamicChargingThresholdExtension:
     async def get_threshold(self) -> float | None:
         return self._threshold
 
+    async def get_fuel_price(self) -> float | None:
+        return self._fuel_price
+
     def _clear_cache(self, reason: str) -> None:
         logger.warning(
             f"Dynamic charging threshold extension {reason}; clearing the "
             "cached threshold."
         )
         self._threshold = None
+        self._fuel_price = None
 
     async def _poll_once(self) -> None:
         try:
@@ -224,6 +229,7 @@ class DynamicChargingThresholdExtension:
                 None if self._threshold is None else f"{self._threshold:.2f}"
             )
             self._threshold = _threshold
+            self._fuel_price = _price
             _display = f"{self._threshold:.2f}"
             if _display != _previous_display:
                 # Every poll recomputes the threshold, but it only changes
