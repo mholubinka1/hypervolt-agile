@@ -2,7 +2,7 @@ import asyncio
 import logging
 import threading
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -17,6 +17,7 @@ from sqlalchemy.pool import StaticPool
 
 from config import (
     AppConfig,
+    DatabaseConfig,
     ExtensionEntry,
     ExtensionsConfig,
     Hypervolt,
@@ -516,6 +517,33 @@ async def test_prepare_creates_the_table_without_a_record_call() -> None:
     await FuelThresholdRecorder(engine).prepare()
 
     assert inspect(engine).has_table("fuel_price_threshold")
+
+
+def test_recorder_built_from_config_connects_to_the_configured_database_with_bounded_timeouts() -> (
+    None
+):
+    database = DatabaseConfig(
+        host="db.local",
+        port=3307,
+        user="energy-monitor",
+        password="p@ss/w:rd",
+        name="home_monitoring",
+    )
+
+    with patch("schedule.fuel_threshold_recorder.create_engine") as create_engine:
+        FuelThresholdRecorder.from_config(database)
+
+    (_url,), _options = create_engine.call_args
+    assert _url.drivername == "mysql+pymysql"
+    assert (_url.host, _url.port) == ("db.local", 3307)
+    assert (_url.username, _url.password) == ("energy-monitor", "p@ss/w:rd")
+    assert _url.database == "home_monitoring"
+    assert _options["pool_pre_ping"] is True
+    assert _options["connect_args"] == {
+        "connect_timeout": 5,
+        "read_timeout": 5,
+        "write_timeout": 5,
+    }
 
 
 async def test_prepare_warns_without_raising_or_leaking_the_password_when_the_database_is_unreachable(
