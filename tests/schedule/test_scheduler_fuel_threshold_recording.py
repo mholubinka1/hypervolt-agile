@@ -603,3 +603,18 @@ async def test_prepare_warns_without_raising_or_leaking_the_password_when_the_da
 
     assert "OperationalError" in caplog.text
     assert _password not in caplog.text
+
+
+async def test_nothing_is_written_when_no_limit_resolves_because_the_static_limit_defers_to_a_missing_threshold() -> (
+    None
+):
+    engine = _in_memory_database()
+    scheduler = _scheduler_with_provider(
+        engine,
+        _MutableFuelPriceProvider(threshold=None, fuel_price=140.5),
+        static_limit=0,
+    )
+
+    await scheduler.update()
+
+    assert _row_count(engine) == 0

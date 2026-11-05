@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 import pytest
 from schedule.fuel_threshold_recorder import FuelThresholdRecorder
 from schedule.threshold_policy import EffectiveLimit
@@ -70,3 +72,11 @@ async def test_a_price_beside_an_unstorable_threshold_is_skipped(
     )
 
     assert attempted is False
+
+
+def test_a_disposed_recorder_releases_its_database_connections() -> None:
+    engine = Mock(spec=Engine)
+
+    FuelThresholdRecorder(engine).dispose()
+
+    engine.dispose.assert_called_once_with()
