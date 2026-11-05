@@ -192,19 +192,22 @@ async def test_nothing_is_written_without_a_fuel_price_and_the_first_later_cycle
 
 
 @pytest.mark.parametrize("threshold", [None, float("nan"), 10_000_000.0])
-async def test_nothing_is_written_when_the_threshold_beside_a_price_is_absent_or_unstorable(
+async def test_nothing_is_written_when_the_threshold_beside_a_price_is_absent_or_unstorable_and_a_row_follows_once_it_is_usable(
     threshold: float | None,
 ) -> None:
     engine = _in_memory_database()
-    scheduler = _scheduler_with_provider(
-        engine,
-        _MutableFuelPriceProvider(threshold=threshold, fuel_price=140.5),
-        static_limit=100,
-    )
+    provider = _MutableFuelPriceProvider(threshold=threshold, fuel_price=140.5)
+    scheduler = _scheduler_with_provider(engine, provider, static_limit=100)
 
     await scheduler.update()
-
     assert _row_count(engine) == 0
+
+    provider.threshold = 20.0
+    await scheduler.update()
+
+    assert [float(row.dynamic_threshold_incl_vat) for row in _stored_rows(engine)] == [
+        20.0
+    ]
 
 
 async def test_the_source_is_static_cap_when_the_static_limit_is_below_the_dynamic_threshold() -> (
