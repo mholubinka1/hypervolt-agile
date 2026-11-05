@@ -5,7 +5,6 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from schedule.fuel_threshold_recorder import FuelThresholdRecorder
-from schedule.threshold_policy import EffectiveLimit
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.pool import StaticPool
 
@@ -47,16 +46,28 @@ async def _database_with_records(*records: tuple[float, float | None]) -> Engine
     engine = create_engine(
         "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
     )
+    await FuelThresholdRecorder(engine).prepare()
     _clock = datetime(2026, 11, 3, 10, 0, tzinfo=_UTC)
-    for _index, (_limit, _fuel_price) in enumerate(records):
-        recorder = FuelThresholdRecorder(
-            engine, clock=lambda _at=_clock + timedelta(minutes=30 * _index): _at
-        )
-        await recorder.record(
-            EffectiveLimit(_limit, _limit / 1.05, "dynamic"),
-            fuel_price_pence_per_litre=_fuel_price,
-            dynamic_threshold_incl_vat=None if _fuel_price is None else _limit,
-        )
+    # Rows are inserted directly: the recorder only writes rows with a price,
+    # but the dashboard must cope with the price-less rows older versions wrote.
+    with engine.begin() as connection:
+        for _index, (_limit, _fuel_price) in enumerate(records):
+            connection.execute(
+                text(
+                    "INSERT INTO fuel_price_threshold (recorded_at, "
+                    "fuel_price_pence_per_litre, dynamic_threshold_incl_vat, "
+                    "effective_limit_incl_vat, limit_source) "
+                    "VALUES (:at, :price, :threshold, :limit, 'dynamic')"
+                ),
+                {
+                    "at": (_clock + timedelta(minutes=30 * _index)).replace(
+                        tzinfo=None
+                    ),
+                    "price": _fuel_price,
+                    "threshold": None if _fuel_price is None else _limit,
+                    "limit": _limit,
+                },
+            )
     return engine
 
 
@@ -179,8 +190,9 @@ def test_dashboard_is_importable_with_the_shared_mysql_datasource_input() -> Non
 
 
 def test_fuel_price_timeline_leaves_a_gap_where_no_price_was_recorded() -> None:
-    # NULL price rows are poll outages (static or cached-dynamic limits) --
-    # bridging them would draw a fuel price that was never observed.
+    # No row is written while the fuel price is unavailable, so rows more than
+    # an hour apart must break the price line -- bridging them would draw a
+    # fuel price that was never observed.
     panel = _panel_titled("Fuel price vs effective charging limit")
 
     price_override = next(
@@ -190,3 +202,4 @@ def test_fuel_price_timeline_leaves_a_gap_where_no_price_was_recorded() -> None:
     )
     properties = {p["id"]: p["value"] for p in price_override["properties"]}
     assert properties["custom.spanNulls"] is False
+    assert panel["fieldConfig"]["defaults"]["custom"]["insertNulls"] == 60 * 60 * 1000

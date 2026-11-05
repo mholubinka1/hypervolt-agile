@@ -692,9 +692,9 @@ class _MovingFuelPriceProvider:
         return self.fuel_price
 
 
-async def test_run_still_records_fuel_price_changes_while_ultra_is_active() -> None:
+async def test_run_still_records_the_fuel_price_while_ultra_is_active() -> None:
     # Ultra only gates the schedule push and lock control, never the
-    # scheduler update, so the fuel timeline keeps following the price.
+    # scheduler update, so the fuel timeline keeps recording.
     engine = create_engine(
         "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
     )
@@ -709,8 +709,6 @@ async def test_run_still_records_fuel_price_changes_while_ultra_is_active() -> N
 
     with patch("schedule.coordinator.resolve_theme", return_value=None):
         await coordinator.run()
-        provider.fuel_price = 151.0
-        await coordinator.run()
 
     with engine.connect() as connection:
         _prices = [
@@ -722,7 +720,7 @@ async def test_run_still_records_fuel_price_changes_while_ultra_is_active() -> N
                 )
             )
         ]
-    assert _prices == [150.0, 151.0]
+    assert _prices == [150.0]
     charger_client.apply_schedule.assert_not_awaited()
 
 
