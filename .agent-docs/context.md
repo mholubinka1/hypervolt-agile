@@ -1,6 +1,6 @@
 # hypervolt-agile
 
-A scheduler that reads half-hourly Octopus Agile electricity prices and pushes a live charging schedule to a Hypervolt EV charger, so the car charges during the cheapest windows.
+A scheduler that reads Octopus Agile or Go electricity prices and pushes a live charging schedule to a Hypervolt EV charger, so the car charges during the cheapest windows.
 
 ## Language
 
@@ -8,8 +8,12 @@ A scheduler that reads half-hourly Octopus Agile electricity prices and pushes a
 Half-hourly electricity unit prices published by Octopus Energy for the Agile tariff; the app fetches these as the raw input to schedule building.
 _Avoid_: tariff rates, unit rates
 
+**Go prices**:
+Electricity unit prices for the Octopus Go tariff, published as a few long windows (one cheap overnight window, a standard rate otherwise) rather than half-hours.
+_Avoid_: off-peak rate, night rate
+
 **Price** (`Price`):
-A single half-hourly price period from Octopus, with a value excluding VAT and a validity window (`valid_from`/`valid_to`).
+A single half-hourly price period from Octopus, with a value excluding VAT and a validity window (`valid_from`/`valid_to`); Go prices are split into these half-hour slots before scheduling.
 _Avoid_: rate, tariff slot
 
 **Charging period**:
