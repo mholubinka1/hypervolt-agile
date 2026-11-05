@@ -54,15 +54,28 @@ def _current_half_hour() -> datetime:
 
 
 class _OctopusApi:
-    def __init__(self, tariff_code: str, rates: list[dict] | None = None) -> None:
+    _NEXT_PAGE_URL = "https://api.octopus.energy/v1/next-page/"
+
+    def __init__(
+        self,
+        tariff_code: str,
+        rates: list[dict] | None = None,
+        next_page_rates: list[dict] | None = None,
+    ) -> None:
         self._account = _account(tariff_code)
         self._rates = rates or []
+        self._next_page_rates = next_page_rates
         self.rate_paths: list[str] = []
 
     def handle(self, request: httpx.Request) -> httpx.Response:
+        if str(request.url) == self._NEXT_PAGE_URL:
+            return httpx.Response(
+                200, json={"results": self._next_page_rates, "next": None}
+            )
         if request.url.path.endswith("/standard-unit-rates/"):
             self.rate_paths.append(request.url.path)
-            return httpx.Response(200, json={"results": self._rates, "next": None})
+            _next = self._NEXT_PAGE_URL if self._next_page_rates else None
+            return httpx.Response(200, json={"results": self._rates, "next": _next})
         return httpx.Response(200, json=self._account)
 
 
@@ -130,6 +143,31 @@ async def test_go_window_already_under_way_offers_only_remaining_half_hours() ->
     ]
 
 
+async def test_go_prices_on_a_later_page_are_split_and_ended_slots_dropped() -> None:
+    _current_slot = _current_half_hour()
+    _api = _OctopusApi(
+        _GO_TARIFF,
+        rates=[
+            _rate(
+                34.5,
+                _current_slot + timedelta(hours=2),
+                _current_slot + timedelta(hours=3),
+            )
+        ],
+        next_page_rates=[
+            _rate(9.4, _current_slot - timedelta(hours=3), _current_slot - _HALF_HOUR)
+        ],
+    )
+    _client = await _connect(_api)
+
+    _prices = await _client.get_upcoming_prices()
+
+    assert sorted(p.valid_from for p in _prices) == [
+        _current_slot + timedelta(hours=2),
+        _current_slot + timedelta(hours=2, minutes=30),
+    ]
+
+
 async def test_go_window_not_on_half_hours_ends_with_a_clipped_slot() -> None:
     _start = _current_half_hour() + timedelta(hours=1)
     _end = _start + timedelta(minutes=45)
@@ -162,10 +200,13 @@ async def test_agile_half_hour_prices_are_unchanged() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "tariff_code", ["E-1R-VAR-22-11-01-C", "E-1R-INTELLI-VAR-22-10-14-C"]
+)
 async def test_unsupported_tariff_fails_at_startup_naming_the_tariff(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tariff_code: str
 ) -> None:
     monkeypatch.setattr("common.decorator.asyncio.sleep", AsyncMock())
 
-    with pytest.raises(APIError, match="E-1R-VAR-22-11-01-C"):
-        await _connect(_OctopusApi("E-1R-VAR-22-11-01-C"))
+    with pytest.raises(APIError, match=tariff_code):
+        await _connect(_OctopusApi(tariff_code))
