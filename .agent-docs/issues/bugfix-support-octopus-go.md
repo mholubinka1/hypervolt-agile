@@ -1,5 +1,7 @@
 # Issues: bugfix-support-octopus-go
 
+> Work complete — PR ready to merge.
+
 ## Schedule charging on the Octopus Go tariff
 
 **Blocked by**: None
@@ -12,12 +14,12 @@ The Octopus client accepts Go tariffs (product code starting `GO-`) alongside Ag
 
 ### Acceptance criteria
 
-- [ ] Given an account whose active agreement is `E-1R-GO-VAR-22-10-14-C`, when the client starts and fetches upcoming prices, then it does not raise and requests rates from the `GO-VAR-22-10-14` product
-- [ ] Given Go rates of a 2-hour cheap window followed by a 1-hour standard window, when upcoming prices are fetched, then six half-hour Prices are returned soonest first, covering the three hours: four at the cheap price, then two at the standard price
-- [ ] Given a Go window that started 3 hours ago and ends 1 hour after the current half-hour began, when upcoming prices are fetched, then only the current half-hour and the next one are returned
-- [ ] Given an Agile account with half-hourly rates, when upcoming prices are fetched, then the same half-hours and prices are returned soonest first
-- [ ] Given equally priced Go windows for tonight and tomorrow night, returned by the API newest first across pages, when upcoming prices are fetched, then tonight's slots come first, so tied selection favours the nearer night
-- [ ] Given a Go window 45 minutes long, when upcoming prices are fetched, then a full half-hour slot and a final 15-minute slot ending at the window's end are returned
-- [ ] Given an account on a tariff that is neither Agile nor Go, when the client starts, then it raises an error that names the tariff code
+- [x] Given an account whose active agreement is `E-1R-GO-VAR-22-10-14-C`, when the client starts and fetches upcoming prices, then it does not raise and requests rates from the `GO-VAR-22-10-14` product
+- [x] Given Go rates of a 2-hour cheap window followed by a 1-hour standard window, when upcoming prices are fetched, then six half-hour Prices are returned soonest first, covering the three hours: four at the cheap price, then two at the standard price
+- [x] Given a Go window that started 3 hours ago and ends 1 hour after the current half-hour began, when upcoming prices are fetched, then only the current half-hour and the next one are returned
+- [x] Given an Agile account with half-hourly rates, when upcoming prices are fetched, then the same half-hours and prices are returned soonest first
+- [x] Given equally priced Go windows for tonight and tomorrow night, returned by the API newest first across pages, when upcoming prices are fetched, then tonight's slots come first, so tied selection favours the nearer night
+- [x] Given a Go window 45 minutes long, when upcoming prices are fetched, then a full half-hour slot and a final 15-minute slot ending at the window's end are returned
+- [x] Given an account on a tariff that is neither Agile nor Go, when the client starts, then it raises an error that names the tariff code
 
 ---
