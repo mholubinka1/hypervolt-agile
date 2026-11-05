@@ -48,9 +48,14 @@ def _rate(value_exc_vat: float, valid_from: datetime, valid_to: datetime) -> dic
     }
 
 
+def _half_hour_containing(moment: datetime) -> datetime:
+    return moment.replace(
+        minute=30 if moment.minute >= 30 else 0, second=0, microsecond=0
+    )
+
+
 def _current_half_hour() -> datetime:
-    _now = datetime.now(_UTC)
-    return _now.replace(minute=30 if _now.minute >= 30 else 0, second=0, microsecond=0)
+    return _half_hour_containing(datetime.now(_UTC))
 
 
 class _OctopusApi:
@@ -66,6 +71,7 @@ class _OctopusApi:
         self._rates = rates or []
         self._next_page_rates = next_page_rates
         self.rate_paths: list[str] = []
+        self.requested_period_from: datetime | None = None
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         if str(request.url) == self._NEXT_PAGE_URL:
@@ -74,6 +80,9 @@ class _OctopusApi:
             )
         if request.url.path.endswith("/standard-unit-rates/"):
             self.rate_paths.append(request.url.path)
+            self.requested_period_from = datetime.fromisoformat(
+                request.url.params["period_from"]
+            )
             _next = self._NEXT_PAGE_URL if self._next_page_rates else None
             return httpx.Response(200, json={"results": self._rates, "next": _next})
         return httpx.Response(200, json=self._account)
@@ -134,7 +143,8 @@ async def test_go_window_already_under_way_offers_only_remaining_half_hours() ->
 
     _prices = await _client.get_upcoming_prices()
 
-    _slot_at_fetch = _current_half_hour()
+    assert _api.requested_period_from is not None
+    _slot_at_fetch = _half_hour_containing(_api.requested_period_from)
     _window_end = _current_slot + timedelta(hours=1)
     assert sorted(p.valid_from for p in _prices) == [
         _slot
