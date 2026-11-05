@@ -94,7 +94,6 @@ class FuelThresholdRecorder:
         self._clock = clock
         self._timeout_secs = timeout_secs
         self._table_ready = False
-        self._last_fuel_price: float | None = None
 
     @classmethod
     def from_config(cls, database: DatabaseConfig) -> "FuelThresholdRecorder":
@@ -107,7 +106,7 @@ class FuelThresholdRecorder:
             database=database.name,
         )
         # PyMySQL has no read/write timeout by default, so a hung database
-        # would stall the schedule rebuild this write runs inside.
+        # would stall the record step this write runs inside.
         return cls(
             create_engine(
                 _url,
@@ -133,27 +132,18 @@ class FuelThresholdRecorder:
         effective_limit: EffectiveLimit,
         fuel_price_pence_per_litre: float | None = None,
         dynamic_threshold_incl_vat: float | None = None,
-    ) -> None:
+    ) -> bool:
+        """Returns True if a write was attempted, False if skipped."""
         _price, _threshold = _storable_pair(
             fuel_price_pence_per_litre, dynamic_threshold_incl_vat
         )
-        if _price is not None:
-            # Remembered before the write so a failing database is attempted
-            # once per price change rather than once per cycle.
-            self._last_fuel_price = _price
+        if _price is None:
+            return False
         await self._guarded(
             lambda: self._insert(effective_limit, _price, _threshold),
             "record the fuel price threshold",
         )
-
-    def fuel_price_changed(
-        self, fuel_price: object, dynamic_threshold_incl_vat: object
-    ) -> bool:
-        # Asks what a row for this pair would actually store, so a pair whose
-        # price record() would drop (an unstorable threshold) is never a
-        # change -- otherwise every cycle would write another price-less row.
-        _price, _ = _storable_pair(fuel_price, dynamic_threshold_incl_vat)
-        return _price is not None and _price != self._last_fuel_price
+        return True
 
     async def _guarded(self, work: Callable[[], None], action: str) -> None:
         try:
@@ -183,7 +173,7 @@ class FuelThresholdRecorder:
         dynamic_threshold_incl_vat: float | None,
     ) -> None:
         # Stamped before the table check: the first write after an outage can
-        # spend seconds in create_all, and the row belongs to the rebuild.
+        # spend seconds in create_all, and the row belongs to the moment it was due.
         _recorded_at = self._clock().astimezone(UTC).replace(tzinfo=None)
         self._ensure_table()
         with self._engine.begin() as connection:
