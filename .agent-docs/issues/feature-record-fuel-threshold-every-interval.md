@@ -1,5 +1,7 @@
 # Issues: feature-record-fuel-threshold-every-interval
 
+> Work complete — PR ready to merge.
+
 ## Record the fuel price and threshold every update interval
 
 **GitHub issue**: #206
@@ -14,17 +16,17 @@
 
 ### Acceptance criteria
 
-- [ ] Given a provider with a fuel price and threshold, when `update()` first runs, then one row holds the price, threshold, effective limit and source.
-- [ ] Given a row was just written, when `update()` runs again within the interval, then no further row is written.
-- [ ] Given the interval has passed and the price is unchanged, when `update()` runs, then another row is written.
-- [ ] Given the provider has no fuel price, when `update()` runs, then no row is written, and a row is written on the first later cycle that has one.
-- [ ] Given an absent or unstorable threshold beside a price, then no row is written.
-- [ ] Given a static cap below the dynamic threshold, then the row's source is `static cap`.
-- [ ] Given a schedule rebuild with no due interval, then the rebuild writes no row.
-- [ ] Given a hung accessor, then it times out with a warning and is not called again within the interval.
-- [ ] Given a failing database, then the write is attempted once per interval, not once per cycle.
-- [ ] Given no recorder or no threshold provider, then nothing is recorded.
-- [ ] Given an unexpected failure in the record step, then `update()` does not raise.
-- [ ] No info-level log line is added, removed or changed.
+- [x] Given a provider with a fuel price and threshold, when `update()` first runs, then one row holds the price, threshold, effective limit and source.
+- [x] Given a row was just written, when `update()` runs again within the interval, then no further row is written.
+- [x] Given the interval has passed and the price is unchanged, when `update()` runs, then another row is written.
+- [x] Given the provider has no fuel price, when `update()` runs, then no row is written, and a row is written on the first later cycle that has one.
+- [x] Given an absent or unstorable threshold beside a price, then no row is written.
+- [x] Given a static cap below the dynamic threshold, then the row's source is `static cap`.
+- [x] Given a schedule rebuild with no due interval, then the rebuild writes no row.
+- [x] Given a hung accessor, then it times out with a warning and is not called again within the interval.
+- [x] Given a failing database, then the write is attempted once per interval, not once per cycle.
+- [x] Given no recorder or no threshold provider, then nothing is recorded.
+- [x] Given an unexpected failure in the record step, then `update()` does not raise.
+- [x] No info-level log line is added, removed or changed.
 
 ---
