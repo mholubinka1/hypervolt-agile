@@ -119,7 +119,7 @@ async def test_go_windows_become_half_hour_prices() -> None:
     )
     _client = await _connect(_api)
 
-    _prices = sorted(await _client.get_upcoming_prices(), key=lambda p: p.valid_from)
+    _prices = await _client.get_upcoming_prices()
 
     assert [(p.valid_from, p.valid_to, p.value_exc_vat) for p in _prices] == [
         (_cheap_start + _HALF_HOUR * i, _cheap_start + _HALF_HOUR * (i + 1), price)
@@ -146,7 +146,7 @@ async def test_go_window_already_under_way_offers_only_remaining_half_hours() ->
     assert _api.requested_period_from is not None
     _slot_at_fetch = _half_hour_containing(_api.requested_period_from)
     _window_end = _current_slot + timedelta(hours=1)
-    assert sorted(p.valid_from for p in _prices) == [
+    assert [p.valid_from for p in _prices] == [
         _slot
         for _slot in (_slot_at_fetch, _slot_at_fetch + _HALF_HOUR)
         if _slot < _window_end
@@ -172,7 +172,7 @@ async def test_go_prices_on_a_later_page_are_split_and_ended_slots_dropped() -> 
 
     _prices = await _client.get_upcoming_prices()
 
-    assert sorted(p.valid_from for p in _prices) == [
+    assert [p.valid_from for p in _prices] == [
         _current_slot + timedelta(hours=2),
         _current_slot + timedelta(hours=2, minutes=30),
     ]
@@ -183,7 +183,7 @@ async def test_go_window_not_on_half_hours_ends_with_a_clipped_slot() -> None:
     _end = _start + timedelta(minutes=45)
     _client = await _connect(_OctopusApi(_GO_TARIFF, rates=[_rate(9.4, _start, _end)]))
 
-    _prices = sorted(await _client.get_upcoming_prices(), key=lambda p: p.valid_from)
+    _prices = await _client.get_upcoming_prices()
 
     assert [(p.valid_from, p.valid_to) for p in _prices] == [
         (_start, _start + _HALF_HOUR),
@@ -202,7 +202,7 @@ async def test_agile_half_hour_prices_are_unchanged() -> None:
     )
     _client = await _connect(_api)
 
-    _prices = sorted(await _client.get_upcoming_prices(), key=lambda p: p.valid_from)
+    _prices = await _client.get_upcoming_prices()
 
     assert [(p.valid_from, p.valid_to, p.value_exc_vat) for p in _prices] == [
         (_first, _first + _HALF_HOUR, 10.0),
@@ -220,3 +220,20 @@ async def test_unsupported_tariff_fails_at_startup_naming_the_tariff(
 
     with pytest.raises(APIError, match=tariff_code):
         await _connect(_OctopusApi(tariff_code))
+
+
+async def test_go_prices_come_back_soonest_first_so_ties_favour_the_nearer_night() -> (
+    None
+):
+    _tonight = _current_half_hour() + timedelta(hours=2)
+    _tomorrow_night = _tonight + timedelta(days=1)
+    _api = _OctopusApi(
+        _GO_TARIFF,
+        rates=[_rate(9.4, _tomorrow_night, _tomorrow_night + _HALF_HOUR)],
+        next_page_rates=[_rate(9.4, _tonight, _tonight + _HALF_HOUR)],
+    )
+    _client = await _connect(_api)
+
+    _prices = await _client.get_upcoming_prices()
+
+    assert [p.valid_from for p in _prices] == [_tonight, _tomorrow_night]

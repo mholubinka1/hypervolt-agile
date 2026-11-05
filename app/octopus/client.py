@@ -170,6 +170,11 @@ class AgileClient:
             _slot_start = _slot_end
         return _slots
 
+    def _soonest_first(self, prices: list[Price]) -> list[Price]:
+        # ScheduleBuilder breaks price ties by input order, and Go windows all share
+        # one price, so this makes it favour the nearer window.
+        return sorted(prices, key=lambda p: p.valid_from)
+
     @retry()
     async def get_upcoming_prices(self) -> list[Price]:
         await self._get_active_tariff()
@@ -199,8 +204,6 @@ class AgileClient:
                 _response_json["results"], _period_from
             )
             _next = _response_json["next"]
-            if not _next:
-                return _prices
 
             _page_remaining = True
             while _page_remaining:
@@ -215,7 +218,7 @@ class AgileClient:
                 _page_remaining = bool(_next)
 
             logger.debug(f"Retrieved {len(_prices)} Agile price periods.")
-            return _prices
+            return self._soonest_first(_prices)
 
         except Exception as e:
             if _response and _response.status_code != 200:

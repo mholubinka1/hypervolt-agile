@@ -22,7 +22,7 @@ The scheduler starts normally on Go and builds its schedule with the existing lo
 
 - Only the Octopus client (`AgileClient`) changes. `ScheduleBuilder`, `Scheduler` and everything downstream stay as they are. They keep treating one Price as one half-hour charging period.
 - Tariff check: a tariff is supported when its product code (taken with the existing product-code regex) starts with `AGILE-` or `GO-`. The `GO-` prefix deliberately excludes Intelligent Go (`INTELLI-`). Any other tariff raises the existing startup error, now naming the tariff code.
-- Price normalisation in `get_upcoming_prices`: each rate the standard-unit-rates endpoint returns is split into back-to-back half-hour Price slots with the rate's value, from `valid_from` to `valid_to`. A final partial slot is clipped to `valid_to`. Slots whose `valid_to` is at or before the fetch time are dropped. Agile rates are already half-hours, so they pass through unchanged apart from the ended-slot filter. The current slot is still kept, which matches the existing replug filter.
+- Price normalisation in `get_upcoming_prices`: each rate the standard-unit-rates endpoint returns is split into back-to-back half-hour Price slots with the rate's value, from `valid_from` to `valid_to`. A final partial slot is clipped to `valid_to`. Slots whose `valid_to` is at or before the fetch time are dropped. Agile rates are already half-hours, so they pass through unchanged apart from the ended-slot filter. The current slot is still kept, which matches the existing replug filter. The result is returned soonest first: every Go cheap window has the same price, and the builder picks among equal prices in input order, so this makes it favour the nearer night over the API's newest-first order.
 - No API contract, config or schema changes. Same endpoint, same query period.
 - No ADR: the decision is local to one module and easy to reverse.
 
@@ -31,7 +31,7 @@ The scheduler starts normally on Go and builds its schedule with the existing lo
 - Test behaviour at the HTTP boundary. Drive `AgileClient` through tariff discovery and `get_upcoming_prices()`, and assert on the returned Price list and on errors, not on internals.
 - Seam: the test replaces the client instance's `httpx.AsyncClient` with one on `httpx.MockTransport` that serves account and standard-unit-rates JSON. The user agreed to this so production code doesn't change.
 - Times are built relative to the current half-hour, so tests stay deterministic without freezing the clock.
-- Scenarios: Go accepted and priced from the Go product; Agile still accepted; an unsupported tariff rejected with its code in the error; Go windows split into half-hour slots (in any order; the builder sorts) with the right values, a final partial slot clipped; ended slots dropped while the current slot is kept; Agile half-hours unchanged.
+- Scenarios: Go accepted and priced from the Go product; Agile still accepted; an unsupported tariff rejected with its code in the error; Go windows split into half-hour slots, returned soonest first, with the right values, a final partial slot clipped; ended slots dropped while the current slot is kept; Agile half-hours unchanged.
 - Prior art: `tests/fuel_finder/test_client.py` uses `httpx.MockTransport` in the same way.
 
 ## Out of Scope
