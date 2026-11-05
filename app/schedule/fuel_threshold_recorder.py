@@ -52,8 +52,8 @@ _fuel_price_threshold = Table(
 
 
 def _storable(value: object, scale: int, upper_bound: float) -> float | None:
-    # A value the Numeric column cannot hold would fail the whole insert and
-    # lose the valid limit row, so an unusable one is stored as NULL instead.
+    # A value the Numeric column cannot hold would fail the whole insert, so
+    # an unusable one is treated as absent.
     # The bound is checked after rounding to the column's scale: 9999.9996
     # is under 10000 but rounds up to it.
     if isinstance(value, bool) or not isinstance(value, (int, float)):
