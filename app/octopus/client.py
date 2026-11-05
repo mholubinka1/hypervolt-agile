@@ -18,6 +18,8 @@ logging.config.dictConfig(config)
 logger: Logger = getLogger(APP_NAME)
 
 PRODUCT_CODE_REGEX = "^[A-Z]-[0-9A-Z]+-(?P<product_code>[A-Z0-9-]+)-[A-Z]$"
+SUPPORTED_PRODUCT_PREFIXES = ("AGILE-", "GO-")
+HALF_HOUR = timedelta(minutes=30)
 
 
 @dataclass
@@ -103,15 +105,16 @@ class AgileClient:
 
         _active_product = max(_products, key=lambda p: p.valid_from)
         _active_tariff_code = _active_product.tariff_code
-        if "AGILE" not in _active_tariff_code:
-            raise ValueError("Only compatible with Agile tariffs.")
-
         _product_code_match = re.search(PRODUCT_CODE_REGEX, _active_tariff_code)
         if not _product_code_match:
             raise NullValueError(
                 f"Active product must have a product code: {_active_tariff_code}"
             )
         _active_product_code = _product_code_match.groupdict()["product_code"]
+        if not _active_product_code.startswith(SUPPORTED_PRODUCT_PREFIXES):
+            raise ValueError(
+                f"Only compatible with Agile and Go tariffs, not {_active_tariff_code}"
+            )
         return _active_product_code, _active_tariff_code
 
     @retry()
@@ -141,16 +144,36 @@ class AgileClient:
                 raise APIError(_response_json)
             raise APIError(f"Failed to fetch account/meter information: {e}.") from e
 
-    def _to_upcoming_prices_list(self, results: list[dict]) -> list[Price]:
-        _prices = [
-            Price(
+    def _to_upcoming_prices_list(
+        self, results: list[dict], period_from: datetime
+    ) -> list[Price]:
+        return [
+            _slot
+            for r in results
+            for _slot in self._to_half_hour_slots(
                 value_exc_vat=r["value_exc_vat"],
                 valid_from=datetime.fromisoformat(r["valid_from"]),
                 valid_to=datetime.fromisoformat(r["valid_to"]),
             )
-            for r in results
+            if _slot.valid_to > period_from
         ]
-        return _prices
+
+    def _to_half_hour_slots(
+        self, value_exc_vat: float, valid_from: datetime, valid_to: datetime
+    ) -> list[Price]:
+        # Go publishes long windows; scheduling assumes one Price per half-hour.
+        _slots = []
+        _slot_start = valid_from
+        while _slot_start < valid_to:
+            _slot_end = min(_slot_start + HALF_HOUR, valid_to)
+            _slots.append(Price(value_exc_vat, _slot_start, _slot_end))
+            _slot_start = _slot_end
+        return _slots
+
+    def _soonest_first(self, prices: list[Price]) -> list[Price]:
+        # ScheduleBuilder breaks price ties by input order, and Go windows all share
+        # one price, so this makes it favour the nearer window.
+        return sorted(prices, key=lambda p: p.valid_from)
 
     @retry()
     async def get_upcoming_prices(self) -> list[Price]:
@@ -177,10 +200,10 @@ class AgileClient:
             _response.raise_for_status()
             _response_json = _response.json()
 
-            _prices = self._to_upcoming_prices_list(results=_response_json["results"])
+            _prices = self._to_upcoming_prices_list(
+                _response_json["results"], _period_from
+            )
             _next = _response_json["next"]
-            if not _next:
-                return _prices
 
             _page_remaining = True
             while _page_remaining:
@@ -188,12 +211,14 @@ class AgileClient:
                     break
                 _next, _response = await self._get_next_price_page(_next)
                 _prices.extend(
-                    self._to_upcoming_prices_list(_response.json()["results"])
+                    self._to_upcoming_prices_list(
+                        _response.json()["results"], _period_from
+                    )
                 )
                 _page_remaining = bool(_next)
 
             logger.debug(f"Retrieved {len(_prices)} Agile price periods.")
-            return _prices
+            return self._soonest_first(_prices)
 
         except Exception as e:
             if _response and _response.status_code != 200:

@@ -8,7 +8,7 @@ Charges your EV during the cheapest Octopus Agile windows by pushing a live sche
 
 On each poll cycle the scheduler:
 
-1. Fetches the latest half-hourly Octopus Agile prices via the Octopus API.
+1. Fetches the latest Octopus Agile or Go prices via the Octopus API, as half-hourly slots.
 2. Selects the cheapest contiguous windows summing to your configured charge duration, filtered by your price limit.
 3. Pushes the schedule to your Hypervolt charger over WebSocket.
 4. Locks the charger outside scheduled windows, unlocks it during an active window.
@@ -21,7 +21,7 @@ Prices and schedules are held in UTC and converted to the charger's local timezo
 ## Requirements
 
 - A [Hypervolt](https://hypervolt.co.uk/) v3 home EV charger.
-- An [Octopus Energy](https://octopus.energy/) account on the **Agile** tariff.
+- An [Octopus Energy](https://octopus.energy/) account on the **Agile** or **Go** tariff.
 - Docker (deployment) or Python 3.13+ with [uv](https://docs.astral.sh/uv/) (local development).
 
 ---
