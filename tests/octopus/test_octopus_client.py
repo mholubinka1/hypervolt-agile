@@ -121,9 +121,25 @@ async def test_go_window_already_under_way_offers_only_remaining_half_hours() ->
 
     _prices = await _client.get_upcoming_prices()
 
+    _slot_at_fetch = _current_half_hour()
+    _window_end = _current_slot + timedelta(hours=1)
     assert sorted(p.valid_from for p in _prices) == [
-        _current_slot,
-        _current_slot + _HALF_HOUR,
+        _slot
+        for _slot in (_slot_at_fetch, _slot_at_fetch + _HALF_HOUR)
+        if _slot < _window_end
+    ]
+
+
+async def test_go_window_not_on_half_hours_ends_with_a_clipped_slot() -> None:
+    _start = _current_half_hour() + timedelta(hours=1)
+    _end = _start + timedelta(minutes=45)
+    _client = await _connect(_OctopusApi(_GO_TARIFF, rates=[_rate(9.4, _start, _end)]))
+
+    _prices = sorted(await _client.get_upcoming_prices(), key=lambda p: p.valid_from)
+
+    assert [(p.valid_from, p.valid_to) for p in _prices] == [
+        (_start, _start + _HALF_HOUR),
+        (_start + _HALF_HOUR, _end),
     ]
 
 

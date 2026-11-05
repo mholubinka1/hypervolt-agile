@@ -31,7 +31,7 @@ The scheduler starts normally on Go and builds its schedule with the existing lo
 - Test behaviour at the HTTP boundary. Drive `AgileClient` through tariff discovery and `get_upcoming_prices()`, and assert on the returned Price list and on errors, not on internals.
 - Seam: the test replaces the client instance's `httpx.AsyncClient` with one on `httpx.MockTransport` that serves account and standard-unit-rates JSON. The user agreed to this so production code doesn't change.
 - Times are built relative to the current half-hour, so tests stay deterministic without freezing the clock.
-- Scenarios: Go accepted and priced from the Go product; Agile still accepted; an unsupported tariff rejected with its code in the error; Go windows split into half-hour slots in time order with the right values; ended slots dropped while the current slot is kept; Agile half-hours unchanged.
+- Scenarios: Go accepted and priced from the Go product; Agile still accepted; an unsupported tariff rejected with its code in the error; Go windows split into half-hour slots (in any order; the builder sorts) with the right values, a final partial slot clipped; ended slots dropped while the current slot is kept; Agile half-hours unchanged.
 - Prior art: `tests/fuel_finder/test_client.py` uses `httpx.MockTransport` in the same way.
 
 ## Out of Scope
