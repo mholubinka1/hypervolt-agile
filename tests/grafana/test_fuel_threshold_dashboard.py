@@ -190,8 +190,9 @@ def test_dashboard_is_importable_with_the_shared_mysql_datasource_input() -> Non
 
 
 def test_fuel_price_timeline_leaves_a_gap_where_no_price_was_recorded() -> None:
-    # NULL price rows are poll outages (static or cached-dynamic limits) --
-    # bridging them would draw a fuel price that was never observed.
+    # No row is written while the fuel price is unavailable, so rows more than
+    # an hour apart must break the price line -- bridging them would draw a
+    # fuel price that was never observed.
     panel = _panel_titled("Fuel price vs effective charging limit")
 
     price_override = next(
@@ -201,3 +202,4 @@ def test_fuel_price_timeline_leaves_a_gap_where_no_price_was_recorded() -> None:
     )
     properties = {p["id"]: p["value"] for p in price_override["properties"]}
     assert properties["custom.spanNulls"] is False
+    assert panel["fieldConfig"]["defaults"]["custom"]["insertNulls"] == 60 * 60 * 1000

@@ -18,7 +18,7 @@ Every update interval (`update_every_mins`, the same cadence the threshold exten
 6. As the operator, I want a hung accessor bounded and backed off for one interval, so that a misbehaving extension cannot slow charging control.
 7. As the operator, I want a database failure to drop that interval's row with a warning, so that an outage never slows the polling loop.
 8. As the operator, I want the info-level log unchanged, so that the log stays as readable as it is today.
-9. As the operator, I want no schema, config or Grafana change, so that deploy is image-only.
+9. As the operator, I want no schema or config change, so that deploy needs only a new image plus a dashboard re-import.
 
 ## Implementation Decisions
 
@@ -29,7 +29,8 @@ Every update interval (`update_every_mins`, the same cadence the threshold exten
 - **The rebuild path no longer records.** Its own `get_fuel_price` call goes too.
 - **Failure boundary is unchanged.** The step keeps its own `try`/`except`, which logs and carries on.
 - **Logging**: no info-level line is added, removed or changed. The existing warnings (timeout, database failure) and the exception log are kept.
-- **Unchanged**: table schema, the `database:` config, the extension and its `get_fuel_price()` contract, and the Grafana dashboard artefact.
+- **Unchanged**: table schema, the `database:` config, and the extension and its `get_fuel_price()` contract.
+- **Grafana**: the fuel price vs limit panel gains `insertNulls` at one hour (two default intervals) in its defaults; the limit series keeps `spanNulls` and stays continuous. Outages no longer leave NULL-price rows, so without it the line would bridge an outage instead of showing a gap (added after Copilot review).
 - **Consequence accepted**: a recorder without a threshold extension records nothing, and Fuel Finder outages no longer produce NULL-price static or cached-dynamic rows.
 - **Row volume**: at most about 48 rows a day at the default 30-minute interval.
 - **Glossary**: *Fuel threshold record* is updated. No ADR, because the decision is cheap to reverse.
@@ -58,9 +59,9 @@ Every update interval (`update_every_mins`, the same cadence the threshold exten
 - Rows when no fuel price is available.
 - Any extension change, or a push/callback contract.
 - Syncing the record instant to the extension's fetch instant.
-- Schema, config, Grafana, retention, backfill or retry-queue changes.
+- Schema, config, retention, backfill or retry-queue changes, and any other Grafana change.
 
 ## Further Notes
 
 - The app cadence and the extension's fetch cadence share `update_every_mins` but are not phase-aligned, so a row's price can be up to one interval old.
-- Deploy is image-only.
+- Deploy is a new image plus a re-import of the Grafana dashboard.
