@@ -108,7 +108,7 @@ The electricity price at which a mile costs the same on electric as on fuel, der
 _Avoid_: parity price, equivalent price
 
 **Fuel threshold record** (`fuel_price_threshold` row):
-One timestamped snapshot of the fuel price, the dynamic charging threshold, the effective limit and its source (`dynamic` or `static cap`; older rows may also carry `cached dynamic` or `static`). It is written once every update interval (`update_every_mins`) whenever the threshold extension has a fuel price, changed or not — the first as soon as a price is available after startup — and never when it has none. It is written to the operator-configured MariaDB database (`database:` in `config.yml`) for the Grafana electricity dashboard and never gates scheduling — a database failure only drops that row.
+One timestamped snapshot of the fuel price, the dynamic charging threshold, the effective limit and its source (always `dynamic`: a cycle where the static limit caps or replaces the extension's threshold writes no row; older rows may carry `static cap`, `cached dynamic` or `static`). It is written once every update interval (`update_every_mins`) whenever the threshold extension has a fuel price, changed or not — the first as soon as a price is available after startup — and never when it has none. It is written to the operator-configured MariaDB database (`database:` in `config.yml`) for the Grafana electricity dashboard and never gates scheduling — a database failure only drops that row.
 _Avoid_: threshold log, price history
 
 ## Boundaries
