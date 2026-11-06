@@ -686,7 +686,7 @@ class _MovingFuelPriceProvider:
         self.fuel_price = 150.0
 
     async def get_threshold(self) -> float:
-        return 20.0
+        return 8.0
 
     async def get_fuel_price(self) -> float:
         return self.fuel_price

@@ -306,6 +306,10 @@ class Scheduler:
         _limit = self._threshold_policy.effective_limit(_dynamic)
         if _limit is None:
             return
+        if _limit.source != "dynamic":
+            # Only the extension's own threshold is recorded: the static limit
+            # clamping it must never reach the database or the panel.
+            return
         if await self._fuel_threshold_recorder.record(
             _limit,
             fuel_price_pence_per_litre=_price,
