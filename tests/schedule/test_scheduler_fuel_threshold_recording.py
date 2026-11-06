@@ -239,7 +239,7 @@ async def test_a_dynamic_threshold_equal_to_the_static_limit_is_recorded() -> No
     assert row.limit_source == "dynamic"
 
 
-async def test_nothing_is_written_while_a_cached_threshold_stands_in_for_a_missing_one(
+async def test_no_second_row_is_written_while_a_cached_threshold_stands_in_for_a_missing_one(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     engine = _in_memory_database()
@@ -254,15 +254,14 @@ async def test_nothing_is_written_while_a_cached_threshold_stands_in_for_a_missi
     assert _row_count(engine) == 1
 
 
-async def test_a_dynamic_row_follows_in_the_next_interval_once_the_threshold_is_back_under_the_static_limit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_a_dynamic_row_follows_on_the_next_cycle_once_the_threshold_is_back_under_the_static_limit() -> (
+    None
+):
     engine = _in_memory_database()
     provider = _MutableFuelPriceProvider(threshold=20.0, fuel_price=150.0)
     scheduler = _scheduler_with_provider(engine, provider, static_limit=10)
     await scheduler.update()
     provider.threshold = 8.0
-    _thirty_one_minutes_later(monkeypatch)
 
     await scheduler.update()
 
