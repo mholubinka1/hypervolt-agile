@@ -1,5 +1,7 @@
 # Issues: bugfix-never-record-static-fallback-fuel-threshold
 
+> Work complete — PR ready to merge.
+
 ## Skip rows whose limit is not the extension's dynamic threshold
 
 **GitHub issue**: local only
