@@ -1,4 +1,4 @@
-# Issues: fix-skip-static-fallback-fuel-threshold-rows
+# Issues: bugfix-never-record-static-fallback-fuel-threshold
 
 ## Skip rows whose limit is not the extension's dynamic threshold
 
