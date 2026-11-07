@@ -5,6 +5,7 @@ Lights the charger's LED strip for Southampton FC match days, using live fixture
 ## Behaviour
 
 - Polls TheSportsDB for upcoming and recently completed fixtures for the configured team.
+- A fixture's match day is its kick-off converted to Europe/London, so it still works when TheSportsDB leaves its local date/time fields null.
 - **Match window**: 30 minutes before kick-off to 3 hours after. Always-on and outranks every other theme.
 - **Outside the window on a match day**: charging-gated fallback, below custom and built-in themes.
 - **Non-match day**: contributes nothing.

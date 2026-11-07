@@ -86,6 +86,17 @@ def _parse_kickoff(event: dict[str, object]) -> datetime | None:
     return None
 
 
+def _local_date_iso(event: dict[str, object], kickoff: datetime | None) -> str | None:
+    # The charger-local ("YYYY-MM-DD") date a fixture falls on. The kick-off
+    # instant is the most reliable source: TheSportsDB sometimes returns
+    # dateEventLocal as null (seen 2026-11-07), and dateEvent is the UTC date,
+    # which differs from London's for a late-evening BST kick-off. Those two
+    # fields are only the fallback when no kick-off could be parsed.
+    if kickoff is not None:
+        return kickoff.astimezone(_LOCAL_TZ).date().isoformat()
+    return str(event.get("dateEventLocal") or event.get("dateEvent") or "") or None
+
+
 class SaintsFcExtension:
     def __init__(self, config: dict[str, Any]) -> None:
         self._api_key = config.get("api_key", _DEFAULT_API_KEY)
@@ -188,19 +199,16 @@ class SaintsFcExtension:
         _target_iso = target_date.isoformat()
         _next_events = await self._fetch_events("/eventsnext.php", "events")
         _last_events = await self._fetch_events("/eventslast.php", "results")
-        _events_on_date = [
-            _event
-            for _event in _next_events + _last_events
-            if _event.get("dateEventLocal") == _target_iso
-        ]
-        if not _events_on_date:
-            return None
+        _found = False
         _kickoffs: list[datetime] = []
-        for _event in _events_on_date:
+        for _event in _next_events + _last_events:
             _kickoff = _parse_kickoff(_event)
+            if _local_date_iso(_event, _kickoff) != _target_iso:
+                continue
+            _found = True
             if _kickoff is not None:
                 _kickoffs.append(_kickoff)
-        return _kickoffs
+        return _kickoffs if _found else None
 
     async def _check_and_record(self, target_date: date) -> None:
         try:

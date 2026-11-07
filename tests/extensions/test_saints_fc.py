@@ -242,6 +242,102 @@ async def test_a_fixture_with_an_iso_offset_timestamp_is_respected() -> None:
     assert extension._matches[_TOMORROW] == [datetime(2026, 8, 26, 14, 0, tzinfo=_UTC)]
 
 
+async def test_a_fixture_with_null_local_fields_is_recorded_and_lights_the_strip() -> (
+    None
+):
+    # The real TheSportsDB payload for Preston vs Southampton on 2026-11-07:
+    # dateEventLocal/strTimeLocal were null, strTimestamp used the ISO "T" form
+    # with no offset, and only dateEvent (UTC date) carried a date. Filtering on
+    # dateEventLocal alone dropped it, so the strip never lit.
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(
+            next_events=[
+                {
+                    "dateEvent": _TODAY_ISO,
+                    "dateEventLocal": None,
+                    "strTime": "15:00:00",
+                    "strTimeLocal": None,
+                    "strTimestamp": "2026-08-25T15:00:00",
+                }
+            ],
+            last_events=None,
+        )
+    )
+
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+
+    assert extension._matches == {_TODAY: [datetime(2026, 8, 25, 15, 0, tzinfo=_UTC)]}
+    _in_window = await extension.resolve(datetime(2026, 8, 25, 15, 30, tzinfo=_UTC))
+    assert _in_window is not None
+    assert _in_window.always_on is True
+
+
+async def test_the_kickoff_date_wins_over_a_disagreeing_date_event_local() -> None:
+    # Precedence is kick-off first: 23:30 UTC on the 25th is the 26th in London,
+    # so a stale/wrong dateEventLocal of the 25th must not file it under today.
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(
+            next_events=[
+                {
+                    "dateEventLocal": _TODAY_ISO,
+                    "strTimestamp": "2026-08-25T23:30:00",
+                }
+            ],
+            last_events=None,
+        )
+    )
+
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+
+    assert extension._matches == {
+        _TOMORROW: [datetime(2026, 8, 25, 23, 30, tzinfo=_UTC)]
+    }
+
+
+async def test_a_fixture_is_filed_under_its_london_date_not_its_utc_date() -> None:
+    # 23:30 UTC on the 25th is 00:30 BST on the 26th: the match is on London's
+    # 26th even though dateEvent (UTC) says the 25th.
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(
+            next_events=[
+                {
+                    "dateEvent": _TODAY_ISO,
+                    "dateEventLocal": None,
+                    "strTimestamp": "2026-08-25T23:30:00",
+                }
+            ],
+            last_events=None,
+        )
+    )
+
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+
+    assert extension._matches == {
+        _TOMORROW: [datetime(2026, 8, 25, 23, 30, tzinfo=_UTC)]
+    }
+
+
+async def test_a_fixture_with_only_a_utc_date_is_recorded_with_no_kickoff() -> None:
+    extension = SaintsFcExtension({})
+    extension._client = _mock_client(
+        _router(
+            next_events=[{"dateEvent": _TOMORROW_ISO, "dateEventLocal": None}],
+            last_events=None,
+        )
+    )
+
+    with patch("saints_fc.datetime", _frozen_clock()):
+        await extension._poll_once()
+
+    assert extension._matches == {_TOMORROW: []}
+
+
 async def test_resolve_lights_the_always_on_strip_only_inside_the_match_window() -> (
     None
 ):
